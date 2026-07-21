@@ -1,4 +1,7 @@
-"""X/Twitter fetching via the agent-reach `twitter` (twitter-cli) backend."""
+"""X/Twitter fetching via the `twitter-cli` tool (github.com/public-clis/twitter-cli).
+
+Auth is read from the TWITTER_AUTH_TOKEN + TWITTER_CT0 env vars.
+"""
 
 import json
 import logging
@@ -12,18 +15,18 @@ _DEFAULT_LIMIT = 20
 
 
 def recent_tweets(handle: str, *, limit: int = _DEFAULT_LIMIT) -> list[dict]:
-    """Recent tweets for a handle via `twitter search "from:<handle>" -n N --json`.
+    """Recent tweets for a handle via `twitter user-posts <handle> --max N --json`.
 
-    Best-effort: the backend is frequently unavailable (stale X cookie / not
-    installed), so any failure degrades to []. Each tweet dict carries whatever
-    the CLI emits (commonly id/text/url/created_at).
+    Best-effort: needs X auth (TWITTER_AUTH_TOKEN + TWITTER_CT0) and degrades to []
+    on any failure. Each tweet dict carries whatever the CLI emits; `_tweet_item`
+    reads id/text/url/created_at tolerantly.
 
-    #TODO: subcommand/flags are from agent-reach's docs but the JSON output shape
-    is UNVERIFIED — confirm with one live run and adjust `_extract` if needed.
+    #NOTE: subcommand/flags match the twitter-cli README; exact JSON field names
+    are per its SCHEMA.md — adjust `_extract`/`_tweet_item` if a live run differs.
     """
     try:
         proc = subprocess.run(
-            [_CLI, "search", f"from:{handle}", "-n", str(limit), "--json"],
+            [_CLI, "user-posts", handle, "--max", str(limit), "--json"],
             capture_output=True,
             text=True,
             timeout=60,

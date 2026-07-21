@@ -34,7 +34,7 @@ Scheduled by `.github/workflows/daily.yml` — podcast at 12:00 UTC (claims fres
 | --- | --- |
 | `OPENROUTER_API_KEY` | all LLM calls (free `:free` models). A one-time $10 OpenRouter top-up raises the free cap to 1,000 req/day (20 RPM). |
 | `PAGES_DEPLOY_TOKEN` | PAT with write access to the Pages repo (`Camil-H/camil-h.github.io`) so the workflow can publish the site cross-repo |
-| `X_COOKIE` | X/Twitter session for the `twitter` backend (optional; degrades to nothing if absent) |
+| `TWITTER_AUTH_TOKEN`, `TWITTER_CT0` | X/Twitter session tokens for the `twitter-cli` X source (optional; degrades to nothing if absent) |
 
 The site publishes to `camilharoune.com/knowledge_secretary/` — a subpath of the personal site, deployed with `keep_files` so it never clobbers the homepage.
 

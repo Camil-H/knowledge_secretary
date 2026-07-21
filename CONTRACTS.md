@@ -57,7 +57,7 @@ def adapter(spec: dict, since: datetime, state: dict) -> list[Item]:
 ```
 Kinds by task:
 - **newsletter/adapters.py**: `feed` (plain RSS/Atom, spec["url"]), `pubmed` (spec["queries"]),
-  `biorxiv` (spec["categories"]), `twitter` (agent-reach `twitter` backend, spec["handles"]; degrade to []).
+  `biorxiv` (spec["categories"]), `twitter` (twitter-cli, spec["handles"]; degrade to []).
 - **youtube/adapters.py**: `yt_channel` (resolve spec["handle"] → channel_id, cache in state KV
   "yt_channel:<handle>", read the uploads `videos.xml` feed).
 
