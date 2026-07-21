@@ -1,0 +1,23 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - run: uv sync
+      - name: Lint (ruff)
+        run: uv run ruff check .
+      - name: Format check (ruff)
+        run: uv run ruff format --check .
+      - name: Type check (ty)
+        run: uv run ty check src
+      - name: Tests (pytest)
+        run: uv run pytest -q

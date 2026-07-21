@@ -1,0 +1,94 @@
+# Frozen contracts — code against these EXACTLY
+
+The core spine (`src/core/`) is already written and must not be modified by leaf
+modules. Import from it; match these signatures precisely.
+
+## Data types — `src/core/models.py`
+```python
+@dataclass
+class Item:
+    id: str            # UNIQUE, source-prefixed: "rss:<link>", "pubmed:<pmid>",
+                       #   "biorxiv:<doi>", "x:<tweet_id>", "yt:<video_id>"
+    source: str        # catalog key, e.g. "pipeline"
+    section: str       # output grouping label, e.g. "Blogs"
+    title: str
+    url: str
+    published: datetime  # MUST be tz-aware UTC (use datetime.now(timezone.utc) / astimezone(timezone.utc))
+    text: str = ""
+    meta: dict = {}
+
+@dataclass
+class Result:
+    subject: str = ""; markdown: str = ""; artifacts: list[str] = []; meta: dict = {}
+    consumed: list[str] = []   # item ids to mark seen ONLY after successful delivery
+
+@dataclass
+class Context:      # injected into tasks; reach network/LLM ONLY via these
+    cfg: dict; state: dict
+    gather(specs: list[dict], since: datetime) -> list[Item]   # per-task specs; does NOT mark
+    call(tier: str, system: str, user: str, *, max_tokens: int | None = None) -> str
+    log(msg: str) -> None
+```
+Tasks report the ids they actually used in `Result.consumed`; the dispatcher
+(`run.py`) marks them seen only after every deliverer succeeds, so a failed send
+never burns that run's content. Tasks MAY import `src.core.state` for dedup/KV.
+
+## Registries — `src/core/registry.py`
+```python
+from src.core.registry import sources, enrichers, deliverers, tasks
+```
+Each is a `Registry`: `@sources.register("feed")` to add, `sources.get(name)` to fetch.
+
+## State — `src/core/state.py`
+`load()`, `is_new(state,item)->bool`, `mark(state,items)`, `mark_ids(state,ids)`,
+`get_kv(state,k,default)`, `set_kv(state,k,v)`, `prune(state,days)`, `save(state)`.
+
+## LLM — `src/core/llm.py`
+`call(task, system, user, cfg, *, max_tokens=None) -> str` — already wired into `Context.call`.
+
+## Signatures leaf modules MUST implement
+
+### Source adapters (in `src/core/sources.py`)
+```python
+@sources.register("<kind>")
+def adapter(spec: dict, since: datetime, state: dict) -> list[Item]:
+    # spec is a per-task inline source dict incl. its own "key". Never raise on a
+    # single source failing — log and return []. published must be tz-aware UTC.
+```
+Kinds: `feed` (RSS/Atom via feedparser; if spec has `handle` it's a YouTube @handle →
+resolve channel_id, cache in state KV under "yt_channel:<handle>", build
+`https://www.youtube.com/feeds/videos.xml?channel_id=<id>`; else use spec["url"]),
+`pubmed` (NCBI E-utilities, spec["queries"]), `biorxiv` (bioRxiv API, spec["categories"]),
+`twitter` (agent-reach CLI over spec["handles"]; degrade to [] on any error).
+
+### Enrichers (in `src/core/sources.py`)
+```python
+@enrichers.register("article_text")   # trafilatura: fetch item.url, set item.text
+@enrichers.register("transcript")     # youtube-transcript-api on yt video id; item.text
+def enrich(item: Item) -> Item:  ...  # never raise; return item unchanged on failure
+```
+
+### gather (in `src/core/sources.py`) — the one function tasks call
+```python
+def gather(specs: list[dict], state: dict, since: datetime) -> list[Item]:
+    # For each spec: dispatch to sources.get(spec["kind"]),
+    # keep only is_new(state, item) AND item.published >= since,
+    # run each enricher named in spec.get("enrich", []), return them.
+    # Does NOT mark — the caller marks only what it consumes (Result.consumed).
+```
+
+### Deliverers (in `src/core/deliver.py`)
+```python
+@deliverers.register("email")         # SMTP; markdown->html; cfg["delivery"]["email"]
+@deliverers.register("podcast_feed")  # upload result.artifacts[0] mp3 as GH release asset,
+                                      #   prepend <item> to cfg feed_path, write site/
+def deliver(result: Result, cfg: dict) -> None:  ...
+```
+
+### Tasks (in `src/tasks/<name>/__init__.py`)
+```python
+from src.core.registry import tasks
+@tasks.register("<name>")
+def run(ctx: Context) -> Result: ...
+# Load the bucket's own prompt with: (Path(__file__).parent / "prompt.md").read_text()
+```

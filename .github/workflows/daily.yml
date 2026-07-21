@@ -1,0 +1,75 @@
+name: daily-digest
+
+on:
+  schedule:
+    - cron: "0 12 * * *"   # 12:00 UTC — podcast first, claims fresh LLM quota
+    - cron: "5 13 * * *"   # 13:05 UTC — newsletter + youtube (past 07:59 ET year-round; DST handled in code)
+  workflow_dispatch:
+    inputs:
+      task:
+        description: "newsletter | youtube | podcast | all"
+        default: "all"
+
+permissions:
+  contents: write          # commit state/ back + upload podcast release assets
+
+concurrency:
+  group: digest-state      # serialize runs so commits to state/ don't collide
+  cancel-in-progress: false
+
+env:
+  GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+  GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+  OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+  SMTP_HOST: ${{ secrets.SMTP_HOST }}
+  SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+  SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+  SMTP_FROM: ${{ secrets.SMTP_FROM }}
+  PAGES_BASE_URL: ${{ secrets.PAGES_BASE_URL }}
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  podcast:
+    if: github.event.schedule == '0 12 * * *' || contains(fromJSON('["podcast","all"]'), github.event.inputs.task)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - run: uv sync
+      - run: uv run python -m src.run podcast
+      - name: Commit state + site
+        run: |
+          git config user.name  "digest-bot"
+          git config user.email "digest-bot@users.noreply.github.com"
+          git add state site 2>/dev/null || true
+          git commit -m "podcast run $(date -u +%F)" || exit 0
+          git pull --rebase --autostash && git push
+
+  digest:
+    if: github.event.schedule == '5 13 * * *' || contains(fromJSON('["newsletter","youtube","all"]'), github.event.inputs.task)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - run: uv sync
+      - name: Install agent-reach + X session cookie
+        env:
+          X_COOKIE: ${{ secrets.X_COOKIE }}
+        run: |
+          uv tool install agent-reach || echo "agent-reach install failed; X will degrade to empty"
+          mkdir -p ~/.agent-reach
+          printf '%s' "$X_COOKIE" > ~/.agent-reach/config.yaml
+      - run: uv run python -m src.run newsletter || true
+      - run: uv run python -m src.run youtube || true
+      - name: Commit state
+        run: |
+          git config user.name  "digest-bot"
+          git config user.email "digest-bot@users.noreply.github.com"
+          git add state 2>/dev/null || true
+          git commit -m "digest run $(date -u +%F)" || exit 0
+          git pull --rebase --autostash && git push
