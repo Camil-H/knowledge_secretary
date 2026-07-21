@@ -10,13 +10,15 @@ from datetime import UTC, datetime, time, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from src.core import userdata
 from src.core.models import Context, Item, Result
 from src.core.registry import tasks
-from src.tasks.youtube import sources as _sources  # noqa: F401  (registers adapter/enricher)
+from src.tasks.youtube import adapters as _adapters  # noqa: F401  (registers adapter/enricher)
 
 PROMPT = (Path(__file__).parent / "prompt.md").read_text()
 TRANSCRIPT_CHAR_LIMIT = 12000
 _NO_TRANSCRIPT = ["- (no transcript available)"]
+SOURCES = userdata.load(Path(__file__).parent, [])
 
 
 # == Task =====================================================================
@@ -27,7 +29,7 @@ def run(ctx: Context) -> Result:
     """Gather new uploads, keep those inside the ET window, summarize each, and
     render the grouped digest markdown."""
     task_cfg = ctx.cfg["tasks"]["youtube"]
-    specs = task_cfg["sources"]
+    specs = SOURCES
     tz = ZoneInfo(ctx.cfg["timezone"])
     now_et = datetime.now(tz)
     start_utc, end_utc = _window_utc(now_et, task_cfg["window_et"], tz)

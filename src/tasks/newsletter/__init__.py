@@ -15,12 +15,14 @@ import re
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from src.core import userdata
 from src.core.models import Context, Item, Result
 from src.core.registry import tasks
-from src.tasks.newsletter import sources as _sources  # noqa: F401  (registers adapters/enrichers)
+from src.tasks.newsletter import adapters as _adapters  # noqa: F401  (registers adapters/enrichers)
 
 SYNTHESIS_PROMPT = (Path(__file__).parent / "prompt.md").read_text()
 ITEM_PROMPT = (Path(__file__).parent / "item_prompt.md").read_text()
+SOURCES = userdata.load(Path(__file__).parent, [])
 ITEM_CHAR_LIMIT = 12000  # full body passed to the per-item summarizer
 PASSTHROUGH_CHARS = 400  # shorter items (tweets, teasers) skip the per-item LLM call
 IRRELEVANT = "IRRELEVANT"  # sentinel the item summarizer returns for off-topic items
@@ -32,10 +34,9 @@ IRRELEVANT = "IRRELEVANT"  # sentinel the item summarizer returns for off-topic 
 @tasks.register("newsletter")
 def run(ctx: Context) -> Result:
     """Gather new items, summarize each from full content, then synthesize."""
-    task_cfg = ctx.cfg["tasks"]["newsletter"]
     since = datetime.now(UTC) - timedelta(hours=ctx.cfg.get("window_hours", 24))
 
-    items = ctx.gather(task_cfg["sources"], since)
+    items = ctx.gather(SOURCES, since)
     ctx.log(f"newsletter: gathered {len(items)} new item(s)")
 
     subject = f"Knowledge Secretary — {datetime.now(UTC):%Y-%m-%d}"

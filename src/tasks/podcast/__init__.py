@@ -1,19 +1,17 @@
-"""Podcast task: rotate through topics.yaml and generate a long-form two-host
-episode via podcastfy, using the free Microsoft Edge TTS backend and the best
-free OpenRouter model for the transcript.
+"""Podcast task: rotate through the topics in this dir's sources.yaml and generate
+a long-form two-host episode via podcastfy, using the free Microsoft Edge TTS
+backend and the best free OpenRouter model for the transcript.
 """
 
 from pathlib import Path
 
-import yaml
-
-from src.core import llm
+from src.core import llm, userdata
 from src.core import state as state_mod
 from src.core.models import Context, Result
 from src.core.registry import tasks
 
-TOPICS_KEY = "topics"
 STATE_KEY = "podcast_idx"
+TOPICS = userdata.load(Path(__file__).parent, [])
 _OPENROUTER_KEY_LABEL = "OPENROUTER_API_KEY"
 # used only if the live free-model list is empty; harmless if stale (podcastfy just fails softly)
 _PODCAST_FALLBACK_MODEL = "openrouter/deepseek/deepseek-chat-v3-0324:free"
@@ -25,8 +23,7 @@ def run(ctx: Context) -> Result:
     topic via podcastfy, and return it as a Result with the mp3 (if any) as
     the sole artifact.
     """
-    topics = _load_topics(ctx.cfg["tasks"]["podcast"]["topics_file"])
-    topic = _advance_topic(ctx.state, topics)
+    topic = _advance_topic(ctx.state, TOPICS)
     ctx.log(f"podcast: topic_idx={state_mod.get_kv(ctx.state, STATE_KEY)} topic={topic!r}")
 
     subject = f"Podcast — {topic}"
@@ -37,12 +34,6 @@ def run(ctx: Context) -> Result:
 
 
 # == Helper Functions =========================================================
-
-
-def _load_topics(topics_file: str) -> list[str]:
-    with open(topics_file) as f:
-        data = yaml.safe_load(f)
-    return data[TOPICS_KEY]
 
 
 def _advance_topic(state: dict, topics: list[str]) -> str:

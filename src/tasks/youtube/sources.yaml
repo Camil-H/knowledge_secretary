@@ -1,0 +1,15 @@
+# YouTube sources (personal — gitignored).
+- { key: yt_physionic,    kind: yt_channel, section: "Biology & Health",   handle: "@Physionic",              enrich: [transcript] }
+- { key: yt_dhio,         kind: yt_channel, section: "Biology & Health",   handle: "@DigitalHealthInsideOut", enrich: [transcript] }
+- { key: yt_bekey,        kind: yt_channel, section: "Biology & Health",   handle: "@BeKey-Hub",              enrich: [transcript] }
+- { key: yt_passescience, kind: yt_channel, section: "Pure Science",       handle: "@PasseScience",           enrich: [transcript] }
+- { key: yt_veritasium,   kind: yt_channel, section: "Pure Science",       handle: "@veritasium",             enrich: [transcript] }
+- { key: yt_minutephysics,kind: yt_channel, section: "Pure Science",       handle: "@MinutePhysics",          enrich: [transcript] }
+- { key: yt_quanta,       kind: yt_channel, section: "Pure Science",       handle: "@QuantaScienceChannel",   enrich: [transcript] }
+- { key: yt_scienceeton,  kind: yt_channel, section: "Pure Science",       handle: "@ScienceEtonnante",       enrich: [transcript] }
+- { key: yt_aleph0,       kind: yt_channel, section: "Pure Science",       handle: "@Aleph0",                 enrich: [transcript] }
+- { key: yt_eljj,         kind: yt_channel, section: "Pure Science",       handle: "@ElJj",                   enrich: [transcript] }
+- { key: yt_underscore,   kind: yt_channel, section: "Tech & Engineering", handle: "@Underscore_",            enrich: [transcript] }
+- { key: yt_wendover,     kind: yt_channel, section: "Tech & Engineering", handle: "@Wendoverproductions",    enrich: [transcript] }
+- { key: yt_heureka,      kind: yt_channel, section: "Economics",          handle: "@Heu7reka",               enrich: [transcript] }
+- { key: yt_crashcourse,  kind: yt_channel, section: "Other",              handle: "@crashcourse",            enrich: [transcript] }

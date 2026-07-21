@@ -48,7 +48,7 @@ Each is a `Registry`: `@sources.register("feed")` to add, `sources.get(name)` to
 
 ## Signatures leaf modules MUST implement
 
-### Source adapters (one `sources.py` per task, in `src/tasks/<task>/sources.py`)
+### Source adapters (one `adapters.py` per task, in `src/tasks/<task>/adapters.py`)
 ```python
 @sources.register("<kind>")
 def adapter(spec: dict, since: datetime, state: dict) -> list[Item]:
@@ -56,9 +56,9 @@ def adapter(spec: dict, since: datetime, state: dict) -> list[Item]:
     # single source failing — log and return []. published must be tz-aware UTC.
 ```
 Kinds by task:
-- **newsletter/sources.py**: `feed` (plain RSS/Atom, spec["url"]), `pubmed` (spec["queries"]),
+- **newsletter/adapters.py**: `feed` (plain RSS/Atom, spec["url"]), `pubmed` (spec["queries"]),
   `biorxiv` (spec["categories"]), `twitter` (agent-reach `twitter` backend, spec["handles"]; degrade to []).
-- **youtube/sources.py**: `yt_channel` (resolve spec["handle"] → channel_id, cache in state KV
+- **youtube/adapters.py**: `yt_channel` (resolve spec["handle"] → channel_id, cache in state KV
   "yt_channel:<handle>", read the uploads `videos.xml` feed).
 
 Adapters are **thin mappers** over `src/fetchers/` — deterministic content
@@ -66,14 +66,31 @@ fetchers by source type (`rss`, `url`, `youtube`, `x`, `pubmed`, `biorxiv`), eac
 degrading gracefully (return []/None/"" + log on failure) and holding no state.
 An adapter calls a fetcher and maps its raw output to `Item`s (stateful bits like
 channel-id caching stay in the adapter). Adapters/enrichers register when the task
-bucket is imported (each task `__init__` does `from . import sources`).
+bucket is imported (each task `__init__` does `from . import adapters`).
 
-### Enrichers (in the task's `sources.py`)
+### Enrichers (in the task's `adapters.py`)
 ```python
 @enrichers.register("article_text")   # newsletter: trafilatura, set item.text
 @enrichers.register("transcript")     # youtube: youtube-transcript-api, set item.text
 def enrich(item: Item) -> Item:  ...  # never raise; return item unchanged on failure
 ```
+
+### Source data (`src/tasks/<task>/sources.yaml`, committed)
+Per-task source DATA — as opposed to the adapter CODE above — lives in
+`src/tasks/<task>/sources.yaml`, committed directly to the repo (it's a public
+template and the source lists are non-sensitive). The YAML file *is* the list —
+no Python constants, no example file, no gitignore, no fallback:
+- **newsletter/youtube**: the YAML root is a list of source-spec dicts (same
+  shape as the old `config.yaml` entries).
+- **podcast**: the YAML root is a top-level list of topic strings (replaces the
+  old root `topics.yaml`).
+
+`src/core/userdata.py` is the loader tasks use to read these: it reads the task
+dir's committed `sources.yaml` via `yaml.safe_load` and returns the parsed
+list. Tasks load their list at import time; the podcast task uses its topic
+list to drive the rotation. `config.yaml` no longer holds source lists or a
+`topics_file` — it keeps only framework settings (timezone, window_hours,
+models, per-task `deliver` + YouTube's `window_et`, `delivery.site`).
 
 ### gather (in `src/core/gather.py`) — the one driver tasks call via Context.gather
 ```python

@@ -10,9 +10,9 @@ Runs entirely on free tiers: free LLMs (LiteLLM with a live OpenRouter-free fall
 
 ## How it works
 
-- `src/core/` — shared spine: data contracts (`Item`/`Result`/`Context`), registries, dedup state, the tiered LLM client, source adapters + enrichers (`gather`), and deliverers.
-- `src/tasks/<name>/` — one self-contained bucket per task (`__init__.py` + `prompt.md`). Adding a task is a new bucket; nothing else changes.
-- Sources are declared **per task** in `config.yaml` (kinds: `feed`, `pubmed`, `biorxiv`, `twitter`; enrichers: `article_text`, `transcript`). Adding a blog or channel is one line.
+- `src/core/` — shared spine: data contracts (`Item`/`Result`/`Context`), registries, dedup state, the tiered LLM client, source adapters + enrichers (`gather`), the `sources.yaml` loader (`src/core/userdata.py`), and deliverers.
+- `src/tasks/<name>/` — one self-contained bucket per task (`__init__.py`, `prompt.md`, `adapters.py` for the framework's source/enricher code, `sources.yaml` for the committed source data). Adding a task is a new bucket; nothing else changes.
+- Per-task source data (feeds, queries, handles, topics) lives in `src/tasks/<task>/sources.yaml`, committed directly to the repo (it's a public template and the source lists are non-sensitive). For newsletter and YouTube the file is a list of source-spec dicts (kinds: `feed`, `pubmed`, `biorxiv`, `twitter`, `yt_channel`; enrichers: `article_text`, `transcript`); for the podcast it's a top-level list of topic strings for its rotation. Adding a blog, channel, or topic is one line in that file.
 - Dedup state lives in `state/seen.json`, committed back each run. Items are marked seen **only after successful delivery**, so a failed send never drops content.
 - Every task's output is rendered to a single static page — last 7 days, newest first, older days collapsed behind `<details>` toggles — and published to GitHub Pages.
 - Prompts are plain Markdown (`src/tasks/*/prompt.md`) — edit behavior without touching code.
@@ -28,7 +28,7 @@ Scheduled by `.github/workflows/daily.yml` — podcast at 12:00 UTC (claims fres
 
 ## Configuration
 
-Edit `config.yaml` (sources, per-task LLM tiers, delivery) and `topics.yaml` (podcast topic rotation). Secrets are referenced as `${ENV_VAR}` and set as GitHub Actions repository secrets:
+`config.yaml` holds only framework settings — timezone, `window_hours`, per-task LLM tiers, per-task `deliver` + YouTube's `window_et`, and `delivery.site`. It no longer holds source lists or a podcast `topics_file`. Secrets are referenced as `${ENV_VAR}` and set as GitHub Actions repository secrets:
 
 | Secret | Purpose |
 | --- | --- |
@@ -37,6 +37,10 @@ Edit `config.yaml` (sources, per-task LLM tiers, delivery) and `topics.yaml` (po
 | `X_COOKIE` | X/Twitter session for the `twitter` backend (optional; degrades to nothing if absent) |
 
 The site publishes to `camilharoune.com/knowledge_secretary/` — a subpath of the personal site, deployed with `keep_files` so it never clobbers the homepage.
+
+### Make it your own
+
+This repo is a template — the committed source lists are one example (Camil's own blogs/channels/topics), kept only so the project runs out of the box. To use it as your own secretary, edit `src/tasks/<task>/sources.yaml` directly for each task: each ships with an example set you replace with your own. For newsletter and YouTube the file is a list of source-spec dicts; for the podcast it's a list of topic strings.
 
 ## Stack
 

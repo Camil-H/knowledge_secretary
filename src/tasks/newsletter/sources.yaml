@@ -1,0 +1,20 @@
+# Newsletter sources (personal — gitignored). Biopharma / drug-discovery set.
+# blogs
+- { key: pipeline,        kind: feed, section: "Blogs", url: "https://www.science.org/blogs/pipeline/feed", enrich: [article_text] }
+- { key: lifescivc,       kind: feed, section: "Blogs", url: "https://lifescivc.com/feed/", enrich: [article_text] }
+- { key: decodingbio,     kind: feed, section: "Blogs", url: "https://decodingbio.substack.com/feed" }   # BioByte; full content in RSS
+- { key: sciencebasedmed, kind: feed, section: "Blogs", url: "https://sciencebasedmedicine.org/feed/", enrich: [article_text] }
+- { key: nintil,          kind: feed, section: "Blogs", url: "https://nintil.com/rss.xml", enrich: [article_text] }
+# news sites (STAT / Endpoints bodies are paywalled -> teaser only)
+- { key: endpoints,    kind: feed, section: "News", url: "https://endpts.com/feed/" }
+- { key: statnews,     kind: feed, section: "News", url: "https://www.statnews.com/feed/" }
+- { key: biopharmadive,kind: feed, section: "News", url: "https://www.biopharmadive.com/feeds/news/", enrich: [article_text] }
+# papers / preprints / journals
+- { key: pubmed_dd,  kind: pubmed,  section: "Papers & Preprints", queries: ["drug discovery", "small molecule inhibitor"] }   # TODO: refine with your MeSH terms
+- { key: biorxiv_dd, kind: biorxiv, section: "Papers & Preprints", categories: ["biochemistry", "pharmacology and toxicology"] }
+- { key: nrd,        kind: feed, section: "Papers & Preprints", url: "https://www.nature.com/nrd.rss" }    # Nature Reviews Drug Discovery
+- { key: nrdp,       kind: feed, section: "Papers & Preprints", url: "https://www.nature.com/nrdp.rss" }   # Nature Reviews Disease Primers
+# regulatory
+- { key: fda_press,  kind: feed, section: "Regulatory", url: "https://www.fda.gov/about-fda/contact-fda/stay-informed/rss-feeds/press-releases/rss.xml", enrich: [article_text] }
+# X / Twitter
+- { key: x_biotech,  kind: twitter, section: "Social/X", handles: ["bradloncar", "JacobPlieth", "Sports_Bios", "bio_clouseau", "BioStocks", "Prof_Oak_", "paras_biotech", "andrewpannu", "BertrandBio"] }

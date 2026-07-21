@@ -1,10 +1,27 @@
 from datetime import UTC, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
+import pytest
+
 from src.core.models import Context, Item
+from src.tasks import youtube as youtube_task
 from src.tasks.youtube import _window_utc, run
 
 TZ = ZoneInfo("America/New_York")
+
+_TEST_SPEC = {
+    "key": "yt_x",
+    "kind": "yt_channel",
+    "section": "Pure Science",
+    "handle": "@x",
+    "enrich": ["transcript"],
+}
+
+
+@pytest.fixture(autouse=True)
+def _patch_sources(monkeypatch):
+    # run() reads the module-level SOURCES for section ordering + the audit
+    monkeypatch.setattr(youtube_task, "SOURCES", [_TEST_SPEC])
 
 
 # ----- window math (DST-safe) -----
@@ -30,20 +47,7 @@ def test_window_winter_est():
 def _cfg():
     return {
         "timezone": "America/New_York",
-        "tasks": {
-            "youtube": {
-                "window_et": {"start": "08:00", "end": "07:59"},
-                "sources": [
-                    {
-                        "key": "yt_x",
-                        "kind": "feed",
-                        "section": "Pure Science",
-                        "handle": "@x",
-                        "enrich": ["transcript"],
-                    }
-                ],
-            }
-        },
+        "tasks": {"youtube": {"window_et": {"start": "08:00", "end": "07:59"}}},
     }
 
 
