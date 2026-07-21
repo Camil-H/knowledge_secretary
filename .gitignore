@@ -10,3 +10,5 @@ __pycache__/
 # generated podcast audio (published to GitHub Releases, not committed)
 *.mp3
 data/
+# rendered static site (regenerated each run, published to the Pages repo)
+public/

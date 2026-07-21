@@ -86,10 +86,13 @@ def gather(specs: list[dict], state: dict, since: datetime) -> list[Item]:
 
 ### Deliverers (in `src/core/deliver.py`)
 ```python
-@deliverers.register("email")         # SMTP; markdown->html; cfg["delivery"]["email"]
-@deliverers.register("podcast_feed")  # upload result.artifacts[0] mp3 as GH release asset,
-                                      #   prepend <item> to cfg feed_path, write site/
-def deliver(result: Result, cfg: dict) -> None:  ...
+@deliverers.register("site")
+def site(result: Result, cfg: dict) -> None:
+    # stores each task's daily output under delivery.site.history_dir (pruned to
+    # history_days), renders the last N days to <out_dir>/index.html (newest day
+    # expanded, older days behind <details>), uploads the podcast mp3 as a GH
+    # Release asset and embeds an <audio> player. Reads the task name from
+    # result.meta["task"] (set by run.py).
 ```
 
 ### Tasks (in `src/tasks/<name>/__init__.py`)

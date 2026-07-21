@@ -11,20 +11,15 @@ on:
         default: "all"
 
 permissions:
-  contents: write          # commit state/ back + upload podcast release assets
+  contents: write          # commit history/ + state/ back; upload podcast release assets
 
 concurrency:
-  group: digest-state      # serialize runs so commits to state/ don't collide
+  group: digest-state      # serialize runs so commits + Pages publishes don't collide
   cancel-in-progress: false
 
 env:
   OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-  SMTP_HOST: ${{ secrets.SMTP_HOST }}
-  SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
-  SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
-  SMTP_FROM: ${{ secrets.SMTP_FROM }}
-  PAGES_BASE_URL: ${{ secrets.PAGES_BASE_URL }}
-  GH_TOKEN: ${{ github.token }}
+  GH_TOKEN: ${{ github.token }}   # gh release upload for podcast mp3s (this repo)
 
 jobs:
   podcast:
@@ -38,13 +33,23 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - run: uv sync
       - run: uv run python -m src.run podcast
-      - name: Commit state + site
+      - name: Commit history + state
         run: |
           git config user.name  "digest-bot"
           git config user.email "digest-bot@users.noreply.github.com"
-          git add state site 2>/dev/null || true
-          git commit -m "podcast run $(date -u +%F)" || exit 0
-          git pull --rebase --autostash && git push
+          git add history state 2>/dev/null || true
+          git commit -m "podcast run $(date -u +%F)" || true
+          git pull --rebase --autostash && git push || true
+      - name: Publish site to camilharoune.com
+        if: hashFiles('public/index.html') != ''
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          personal_token: ${{ secrets.PAGES_DEPLOY_TOKEN }}
+          external_repository: Camil-H/camil-h.github.io
+          publish_branch: main
+          publish_dir: ./public
+          destination_dir: knowledge_secretary
+          keep_files: true   # never clobber the rest of the personal site
 
   digest:
     if: github.event.schedule == '5 13 * * *' || contains(fromJSON('["newsletter","youtube","all"]'), github.event.inputs.task)
@@ -64,10 +69,20 @@ jobs:
           printf '%s' "$X_COOKIE" > ~/.agent-reach/config.yaml
       - run: uv run python -m src.run newsletter || true
       - run: uv run python -m src.run youtube || true
-      - name: Commit state
+      - name: Commit history + state
         run: |
           git config user.name  "digest-bot"
           git config user.email "digest-bot@users.noreply.github.com"
-          git add state 2>/dev/null || true
-          git commit -m "digest run $(date -u +%F)" || exit 0
-          git pull --rebase --autostash && git push
+          git add history state 2>/dev/null || true
+          git commit -m "digest run $(date -u +%F)" || true
+          git pull --rebase --autostash && git push || true
+      - name: Publish site to camilharoune.com
+        if: hashFiles('public/index.html') != ''
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          personal_token: ${{ secrets.PAGES_DEPLOY_TOKEN }}
+          external_repository: Camil-H/camil-h.github.io
+          publish_branch: main
+          publish_dir: ./public
+          destination_dir: knowledge_secretary
+          keep_files: true

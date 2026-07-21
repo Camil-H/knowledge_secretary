@@ -30,7 +30,7 @@ models:
 # --- Tasks (each bucket owns its sources + declares delivery) ---------------
 tasks:
   newsletter:
-    deliver: [email]
+    deliver: [site]
     sources:
       # blogs (feed URLs live-verified 2026-07-21)
       - { key: pipeline,        kind: feed, section: "Blogs", url: "https://www.science.org/blogs/pipeline/feed", enrich: [article_text] }
@@ -58,7 +58,7 @@ tasks:
       - { key: x_biotech,  kind: twitter, section: "Social/X", handles: ["bradloncar", "JacobPlieth", "Sports_Bios", "bio_clouseau", "BioStocks", "Prof_Oak_", "paras_biotech", "andrewpannu", "BertrandBio"] }
 
   youtube:
-    deliver: [email]
+    deliver: [site]
     window_et: { start: "08:00", end: "07:59" }   # yesterday 08:00 ET -> today 07:59 ET, inclusive
     sources:
       - { key: yt_physionic,    kind: yt_channel, section: "Biology & Health",   handle: "@Physionic",              enrich: [transcript] }
@@ -77,21 +77,19 @@ tasks:
       - { key: yt_crashcourse,  kind: yt_channel, section: "Other",              handle: "@crashcourse",            enrich: [transcript] }
 
   podcast:
-    deliver: [podcast_feed]
+    deliver: [site]
     topics_file: topics.yaml
 
 # --- Delivery --------------------------------------------------------------
+# Single deliverer: `site`. Each task's output is stored per-day under history_dir
+# (committed to this repo, pruned to history_days) and the last N days are rendered
+# to out_dir/index.html (newest day expanded, older days behind <details> toggles).
+# The workflow publishes out_dir/ to the GitHub Pages repo (camilharoune.com).
 delivery:
-  email:
-    smtp_host: "${SMTP_HOST}"       # TODO: smtp.gmail.com
-    smtp_port: 587
-    username: "${SMTP_USERNAME}"
-    password: "${SMTP_PASSWORD}"
-    from: "${SMTP_FROM}"
-    to: ["ops@blitzwincash.com"]
-  podcast_feed:
-    site_dir: "site"
-    feed_path: "site/feed.xml"
-    base_url: "${PAGES_BASE_URL}"   # e.g. https://<user>.github.io/knowledge_secretary
-    podcast_title: "Knowledge Secretary — Technical Deep Dives"
-    github_repo: "${GITHUB_REPOSITORY}"   # auto-set in Actions; used for release upload
+  site:
+    history_dir: "history"
+    history_days: 7
+    out_dir: "public"
+    title: "Knowledge Secretary"
+    subtitle: "Daily biopharma newsletter, YouTube digest, and technical podcast"
+    episode_repo: "${GITHUB_REPOSITORY}"   # this repo's Releases host the podcast mp3s
