@@ -10,11 +10,11 @@ def _item(item_id: str) -> Item:
     )
 
 
-def test_is_new_and_mark():
+def test_is_new_flips_after_mark_ids():
     state = {"ids": {}, "kv": {}}
     it = _item("rss:1")
     assert state_mod.is_new(state, it)
-    state_mod.mark(state, [it])
+    state_mod.mark_ids(state, [it.id])
     assert not state_mod.is_new(state, it)
 
 

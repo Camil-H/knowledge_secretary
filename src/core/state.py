@@ -27,10 +27,6 @@ def is_new(state: dict, item: Item) -> bool:
     return item.id not in state["ids"]
 
 
-def mark(state: dict, items: list[Item]) -> None:
-    mark_ids(state, [it.id for it in items])
-
-
 def mark_ids(state: dict, ids: list[str]) -> None:
     today = datetime.now(UTC).date().isoformat()
     for item_id in ids:

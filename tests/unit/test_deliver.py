@@ -136,7 +136,7 @@ def test_task_html_renders_in_fixed_order_skipping_absent():
         "newsletter": {"kind": "markdown", "markdown": "# N"},
     }
     html = "".join(
-        deliver._task_html(t, entry_tasks[t]) for t in deliver._TASK_ORDER if t in entry_tasks
+        deliver._task_html(t, entry_tasks[t]) for t in deliver._LABELS if t in entry_tasks
     )
     assert html.index('class="task newsletter"') < html.index('class="task podcast"')
     assert "(audio unavailable)" in html

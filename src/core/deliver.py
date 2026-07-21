@@ -22,7 +22,6 @@ from .registry import deliverers
 logger = logging.getLogger(__name__)
 
 _LABELS = {"newsletter": "Newsletter", "youtube": "YouTube", "podcast": "Podcast"}
-_TASK_ORDER = ["newsletter", "youtube", "podcast"]
 
 _PAGE = """<!doctype html>
 <html lang="en">
@@ -176,7 +175,7 @@ def _render(conf: dict) -> None:
 
 def _render_day(entry: dict, *, is_latest: bool) -> str:
     tasks_html = "".join(
-        _task_html(task, entry["tasks"][task]) for task in _TASK_ORDER if task in entry["tasks"]
+        _task_html(task, entry["tasks"][task]) for task in _LABELS if task in entry["tasks"]
     )
     if is_latest:
         return f'<section class="day today"><h2>{entry["date"]}</h2>{tasks_html}</section>'
