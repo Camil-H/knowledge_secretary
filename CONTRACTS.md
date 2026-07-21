@@ -61,8 +61,12 @@ Kinds by task:
 - **youtube/sources.py**: `yt_channel` (resolve spec["handle"] → channel_id, cache in state KV
   "yt_channel:<handle>", read the uploads `videos.xml` feed).
 
-Adapters/enrichers register when the task bucket is imported (each task `__init__`
-does `from . import sources`).
+Adapters are **thin mappers** over `src/fetchers/` — deterministic content
+fetchers by source type (`rss`, `url`, `youtube`, `x`, `pubmed`, `biorxiv`), each
+degrading gracefully (return []/None/"" + log on failure) and holding no state.
+An adapter calls a fetcher and maps its raw output to `Item`s (stateful bits like
+channel-id caching stay in the adapter). Adapters/enrichers register when the task
+bucket is imported (each task `__init__` does `from . import sources`).
 
 ### Enrichers (in the task's `sources.py`)
 ```python
