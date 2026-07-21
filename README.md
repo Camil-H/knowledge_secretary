@@ -31,7 +31,7 @@ Edit `config.yaml` (sources, per-task LLM tiers, delivery) and `topics.yaml` (po
 
 | Secret | Purpose |
 | --- | --- |
-| `GEMINI_API_KEY`, `GROQ_API_KEY`, `OPENROUTER_API_KEY` | free LLM tiers + fallback |
+| `GEMINI_API_KEY`, `GROQ_API_KEY`, `CEREBRAS_API_KEY`, `OPENROUTER_API_KEY` | free LLM tiers + fallback (Gemini 3 Flash / Llama 3.3 70B) |
 | `SMTP_HOST`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM` | newsletter / YouTube email |
 | `PAGES_BASE_URL` | podcast RSS base URL (GitHub Pages) |
 | `X_COOKIE` | X/Twitter session for the `twitter` backend (optional; degrades to nothing if absent) |

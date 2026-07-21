@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo
 
 from src.core.models import Context, Item, Result
 from src.core.registry import tasks
+from src.tasks.youtube import sources as _sources  # noqa: F401  (registers adapter/enricher)
 
 PROMPT = (Path(__file__).parent / "prompt.md").read_text()
 TRANSCRIPT_CHAR_LIMIT = 12000

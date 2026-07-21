@@ -12,7 +12,8 @@ import sys
 import src.tasks  # noqa: F401  (registers task buckets)
 from src.core import config as config_mod
 from src.core import deliver as _deliver  # noqa: F401  (registers deliverers)
-from src.core import llm, sources
+from src.core import gather as gather_mod
+from src.core import llm
 from src.core import state as state_mod
 from src.core.models import Context
 from src.core.registry import deliverers, tasks
@@ -24,7 +25,7 @@ def build_context(cfg: dict, state: dict) -> Context:
     return Context(
         cfg=cfg,
         state=state,
-        gather=lambda specs, since: sources.gather(specs, state, since),
+        gather=lambda specs, since: gather_mod.gather(specs, state, since),
         call=lambda tier, system, user, max_tokens=None: llm.call(
             tier, system, user, cfg, max_tokens=max_tokens
         ),

@@ -18,10 +18,11 @@ window_hours: 24          # newsletter lookback; youtube uses its own ET clock w
 # --- LLM tiers (see src/core/llm.py) ---------------------------------------
 models:
   podcast:                # one long generation -> reserve big-output model
-    primary: ["gemini/gemini-2.5-flash"]
+    primary: ["gemini/gemini-3-flash"]        # newest free Flash: 1M ctx, 250k TPM, 1500 RPD
     openrouter_free: true
-  summarize:              # many small calls -> high-throughput, then fallback
-    primary: ["groq/llama-3.3-70b-versatile", "gemini/gemini-2.5-flash"]
+  summarize:              # many small calls -> high throughput, then fallback
+    # Groq (1k RPD) -> Cerebras (30k TPM, 1k RPD) -> Gemini 3 Flash (1.5k RPD) -> free OpenRouter
+    primary: ["groq/llama-3.3-70b-versatile", "cerebras/llama-3.3-70b", "gemini/gemini-3-flash"]
     openrouter_free: true
 
 # --- Tasks (each bucket owns its sources + declares delivery) ---------------
@@ -30,33 +31,48 @@ tasks:
     deliver: [email]
     sources:
       # blogs (feed URLs live-verified 2026-07-21)
-      - { key: pipeline,   kind: feed, section: "Blogs", url: "https://www.science.org/blogs/pipeline/feed", enrich: [article_text] }
-      - { key: lifescivc,  kind: feed, section: "Blogs", url: "https://lifescivc.com/feed/", enrich: [article_text] }
-      - { key: endpoints,  kind: feed, section: "Blogs", url: "https://endpts.com/feed/" }   # bodies paywalled; teaser only
-      # papers / preprints
+      - { key: pipeline,        kind: feed, section: "Blogs", url: "https://www.science.org/blogs/pipeline/feed", enrich: [article_text] }
+      - { key: lifescivc,       kind: feed, section: "Blogs", url: "https://lifescivc.com/feed/", enrich: [article_text] }
+      - { key: decodingbio,     kind: feed, section: "Blogs", url: "https://decodingbio.substack.com/feed" }   # BioByte; full content in RSS
+      - { key: sciencebasedmed, kind: feed, section: "Blogs", url: "https://sciencebasedmedicine.org/feed/", enrich: [article_text] }   # broad; off-topic items dropped by the item prompt
+      - { key: nintil,          kind: feed, section: "Blogs", url: "https://nintil.com/rss.xml", enrich: [article_text] }               # broad; off-topic items dropped by the item prompt
+      # news sites
+      - { key: endpoints,    kind: feed, section: "News", url: "https://endpts.com/feed/" }   # bodies paywalled; teaser only
+      - { key: statnews,     kind: feed, section: "News", url: "https://www.statnews.com/feed/" }   # mostly paywalled; teaser only
+      - { key: biopharmadive,kind: feed, section: "News", url: "https://www.biopharmadive.com/feeds/news/", enrich: [article_text] }
+      # (Evaluate Vantage excluded: no public RSS — /resources and /vantage return 403)
+      # papers / preprints / journals
       - { key: pubmed_dd,  kind: pubmed,  section: "Papers & Preprints", queries: ["drug discovery", "small molecule inhibitor"] }   # TODO: refine with your MeSH terms
       - { key: biorxiv_dd, kind: biorxiv, section: "Papers & Preprints", categories: ["biochemistry", "pharmacology and toxicology"] }
-      # X / Twitter
-      - { key: x_biotech,  kind: twitter, section: "Social/X", handles: ["bradloncar", "JacobPlieth", "Sports_Bios"] }
+      - { key: nrd,        kind: feed, section: "Papers & Preprints", url: "https://www.nature.com/nrd.rss" }    # Nature Reviews Drug Discovery (abstracts)
+      - { key: nrdp,       kind: feed, section: "Papers & Preprints", url: "https://www.nature.com/nrdp.rss" }   # Nature Reviews Disease Primers (abstracts)
+      # regulatory
+      - { key: fda_press,  kind: feed, section: "Regulatory", url: "https://www.fda.gov/about-fda/contact-fda/stay-informed/rss-feeds/press-releases/rss.xml", enrich: [article_text] }
+      # podcasts — TODO(S2T): needs a speech-to-text enricher to transcribe episode audio
+      #   before summarizing. Candidates (atelfo's list): The Long Run (Timmerman), Mendelspod,
+      #   OncoPharm, Nature Podcast, TWiV. Then add e.g.:
+      #   - { key: the_long_run, kind: feed, section: "Podcasts", url: "<rss>", enrich: [s2t] }
+      # X / Twitter (active handles from atelfo's biopharma-news list; @AndyBiotech dropped as inactive)
+      - { key: x_biotech,  kind: twitter, section: "Social/X", handles: ["bradloncar", "JacobPlieth", "Sports_Bios", "bio_clouseau", "BioStocks", "Prof_Oak_", "paras_biotech", "andrewpannu", "BertrandBio"] }
 
   youtube:
     deliver: [email]
     window_et: { start: "08:00", end: "07:59" }   # yesterday 08:00 ET -> today 07:59 ET, inclusive
     sources:
-      - { key: yt_physionic,    kind: feed, section: "Biology & Health", handle: "@Physionic",              enrich: [transcript] }
-      - { key: yt_dhio,         kind: feed, section: "Biology & Health", handle: "@DigitalHealthInsideOut", enrich: [transcript] }
-      - { key: yt_bekey,        kind: feed, section: "Biology & Health", handle: "@BeKey-Hub",              enrich: [transcript] }
-      - { key: yt_passescience, kind: feed, section: "Pure Science",     handle: "@PasseScience",           enrich: [transcript] }
-      - { key: yt_veritasium,   kind: feed, section: "Pure Science",     handle: "@veritasium",             enrich: [transcript] }
-      - { key: yt_minutephysics,kind: feed, section: "Pure Science",     handle: "@MinutePhysics",          enrich: [transcript] }
-      - { key: yt_quanta,       kind: feed, section: "Pure Science",     handle: "@QuantaScienceChannel",   enrich: [transcript] }
-      - { key: yt_scienceeton,  kind: feed, section: "Pure Science",     handle: "@ScienceEtonnante",       enrich: [transcript] }
-      - { key: yt_aleph0,       kind: feed, section: "Pure Science",     handle: "@Aleph0",                 enrich: [transcript] }
-      - { key: yt_eljj,         kind: feed, section: "Pure Science",     handle: "@ElJj",                   enrich: [transcript] }
-      - { key: yt_underscore,   kind: feed, section: "Tech & Engineering", handle: "@Underscore_",          enrich: [transcript] }
-      - { key: yt_wendover,     kind: feed, section: "Tech & Engineering", handle: "@Wendoverproductions",  enrich: [transcript] }
-      - { key: yt_heureka,      kind: feed, section: "Economics",        handle: "@Heu7reka",               enrich: [transcript] }
-      - { key: yt_crashcourse,  kind: feed, section: "Other",            handle: "@crashcourse",            enrich: [transcript] }
+      - { key: yt_physionic,    kind: yt_channel, section: "Biology & Health",   handle: "@Physionic",              enrich: [transcript] }
+      - { key: yt_dhio,         kind: yt_channel, section: "Biology & Health",   handle: "@DigitalHealthInsideOut", enrich: [transcript] }
+      - { key: yt_bekey,        kind: yt_channel, section: "Biology & Health",   handle: "@BeKey-Hub",              enrich: [transcript] }
+      - { key: yt_passescience, kind: yt_channel, section: "Pure Science",       handle: "@PasseScience",           enrich: [transcript] }
+      - { key: yt_veritasium,   kind: yt_channel, section: "Pure Science",       handle: "@veritasium",             enrich: [transcript] }
+      - { key: yt_minutephysics,kind: yt_channel, section: "Pure Science",       handle: "@MinutePhysics",          enrich: [transcript] }
+      - { key: yt_quanta,       kind: yt_channel, section: "Pure Science",       handle: "@QuantaScienceChannel",   enrich: [transcript] }
+      - { key: yt_scienceeton,  kind: yt_channel, section: "Pure Science",       handle: "@ScienceEtonnante",       enrich: [transcript] }
+      - { key: yt_aleph0,       kind: yt_channel, section: "Pure Science",       handle: "@Aleph0",                 enrich: [transcript] }
+      - { key: yt_eljj,         kind: yt_channel, section: "Pure Science",       handle: "@ElJj",                   enrich: [transcript] }
+      - { key: yt_underscore,   kind: yt_channel, section: "Tech & Engineering", handle: "@Underscore_",            enrich: [transcript] }
+      - { key: yt_wendover,     kind: yt_channel, section: "Tech & Engineering", handle: "@Wendoverproductions",    enrich: [transcript] }
+      - { key: yt_heureka,      kind: yt_channel, section: "Economics",          handle: "@Heu7reka",               enrich: [transcript] }
+      - { key: yt_crashcourse,  kind: yt_channel, section: "Other",              handle: "@crashcourse",            enrich: [transcript] }
 
   podcast:
     deliver: [podcast_feed]
@@ -65,7 +81,7 @@ tasks:
 # --- Delivery --------------------------------------------------------------
 delivery:
   email:
-    smtp_host: "${SMTP_HOST}"       # TODO: blitzwincash.com SMTP or smtp.gmail.com
+    smtp_host: "${SMTP_HOST}"       # TODO: smtp.gmail.com
     smtp_port: 587
     username: "${SMTP_USERNAME}"
     password: "${SMTP_PASSWORD}"

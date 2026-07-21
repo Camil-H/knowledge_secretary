@@ -48,27 +48,30 @@ Each is a `Registry`: `@sources.register("feed")` to add, `sources.get(name)` to
 
 ## Signatures leaf modules MUST implement
 
-### Source adapters (in `src/core/sources.py`)
+### Source adapters (one `sources.py` per task, in `src/tasks/<task>/sources.py`)
 ```python
 @sources.register("<kind>")
 def adapter(spec: dict, since: datetime, state: dict) -> list[Item]:
     # spec is a per-task inline source dict incl. its own "key". Never raise on a
     # single source failing — log and return []. published must be tz-aware UTC.
 ```
-Kinds: `feed` (RSS/Atom via feedparser; if spec has `handle` it's a YouTube @handle →
-resolve channel_id, cache in state KV under "yt_channel:<handle>", build
-`https://www.youtube.com/feeds/videos.xml?channel_id=<id>`; else use spec["url"]),
-`pubmed` (NCBI E-utilities, spec["queries"]), `biorxiv` (bioRxiv API, spec["categories"]),
-`twitter` (agent-reach CLI over spec["handles"]; degrade to [] on any error).
+Kinds by task:
+- **newsletter/sources.py**: `feed` (plain RSS/Atom, spec["url"]), `pubmed` (spec["queries"]),
+  `biorxiv` (spec["categories"]), `twitter` (agent-reach `twitter` backend, spec["handles"]; degrade to []).
+- **youtube/sources.py**: `yt_channel` (resolve spec["handle"] → channel_id, cache in state KV
+  "yt_channel:<handle>", read the uploads `videos.xml` feed).
 
-### Enrichers (in `src/core/sources.py`)
+Adapters/enrichers register when the task bucket is imported (each task `__init__`
+does `from . import sources`).
+
+### Enrichers (in the task's `sources.py`)
 ```python
-@enrichers.register("article_text")   # trafilatura: fetch item.url, set item.text
-@enrichers.register("transcript")     # youtube-transcript-api on yt video id; item.text
+@enrichers.register("article_text")   # newsletter: trafilatura, set item.text
+@enrichers.register("transcript")     # youtube: youtube-transcript-api, set item.text
 def enrich(item: Item) -> Item:  ...  # never raise; return item unchanged on failure
 ```
 
-### gather (in `src/core/sources.py`) — the one function tasks call
+### gather (in `src/core/gather.py`) — the one driver tasks call via Context.gather
 ```python
 def gather(specs: list[dict], state: dict, since: datetime) -> list[Item]:
     # For each spec: dispatch to sources.get(spec["kind"]),
