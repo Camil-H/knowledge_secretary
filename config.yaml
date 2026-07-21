@@ -17,12 +17,14 @@ window_hours: 24          # newsletter lookback; youtube uses its own ET clock w
 
 # --- LLM tiers (see src/core/llm.py) ---------------------------------------
 models:
-  podcast:                # one long generation -> reserve big-output model
-    primary: ["gemini/gemini-3-flash"]        # newest free Flash: 1M ctx, 250k TPM, 1500 RPD
+  # OpenRouter-only: live zero-cost models ($0 tokens), ranked and tried in order
+  # with 429 backoff. A one-time $10 OpenRouter top-up lifts the free cap to
+  # 1000 req/day (20 RPM stays fixed). See src/core/llm.py.
+  podcast:                # ranked by output tokens (one long generation)
+    primary: []
     openrouter_free: true
-  summarize:              # many small calls -> high throughput, then fallback
-    # Groq (1k RPD) -> Cerebras (30k TPM, 1k RPD) -> Gemini 3 Flash (1.5k RPD) -> free OpenRouter
-    primary: ["groq/llama-3.3-70b-versatile", "cerebras/llama-3.3-70b", "gemini/gemini-3-flash"]
+  summarize:              # ranked by context window (many small calls)
+    primary: []
     openrouter_free: true
 
 # --- Tasks (each bucket owns its sources + declares delivery) ---------------

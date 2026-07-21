@@ -1,14 +1,17 @@
-"""Per-task tiered LLM calls with dynamic zero-cost fallback.
+"""OpenRouter-only LLM calls: dynamic free-model selection + rate-limit backoff.
 
-Primaries come from config (models.<tier>.primary). If models.<tier>.openrouter_free
-is true, we append free OpenRouter models fetched live and ranked per tier:
+Models are the live zero-cost OpenRouter catalog (ids ending in `:free`), ranked
+per tier:
   - "podcast"  -> rank by max_completion_tokens (needs long OUTPUT)
   - otherwise  -> rank by context_length
-LiteLLM reads provider keys from standard env vars (GEMINI_API_KEY, GROQ_API_KEY,
-OPENROUTER_API_KEY, ...). Candidates are tried in order, falling through on any error.
+Config primaries (if any) are tried first, then the ranked free list. LiteLLM
+reads the key from OPENROUTER_API_KEY. Free models share a fixed ~20 RPM account
+cap, so a 429 is retried with capped exponential backoff (switching models can't
+clear an account-wide limit); other errors fall through to the next candidate.
 """
 
 import logging
+import time
 
 import httpx
 import litellm
@@ -20,8 +23,11 @@ litellm.drop_params = True  # tolerate provider-specific unsupported params
 OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models"
 RANK_OUTPUT = "max_output_tokens"
 RANK_CONTEXT = "context"
-_FREE_LIMIT = 5
+_FREE_LIMIT = 8
 _HTTP_TIMEOUT_S = 20
+_RATE_LIMIT_RETRIES = 4
+_BACKOFF_START_S = 2
+_BACKOFF_CAP_S = 30
 
 
 # == Model resolution =========================================================
@@ -71,9 +77,9 @@ def resolve_models(task: str, cfg: dict) -> list[str]:
 def call(task: str, system: str, user: str, cfg: dict, *, max_tokens: int | None = None) -> str:
     """Try each resolved model in order; return the first non-empty completion.
 
-    Raises RuntimeError only if every candidate fails; the caller decides whether
-    to tolerate that and logs the outcome (this primitive logs only in-flight
-    fall-through).
+    A 429 retries the same model with capped exponential backoff; any other error
+    falls through to the next candidate. Raises RuntimeError only if every
+    candidate fails — the caller decides whether to tolerate that and logs it.
     """
     models = resolve_models(task, cfg)
     if not models:
@@ -82,14 +88,37 @@ def call(task: str, system: str, user: str, cfg: dict, *, max_tokens: int | None
     messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
     last_err: Exception | None = None
     for model in models:
-        try:
-            resp = litellm.completion(model=model, messages=messages, max_tokens=max_tokens)
-            content = resp.choices[0].message.content
-            if content and content.strip():
-                return content
-            last_err = RuntimeError(f"{model} returned empty content")
-        except Exception as e:  # rate limit / auth / 5xx / timeout -> next candidate
-            last_err = e
-        logger.warning("⚠️ llm tier=%s model=%s unavailable, falling through", task, model)
+        backoff = _BACKOFF_START_S
+        for attempt in range(_RATE_LIMIT_RETRIES):
+            try:
+                resp = litellm.completion(model=model, messages=messages, max_tokens=max_tokens)
+                content = resp.choices[0].message.content
+                if content and content.strip():
+                    return content
+                last_err = RuntimeError(f"{model} returned empty content")
+                break  # empty content: try the next model, don't retry this one
+            except Exception as e:
+                last_err = e
+                if _is_rate_limit(e) and attempt < _RATE_LIMIT_RETRIES - 1:
+                    logger.warning(
+                        "⚠️ llm tier=%s model=%s rate-limited; backoff %ss", task, model, backoff
+                    )
+                    time.sleep(backoff)
+                    backoff = min(backoff * 2, _BACKOFF_CAP_S)
+                    continue
+                logger.warning("⚠️ llm tier=%s model=%s unavailable, next candidate", task, model)
+                break
 
     raise RuntimeError(f"all models failed for tier {task!r}: {last_err}")
+
+
+# == Helper Functions =========================================================
+
+
+def _is_rate_limit(e: Exception) -> bool:
+    """True for 429 / rate-limit errors (across litellm and raw provider errors)."""
+    if isinstance(e, getattr(litellm, "RateLimitError", ())):
+        return True
+    if getattr(e, "status_code", None) == 429:
+        return True
+    return "rate limit" in str(e).lower()

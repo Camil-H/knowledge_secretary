@@ -1,18 +1,22 @@
 """Podcast task: rotate through topics.yaml and generate a long-form two-host
-episode via podcastfy, using the free Microsoft Edge TTS backend and the
-transcript LLM configured under models.podcast.primary.
+episode via podcastfy, using the free Microsoft Edge TTS backend and the best
+free OpenRouter model for the transcript.
 """
 
 from pathlib import Path
 
 import yaml
 
+from src.core import llm
 from src.core import state as state_mod
 from src.core.models import Context, Result
 from src.core.registry import tasks
 
 TOPICS_KEY = "topics"
 STATE_KEY = "podcast_idx"
+_OPENROUTER_KEY_LABEL = "OPENROUTER_API_KEY"
+# used only if the live free-model list is empty; harmless if stale (podcastfy just fails softly)
+_PODCAST_FALLBACK_MODEL = "openrouter/deepseek/deepseek-chat-v3-0324:free"
 
 
 @tasks.register("podcast")
@@ -32,7 +36,7 @@ def run(ctx: Context) -> Result:
     return Result(subject=subject, markdown="", artifacts=[audio_path], meta={"topic": topic})
 
 
-# == Helper Functions ========================================================
+# == Helper Functions =========================================================
 
 
 def _load_topics(topics_file: str) -> list[str]:
@@ -48,34 +52,34 @@ def _advance_topic(state: dict, topics: list[str]) -> str:
     return topics[nxt]
 
 
-def _split_llm_model(model_id: str) -> str:
-    """Map a LiteLLM-style "provider/model" id to what podcastfy's
-    llm_model_name expects. podcastfy special-cases Gemini by constructing
-    ChatGoogleGenerativeAI directly with the bare model name (checking only
-    `"gemini" in model_name.lower()`); every other provider is routed through
-    ChatLiteLLM, which accepts the "provider/model" form as-is.
+def _podcast_model(cfg: dict) -> str:
+    """Best free OpenRouter model for podcastfy, skipping gemini-named ids.
+
+    podcastfy routes any model whose name contains 'gemini' through its direct
+    Google client (needs GEMINI_API_KEY, which we don't set), so pick the top
+    non-gemini free model; fall back to a known id if the live list is empty.
     """
-    provider, _, model_name = model_id.partition("/")
-    if provider.lower() == "gemini" and model_name:
-        return model_name
-    return model_id
+    for model in llm.resolve_models("podcast", cfg):
+        if "gemini" not in model.lower():
+            return model
+    return _PODCAST_FALLBACK_MODEL
 
 
 def _generate_episode(topic: str, ctx: Context) -> str | None:
-    """Call podcastfy.generate_podcast for a long-form, two-host episode
-    seeded by `topic`, guided by this bucket's prompt.md, narrated with the
-    free Microsoft Edge TTS voices. Never raises: degrade to None on any
-    failure so the feed deliverer can skip this run instead of crashing the
-    pipeline.
+    """Call podcastfy.generate_podcast for a long-form, two-host episode seeded by
+    `topic`, guided by this bucket's prompt.md, narrated with free Edge TTS voices.
+    Never raises: degrade to None on any failure so the feed deliverer can skip
+    this run instead of crashing the pipeline.
     """
     instructions = (Path(__file__).parent / "prompt.md").read_text()
-    llm_model_name = _split_llm_model(ctx.cfg["models"]["podcast"]["primary"][0])
+    model = _podcast_model(ctx.cfg)
     try:
         from podcastfy.client import generate_podcast
 
         return generate_podcast(
             text=topic,
-            llm_model_name=llm_model_name,
+            llm_model_name=model,
+            api_key_label=_OPENROUTER_KEY_LABEL,
             tts_model="edge",
             longform=True,
             conversation_config={"user_instructions": instructions},

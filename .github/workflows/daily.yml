@@ -18,9 +18,6 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-  GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-  CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
   OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
   SMTP_HOST: ${{ secrets.SMTP_HOST }}
   SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
