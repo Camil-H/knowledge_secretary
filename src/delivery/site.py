@@ -122,9 +122,11 @@ def _render_day(entry: dict, *, is_latest: bool) -> str:
     tasks_html = "".join(
         _task_html(task, entry["tasks"][task]) for task in _LABELS if task in entry["tasks"]
     )
+    date = entry["date"]
+    heading = f'<time class="js-date" datetime="{date}">{date}</time>'
     if is_latest:
-        return f'<section class="day today"><h2>{entry["date"]}</h2>{tasks_html}</section>'
-    return f'<details class="day"><summary>{entry["date"]}</summary>{tasks_html}</details>'
+        return f'<section class="day today"><h2>{heading}</h2>{tasks_html}</section>'
+    return f'<details class="day"><summary>{heading}</summary>{tasks_html}</details>'
 
 
 def _task_html(task: str, payload: dict) -> str:

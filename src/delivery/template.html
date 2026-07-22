@@ -52,7 +52,16 @@
 <body>
 <h1>$title</h1>
 <p class="subtitle">$subtitle</p>
-<p class="updated">Updated $updated</p>
+<p class="updated">Updated <time class="js-datetime" datetime="$updated">$updated</time></p>
 $days
+<script>
+  // Reformat UTC dates to the viewer's locale (js-date: calendar day, no tz shift; js-datetime: instant).
+  for (const el of document.querySelectorAll("time.js-date"))
+    el.textContent = new Date(el.getAttribute("datetime"))
+      .toLocaleDateString(undefined, {dateStyle: "long", timeZone: "UTC"});
+  for (const el of document.querySelectorAll("time.js-datetime"))
+    el.textContent = new Date(el.getAttribute("datetime"))
+      .toLocaleString(undefined, {dateStyle: "medium", timeStyle: "short"});
+</script>
 </body>
 </html>
