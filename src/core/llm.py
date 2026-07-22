@@ -1,10 +1,10 @@
 """OpenRouter-only LLM calls: dynamic free-model selection + rate-limit backoff.
 
 Models are the live zero-cost OpenRouter catalog (ids ending in `:free`), ranked
-per tier: podcast by max_completion_tokens (needs long OUTPUT), otherwise by
-context_length. LiteLLM reads the key from OPENROUTER_API_KEY. Free models share a
-fixed ~20 RPM account cap, so a 429 is retried with capped exponential backoff
-(switching models can't clear an account-wide limit); other errors fall through.
+by context_length. LiteLLM reads the key from OPENROUTER_API_KEY. Free models
+share a fixed ~20 RPM account cap, so a 429 is retried with capped exponential
+backoff (switching models can't clear an account-wide limit); other errors fall
+through.
 """
 
 import logging
@@ -18,8 +18,6 @@ logger = logging.getLogger(__name__)
 litellm.drop_params = True  # tolerate provider-specific unsupported params
 
 OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models"
-RANK_OUTPUT = "max_output_tokens"
-RANK_CONTEXT = "context"
 _FREE_LIMIT = 8
 _HTTP_TIMEOUT_S = 20
 _RATE_LIMIT_RETRIES = 4
@@ -32,16 +30,16 @@ FALLBACK_MODEL = "openrouter/deepseek/deepseek-chat-v3-0324:free"
 # == Model resolution =========================================================
 
 
-def _free_openrouter_models(rank: str, *, limit: int = _FREE_LIMIT) -> list[str]:
-    """Live-fetch zero-cost OpenRouter models, ranked for the tier.
+def _free_openrouter_models(*, limit: int = _FREE_LIMIT) -> list[str]:
+    """Live-fetch zero-cost OpenRouter models, ranked by context length.
 
-    Degrades to [] (a missing free list is non-fatal — configured primaries still
-    apply), so this is logged as a warning rather than raised.
+    Degrades to [] (a missing free list is non-fatal — call() falls back to
+    FALLBACK_MODEL), so this is logged as a warning rather than raised.
     """
     try:
         data = httpx.get(OPENROUTER_MODELS_URL, timeout=_HTTP_TIMEOUT_S).json()["data"]
     except Exception as e:
-        logger.warning("⚠️ openrouter model list unavailable, using primaries only: %s", e)
+        logger.warning("⚠️ openrouter model list unavailable, using fallback: %s", e)
         return []
 
     free = [
@@ -50,21 +48,13 @@ def _free_openrouter_models(rank: str, *, limit: int = _FREE_LIMIT) -> list[str]
         if str(m.get("pricing", {}).get("prompt")) == "0"
         and str(m.get("pricing", {}).get("completion")) == "0"
     ]
-
-    def _rank_key(m: dict) -> int:
-        if rank == RANK_OUTPUT:
-            return (m.get("top_provider") or {}).get("max_completion_tokens") or 0
-        return m.get("context_length") or 0
-
-    free.sort(key=_rank_key, reverse=True)
+    free.sort(key=lambda m: m.get("context_length") or 0, reverse=True)
     return [f"openrouter/{m['id']}" for m in free[:limit]]
 
 
-def resolve_models(task: str) -> list[str]:
-    """Ranked zero-cost OpenRouter models for a tier: output-tokens for the podcast
-    (long generation), context otherwise."""
-    rank = RANK_OUTPUT if task == "podcast" else RANK_CONTEXT
-    return _free_openrouter_models(rank)
+def resolve_models() -> list[str]:
+    """Ranked zero-cost OpenRouter models, highest context first."""
+    return _free_openrouter_models()
 
 
 # == Completion ===============================================================
@@ -77,7 +67,7 @@ def call(task: str, system: str, user: str, *, max_tokens: int | None = None) ->
     falls through to the next candidate. Raises RuntimeError only if every
     candidate fails — the caller decides whether to tolerate that and logs it.
     """
-    models = resolve_models(task) or [FALLBACK_MODEL]
+    models = resolve_models() or [FALLBACK_MODEL]
     messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
     last_err: Exception | None = None
     for model in models:

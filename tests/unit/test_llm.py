@@ -68,20 +68,19 @@ def _no_sleep(monkeypatch):
 
 def test_free_filter_excludes_paid(monkeypatch):
     _patch_models(monkeypatch)
-    assert all("paid" not in m for m in llm._free_openrouter_models(llm.RANK_CONTEXT))
+    assert all("paid" not in m for m in llm._free_openrouter_models())
 
 
-def test_resolve_ranks_by_tier(monkeypatch):
+def test_resolve_ranks_by_context(monkeypatch):
     _patch_models(monkeypatch)
-    assert llm.resolve_models("podcast")[0] == "openrouter/big-out"  # output-tokens win
-    assert llm.resolve_models("summarize")[0] == "openrouter/big-ctx"  # context wins
+    assert llm.resolve_models()[0] == "openrouter/big-ctx"  # highest context wins
 
 
 # ----- completion: rate-limit backoff + fall-through -----
 
 
 def test_call_retries_same_model_on_rate_limit(monkeypatch):
-    monkeypatch.setattr(llm, "resolve_models", lambda task: ["openrouter/a:free"])
+    monkeypatch.setattr(llm, "resolve_models", lambda: ["openrouter/a:free"])
     n = {"i": 0}
 
     def fake_completion(model, messages, max_tokens=None):
@@ -96,9 +95,7 @@ def test_call_retries_same_model_on_rate_limit(monkeypatch):
 
 
 def test_call_falls_through_to_next_model_on_other_error(monkeypatch):
-    monkeypatch.setattr(
-        llm, "resolve_models", lambda task: ["openrouter/a:free", "openrouter/b:free"]
-    )
+    monkeypatch.setattr(llm, "resolve_models", lambda: ["openrouter/a:free", "openrouter/b:free"])
 
     def fake_completion(model, messages, max_tokens=None):
         if model == "openrouter/a:free":
@@ -110,7 +107,7 @@ def test_call_falls_through_to_next_model_on_other_error(monkeypatch):
 
 
 def test_call_uses_fallback_when_no_models_resolve(monkeypatch):
-    monkeypatch.setattr(llm, "resolve_models", lambda task: [])
+    monkeypatch.setattr(llm, "resolve_models", lambda: [])
     seen = {}
 
     def fake_completion(model, messages, max_tokens=None):
@@ -123,7 +120,7 @@ def test_call_uses_fallback_when_no_models_resolve(monkeypatch):
 
 
 def test_call_raises_when_all_candidates_fail(monkeypatch):
-    monkeypatch.setattr(llm, "resolve_models", lambda task: ["openrouter/a:free"])
+    monkeypatch.setattr(llm, "resolve_models", lambda: ["openrouter/a:free"])
 
     def fake_completion(model, messages, max_tokens=None):
         raise ValueError("nope")
