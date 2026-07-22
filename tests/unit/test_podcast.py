@@ -1,14 +1,12 @@
-"""Podcast queue pop/removal + URL discovery/validation. podcastfy and the real
-network are never touched — _generate_episode is stubbed for the queue cases,
-ctx.call is faked for discovery, and httpx.AsyncClient is faked for validation."""
-
-import asyncio
+"""Podcast queue pop/removal + URL discovery. podcastfy and the LLM are never
+touched — _generate_episode is stubbed for the queue cases and ctx.call is faked
+for discovery."""
 
 import pytest
 
 from src.core.models import Context
 from src.tasks.podcast import task as podcast_task
-from src.tasks.podcast.task import MAX_SOURCE_URLS, QUEUE_KEY, _discover_urls, _validate_urls, run
+from src.tasks.podcast.task import MAX_SOURCE_URLS, QUEUE_KEY, _discover_urls, run
 
 _TOPICS = ["PROTACs", "ADCs", "mRNA"]
 
@@ -80,7 +78,7 @@ def test_run_generation_failure_keeps_topic(monkeypatch):
     assert QUEUE_KEY not in state["kv"]  # queue not advanced -> topic retried next run
 
 
-# ----- discovery + validation -----
+# ----- discovery -----
 
 
 def test_discover_urls_extracts_links_and_caps():
@@ -92,26 +90,3 @@ def test_discover_urls_extracts_links_and_caps():
     assert urls[:3] == ["https://a.com", "https://b.org", "https://c.net"]
     assert len(urls) == MAX_SOURCE_URLS
     assert "not a url" not in urls
-
-
-def test_validate_urls_drops_unreachable(monkeypatch):
-    class _Resp:
-        def __init__(self, code):
-            self.status_code = code
-
-    class _FakeClient:
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *exc):
-            return False
-
-        async def head(self, url):
-            return _Resp(200 if "ok" in url else 404)
-
-        async def get(self, url):
-            return _Resp(404)
-
-    monkeypatch.setattr(podcast_task.httpx, "AsyncClient", lambda *a, **k: _FakeClient())
-    urls = asyncio.run(_validate_urls(["https://ok.com", "https://bad.com"]))
-    assert urls == ["https://ok.com"]

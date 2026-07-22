@@ -1,28 +1,26 @@
 """Podcast task: work through the topics in this dir's sources.yaml as a queue.
 Each run pops the next topic, asks an LLM for source URLs about it, keeps the
 reachable ones, and generates a long-form two-host episode from them via
-podcastfy (a free OpenRouter model for the transcript, free Edge TTS for audio). A generated topic
-is removed from the queue so it never repeats; an empty queue produces nothing.
-The queue is seeded from sources.yaml on the first run and then lives in the
-committed state.
+podcastfy (a free OpenRouter model for the transcript, free Edge TTS for audio).
+A generated topic is removed from the queue so it never repeats; an empty queue
+produces nothing. The queue is seeded from sources.yaml on the first run and
+then lives in the committed state.
 """
 
 import asyncio
 from pathlib import Path
 
-import httpx
-
 from src.core import llm, sources_loader
 from src.core import state as state_mod
 from src.core.models import Context, Result
 from src.core.registry import tasks
+from src.tasks.podcast.utils import validate_urls
 
 QUEUE_KEY = "podcast_queue"  # kv list of topics still to do; seeded from TOPICS
 TOPICS = sources_loader.load(Path(__file__).parent, [])
-MAX_SOURCE_URLS = 5
-_URL_CHECK_TIMEOUT_S = 10
+MAX_SOURCE_URLS = 10
 _OPENROUTER_KEY_LABEL = "OPENROUTER_API_KEY"  # transcript LLM: podcastfy -> LiteLLM -> OpenRouter
-DISCOVER_PROMPT = (Path(__file__).parent / "discover.md").read_text()
+DISCOVER_PROMPT = (Path(__file__).parent / "source_discovery_prompt.md").read_text()
 CONVERSATION_CONFIG = {
     "conversation_style": ["technical", "analytical", "engaging"],
     "roles_person1": "curious host who drives the narrative with sharp questions",
@@ -42,6 +40,9 @@ CONVERSATION_CONFIG = {
     # free Edge TTS (no key); podcastfy's own default is the paid openai voice
     "text_to_speech": {"default_tts_model": "edge"},
 }
+
+
+# == Task =====================================================================
 
 
 @tasks.register("podcast")
@@ -66,7 +67,7 @@ def run(ctx: Context) -> Result:
     return Result(subject=subject, markdown="", artifacts=[audio_path], meta={"topic": topic})
 
 
-# == Helper Functions =========================================================
+# == Source discovery =========================================================
 
 
 def _discover_urls(ctx: Context, topic: str) -> list[str]:
@@ -76,23 +77,7 @@ def _discover_urls(ctx: Context, topic: str) -> list[str]:
     return urls[:MAX_SOURCE_URLS]
 
 
-async def _validate_urls(urls: list[str]) -> list[str]:
-    """Keep only the URLs that respond < 400, checked concurrently."""
-    if not urls:
-        return []
-    async with httpx.AsyncClient(timeout=_URL_CHECK_TIMEOUT_S, follow_redirects=True) as client:
-        oks = await asyncio.gather(*(_url_ok(client, url) for url in urls))
-    return [url for url, ok in zip(urls, oks, strict=True) if ok]
-
-
-async def _url_ok(client: httpx.AsyncClient, url: str) -> bool:
-    try:
-        resp = await client.head(url)
-        if resp.status_code >= 400:  # some servers reject HEAD — confirm with GET
-            resp = await client.get(url)
-        return resp.status_code < 400
-    except Exception:
-        return False
+# == Episode generation =======================================================
 
 
 async def _generate_episode(topic: str, ctx: Context) -> str | None:
@@ -101,7 +86,7 @@ async def _generate_episode(topic: str, ctx: Context) -> str | None:
     reachable). Degrades to None on any failure so a bad run never crashes the
     pipeline.
     """
-    urls = await _validate_urls(_discover_urls(ctx, topic))
+    urls = await validate_urls(_discover_urls(ctx, topic))
     ctx.log(f"podcast: {len(urls)} reachable source url(s) for {topic!r}")
     instructions = (Path(__file__).parent / "prompt.md").read_text()
     model = (llm.resolve_models(podcast=True) or [llm.FALLBACK_MODEL])[0]
