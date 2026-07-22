@@ -4,7 +4,7 @@ A $0, fully-automated daily digest. Once a day, via GitHub Actions, it:
 
 1. **Newsletter** — assembles an industry newsletter from blogs, papers/preprints (PubMed, bioRxiv), and X accounts.
 2. **YouTube** — summarizes new uploads from configured channels within a daily time window.
-3. **Podcast** — generates a long, technical two-host podcast on a rotating topic, published to the static site with the audio embedded as a player.
+3. **Podcast** — generates a long, technical two-host podcast on the next topic from a queue (each topic used once), published to the static site with the audio embedded as a player.
 
 Runs entirely on free tiers: free LLMs (LiteLLM with a live OpenRouter-free fallback), free TTS (Microsoft Edge), free data sources, and GitHub Actions on a public repo (unlimited minutes).
 
@@ -12,7 +12,7 @@ Runs entirely on free tiers: free LLMs (LiteLLM with a live OpenRouter-free fall
 
 - `src/core/` — shared spine: data contracts (`Item`/`Result`/`Context`), the plugin registries, dedup state (`state.py`), the `sources.yaml` loader (`sources_loader.py`), and the OpenRouter LLM client (`llm.py`). `src/fetchers/` holds the deterministic by-source-type clients (rss, url, youtube, x, pubmed, biorxiv); `src/tasks/runner.py` holds the `gather` fetch driver and the shell the gather-based tasks share; `src/delivery/` renders and publishes the page. Flow: **fetchers → task adapters → gather → task produce → delivery**.
 - `src/tasks/<name>/` — one self-contained bucket per task (`task.py` for the pipeline, `prompt.md`, `adapters.py` for the framework's source/enricher code, `sources.yaml` for the committed source data; `__init__.py` just imports the two for registration). Adding a task is a new bucket; nothing else changes.
-- Per-task source data (feeds, queries, handles, topics) lives in `src/tasks/<task>/sources.yaml`, committed directly to the repo (it's a public template and the source lists are non-sensitive). For newsletter and YouTube the file is a list of source-spec dicts (kinds: `feed`, `pubmed`, `biorxiv`, `twitter`, `yt_channel`; enrichers: `article_text`, `transcript`); for the podcast it's a top-level list of topic strings for its rotation. Adding a blog, channel, or topic is one line in that file.
+- Per-task source data (feeds, queries, handles, topics) lives in `src/tasks/<task>/sources.yaml`, committed directly to the repo (it's a public template and the source lists are non-sensitive). For newsletter and YouTube the file is a list of source-spec dicts (kinds: `feed`, `pubmed`, `biorxiv`, `twitter`, `yt_channel`; enrichers: `article_text`, `transcript`); for the podcast it's a top-level list of topic strings it works through as a queue (each consumed once, in order). Adding a blog, channel, or topic is one line in that file.
 - Dedup state lives in `state/seen.json`, committed back each run. Items are marked seen **only after successful delivery**, so a failed send never drops content.
 - Every task's output is rendered to a single static page — last 7 days, newest first, older days collapsed behind `<details>` toggles — and published to GitHub Pages.
 - Prompts are plain Markdown (`src/tasks/*/prompt.md`) — edit behavior without touching code.
