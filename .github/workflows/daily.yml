@@ -19,6 +19,7 @@ concurrency:
 
 env:
   OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+  GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}   # podcast only: Gemini transcript + geminimulti TTS
   GH_TOKEN: ${{ github.token }}   # gh release upload for podcast mp3s (this repo)
   TWITTER_AUTH_TOKEN: ${{ secrets.TWITTER_AUTH_TOKEN }}   # X source for the newsletter; optional
   TWITTER_CT0: ${{ secrets.TWITTER_CT0 }}

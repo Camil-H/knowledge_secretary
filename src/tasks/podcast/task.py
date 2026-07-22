@@ -1,7 +1,8 @@
 """Podcast task: work through the topics in this dir's sources.yaml as a queue.
 Each run pops the next topic, asks an LLM for source URLs about it, keeps the
 reachable ones, and generates a long-form two-host episode from them via
-podcastfy (free Microsoft Edge TTS). A generated topic is removed from the queue
+podcastfy (Gemini for both the transcript and multi-speaker TTS). A generated
+topic is removed from the queue
 so it never repeats; an empty queue produces nothing. The queue is seeded from
 sources.yaml on the first run and then lives in the committed state.
 """
@@ -12,7 +13,7 @@ from typing import Any
 
 import httpx
 
-from src.core import llm, sources_loader
+from src.core import sources_loader
 from src.core import state as state_mod
 from src.core.models import Context, Result
 from src.core.registry import tasks
@@ -20,8 +21,11 @@ from src.core.registry import tasks
 QUEUE_KEY = "podcast_queue"  # kv list of topics still to do; seeded from TOPICS
 TOPICS = sources_loader.load(Path(__file__).parent, [])
 MAX_SOURCE_URLS = 5
-_OPENROUTER_KEY_LABEL = "OPENROUTER_API_KEY"
 _URL_CHECK_TIMEOUT_S = 10
+# podcastfy has no OpenRouter path: Gemini runs the transcript and the multi-speaker TTS
+_PODCAST_LLM_MODEL = "gemini-2.5-flash"
+_TTS_MODEL = "geminimulti"
+_GEMINI_KEY_LABEL = "GEMINI_API_KEY"
 DISCOVER_PROMPT = (
     "You are a research librarian. For the given podcast topic, list up to 5 URLs of "
     "high-quality, real, publicly accessible articles or references a technical podcast "
@@ -72,15 +76,6 @@ def run(ctx: Context) -> Result:
 # == Helper Functions =========================================================
 
 
-def _model() -> str:
-    """Top free OpenRouter model for podcastfy, else the llm fallback."""
-    for model in llm.resolve_models("podcast"):
-        # podcastfy routes any "gemini" id through Google's own SDK (needs a key we don't set)
-        if "gemini" not in model.lower():
-            return model
-    return llm.FALLBACK_MODEL
-
-
 def _discover_urls(ctx: Context, topic: str) -> list[str]:
     """Ask the LLM for candidate source URLs, capped at MAX_SOURCE_URLS."""
     raw = ctx.call("summarize", system=DISCOVER_PROMPT, user=topic)
@@ -121,9 +116,9 @@ async def _generate_episode(topic: str, ctx: Context) -> str | None:
         from podcastfy.client import generate_podcast
 
         kwargs: dict[str, Any] = {
-            "llm_model_name": _model(),
-            "api_key_label": _OPENROUTER_KEY_LABEL,
-            "tts_model": "edge",
+            "llm_model_name": _PODCAST_LLM_MODEL,
+            "api_key_label": _GEMINI_KEY_LABEL,
+            "tts_model": _TTS_MODEL,
             "longform": True,
             "conversation_config": conversation,
         }
