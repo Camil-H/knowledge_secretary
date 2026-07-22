@@ -1,4 +1,3 @@
-# Newsletter sources (personal — gitignored). Biopharma / drug-discovery set.
 # blogs
 - { key: pipeline,        kind: feed, section: "Blogs", url: "https://www.science.org/blogs/pipeline/feed", enrich: [article_text] }
 - { key: lifescivc,       kind: feed, section: "Blogs", url: "https://lifescivc.com/feed/", enrich: [article_text] }

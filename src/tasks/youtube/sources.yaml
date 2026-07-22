@@ -1,4 +1,3 @@
-# YouTube sources (personal — gitignored).
 - { key: yt_physionic,    kind: yt_channel, section: "Biology & Health",   handle: "@Physionic",              enrich: [transcript] }
 - { key: yt_dhio,         kind: yt_channel, section: "Biology & Health",   handle: "@DigitalHealthInsideOut", enrich: [transcript] }
 - { key: yt_bekey,        kind: yt_channel, section: "Biology & Health",   handle: "@BeKey-Hub",              enrich: [transcript] }

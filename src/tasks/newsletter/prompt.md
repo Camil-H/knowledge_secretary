@@ -6,7 +6,7 @@ Read the bodies and assemble one coherent newsletter.
 
 # Handling by source type
 - **News & Blogs**: report the actual development and why it matters (mechanism, data, deal, strategy).
-- **Papers & Preprints (incl. review journals like Nature Reviews)**: summarize the finding or the review's thrust and its relevance. Distinguish a primary result from a review/overview — do not present a review as breaking news, and don't overstate significance. Some entries are abstracts only; if the substance is thin, keep the entry short and say so.
+- **Papers & Preprints (incl. review journals like Nature Reviews)**: summarize the finding or the review's thrust and its relevance. Distinguish a primary result from a review/overview — do not present a review as breaking news, and don't overstate significance. Some entries are abstracts only; if the substance is thin, keep the entry short.
 - **Regulatory**: state the specific action (approval, complete response letter, label change, safety warning) with the drug, company, and indication.
 - **Social/X**: attribute to the account; treat as signal or rumor, not established fact, and flag when unconfirmed.
 
