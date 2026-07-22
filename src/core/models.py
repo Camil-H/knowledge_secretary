@@ -47,7 +47,6 @@ class Context:
     dict ops (mark/get_kv/set_kv) — that is data manipulation, not I/O.
     """
 
-    cfg: dict
     state: dict
     gather: Callable
     call: Callable

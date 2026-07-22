@@ -24,24 +24,28 @@ from src.core.registry import deliverers
 logger = logging.getLogger(__name__)
 
 _LABELS = {"newsletter": "Newsletter", "youtube": "YouTube", "podcast": "Podcast"}
-
 _PAGE = (Path(__file__).parent / "template.html").read_text()
+
+TITLE = "Knowledge Secretary"
+SUBTITLE = "Daily biopharma newsletter, YouTube digest, and technical podcast"
+HISTORY_DIR = "history"
+HISTORY_DAYS = 7
+OUT_DIR = "public"
 
 
 # == Site =====================================================================
 
 
 @deliverers.register("site")
-def site(result: Result, cfg: dict) -> None:
-    """Store today's result under history_dir keyed by task, prune, re-render."""
-    conf = cfg["delivery"]["site"]
+def site(result: Result) -> None:
+    """Store today's result under HISTORY_DIR keyed by task, prune, re-render."""
     task = result.meta.get("task", "")
     if not result.markdown and not result.artifacts:
         logger.info("site: nothing to add for task %s", task)
         return
 
     today = datetime.now(UTC).strftime("%Y-%m-%d")
-    entry = _load_entry(conf["history_dir"], today)
+    entry = _load_entry(HISTORY_DIR, today)
 
     if result.artifacts:
         episode_repo = os.environ.get("GITHUB_REPOSITORY", "")
@@ -58,9 +62,9 @@ def site(result: Result, cfg: dict) -> None:
         payload = {"kind": "markdown", "subject": result.subject, "markdown": result.markdown}
 
     entry["tasks"][task] = payload
-    _save_entry(conf["history_dir"], today, entry)
-    _prune(conf["history_dir"], conf.get("history_days", 7))
-    _render(conf)
+    _save_entry(HISTORY_DIR, today, entry)
+    _prune(HISTORY_DIR, HISTORY_DAYS)
+    _render()
     logger.info("✅ site: recorded task %s for %s", task, today)
 
 
@@ -93,28 +97,21 @@ def _prune(history_dir: str, days: int) -> None:
 # ----- rendering -----
 
 
-def _render(conf: dict) -> None:
-    history_dir = conf["history_dir"]
-    out_dir = conf["out_dir"]
-    history_days = conf.get("history_days", 7)
-
+def _render() -> None:
     entries = []
-    for path in glob.glob(os.path.join(history_dir, "*.json")):
+    for path in glob.glob(os.path.join(HISTORY_DIR, "*.json")):
         with open(path) as f:
             entries.append(json.load(f))
     entries.sort(key=lambda e: e["date"], reverse=True)
-    entries = entries[:history_days]
+    entries = entries[:HISTORY_DAYS]
 
     days_html = "\n".join(_render_day(entry, is_latest=(i == 0)) for i, entry in enumerate(entries))
     page = string.Template(_PAGE).substitute(
-        title=conf.get("title", ""),
-        subtitle=conf.get("subtitle", ""),
-        updated=datetime.now(UTC).isoformat(),
-        days=days_html,
+        title=TITLE, subtitle=SUBTITLE, updated=datetime.now(UTC).isoformat(), days=days_html
     )
 
-    os.makedirs(out_dir, exist_ok=True)
-    with open(os.path.join(out_dir, "index.html"), "w") as f:
+    os.makedirs(OUT_DIR, exist_ok=True)
+    with open(os.path.join(OUT_DIR, "index.html"), "w") as f:
         f.write(page)
 
 

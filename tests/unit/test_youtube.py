@@ -36,7 +36,6 @@ def _video(vid, *, text="transcript body"):
 
 def _ctx(items, call):
     return Context(
-        cfg={},
         state={"ids": {}, "kv": {}},
         gather=lambda specs, since: items,
         call=call,

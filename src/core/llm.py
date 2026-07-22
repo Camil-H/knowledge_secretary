@@ -1,13 +1,10 @@
 """OpenRouter-only LLM calls: dynamic free-model selection + rate-limit backoff.
 
 Models are the live zero-cost OpenRouter catalog (ids ending in `:free`), ranked
-per tier:
-  - "podcast"  -> rank by max_completion_tokens (needs long OUTPUT)
-  - otherwise  -> rank by context_length
-Config primaries (if any) are tried first, then the ranked free list. LiteLLM
-reads the key from OPENROUTER_API_KEY. Free models share a fixed ~20 RPM account
-cap, so a 429 is retried with capped exponential backoff (switching models can't
-clear an account-wide limit); other errors fall through to the next candidate.
+per tier: podcast by max_completion_tokens (needs long OUTPUT), otherwise by
+context_length. LiteLLM reads the key from OPENROUTER_API_KEY. Free models share a
+fixed ~20 RPM account cap, so a 429 is retried with capped exponential backoff
+(switching models can't clear an account-wide limit); other errors fall through.
 """
 
 import logging
@@ -61,27 +58,24 @@ def _free_openrouter_models(rank: str, *, limit: int = _FREE_LIMIT) -> list[str]
     return [f"openrouter/{m['id']}" for m in free[:limit]]
 
 
-def resolve_models(task: str, cfg: dict) -> list[str]:
-    """Ordered model ids for a tier: configured primaries, then ranked free fallback."""
-    tier = cfg["models"][task]
-    models = list(tier.get("primary", []))
-    if tier.get("openrouter_free"):
-        rank = RANK_OUTPUT if task == "podcast" else RANK_CONTEXT
-        models += _free_openrouter_models(rank)
-    return models
+def resolve_models(task: str) -> list[str]:
+    """Ranked zero-cost OpenRouter models for a tier: output-tokens for the podcast
+    (long generation), context otherwise."""
+    rank = RANK_OUTPUT if task == "podcast" else RANK_CONTEXT
+    return _free_openrouter_models(rank)
 
 
 # == Completion ===============================================================
 
 
-def call(task: str, system: str, user: str, cfg: dict, *, max_tokens: int | None = None) -> str:
+def call(task: str, system: str, user: str, *, max_tokens: int | None = None) -> str:
     """Try each resolved model in order; return the first non-empty completion.
 
     A 429 retries the same model with capped exponential backoff; any other error
     falls through to the next candidate. Raises RuntimeError only if every
     candidate fails — the caller decides whether to tolerate that and logs it.
     """
-    models = resolve_models(task, cfg)
+    models = resolve_models(task)
     if not models:
         raise RuntimeError(f"no models resolved for tier {task!r}")
 

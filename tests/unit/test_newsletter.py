@@ -30,10 +30,6 @@ class _Recorder:
         return [s for s, _ in self.calls]
 
 
-def _cfg():
-    return {}  # newsletter.run() reads no cfg — sources come from the module, lookback from runner
-
-
 def _item(item_id, text, section="Blogs"):
     return Item(
         id=item_id,
@@ -48,7 +44,6 @@ def _item(item_id, text, section="Blogs"):
 
 def _ctx(items, call):
     return Context(
-        cfg=_cfg(),
         state={"ids": {}, "kv": {}},
         gather=lambda specs, since: items,
         call=call,

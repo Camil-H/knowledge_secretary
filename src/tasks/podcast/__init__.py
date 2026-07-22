@@ -43,14 +43,14 @@ def _advance_topic(state: dict, topics: list[str]) -> str:
     return topics[nxt]
 
 
-def _podcast_model(cfg: dict) -> str:
+def _podcast_model() -> str:
     """Best free OpenRouter model for podcastfy, skipping gemini-named ids.
 
     podcastfy routes any model whose name contains 'gemini' through its direct
     Google client (needs GEMINI_API_KEY, which we don't set), so pick the top
     non-gemini free model; fall back to a known id if the live list is empty.
     """
-    for model in llm.resolve_models("podcast", cfg):
+    for model in llm.resolve_models("podcast"):
         if "gemini" not in model.lower():
             return model
     return _PODCAST_FALLBACK_MODEL
@@ -63,7 +63,7 @@ def _generate_episode(topic: str, ctx: Context) -> str | None:
     this run instead of crashing the pipeline.
     """
     instructions = (Path(__file__).parent / "prompt.md").read_text()
-    model = _podcast_model(ctx.cfg)
+    model = _podcast_model()
     try:
         from podcastfy.client import generate_podcast
 

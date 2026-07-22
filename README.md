@@ -28,7 +28,7 @@ Scheduled by `.github/workflows/daily.yml` — podcast at 12:00 UTC (claims fres
 
 ## Configuration
 
-`config.yaml` holds only framework settings — timezone, `window_hours`, per-task LLM tiers, per-task `deliver` + YouTube's `window_et`, and `delivery.site`. It no longer holds source lists or a podcast `topics_file`. Secrets are referenced as `${ENV_VAR}` and set as GitHub Actions repository secrets:
+There's no central config file — framework knobs live as constants next to the code that uses them: model ranking in `src/core/llm.py`, and the page title / history depth / output dirs in `src/delivery/site.py`. Per-task sources live in each task's `sources.yaml` (below). The only runtime inputs are secrets, set as GitHub Actions repository secrets:
 
 | Secret | Purpose |
 | --- | --- |
