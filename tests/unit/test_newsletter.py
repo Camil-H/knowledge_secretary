@@ -22,7 +22,7 @@ class _Recorder:
         self._item_reply = item_reply
         self._synth_reply = synth_reply
 
-    def __call__(self, tier, system, user, max_tokens=None):
+    def __call__(self, system, user, max_tokens=None):
         self.calls.append((system, user))
         return self._item_reply if system == ITEM_PROMPT else self._synth_reply
 

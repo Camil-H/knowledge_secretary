@@ -72,7 +72,7 @@ def run(ctx: Context) -> Result:
 
 def _discover_urls(ctx: Context, topic: str) -> list[str]:
     """Ask the LLM for candidate source URLs, capped at MAX_SOURCE_URLS."""
-    raw = ctx.call("summarize", system=DISCOVER_PROMPT, user=topic)
+    raw = ctx.call(system=DISCOVER_PROMPT, user=topic)
     urls = [line.strip() for line in raw.splitlines() if line.strip().startswith("http")]
     return urls[:MAX_SOURCE_URLS]
 

@@ -57,7 +57,7 @@ def _summarize(ctx: Context, item: Item) -> list[str]:
         f"Channel: {item.meta.get('channel', '')}\n"
         f"Transcript:\n{item.text[:TRANSCRIPT_CHAR_LIMIT]}"
     )
-    raw = ctx.call("summarize", system=PROMPT, user=user)
+    raw = ctx.call(system=PROMPT, user=user)
     return [line for line in raw.splitlines() if line.strip()]
 
 

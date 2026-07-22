@@ -70,7 +70,7 @@ def resolve_models(podcast: bool | None = None) -> list[str]:
 # == Completion ===============================================================
 
 
-def call(task: str, system: str, user: str, *, max_tokens: int | None = None) -> str:
+def call(system: str, user: str, *, max_tokens: int | None = None) -> str:
     """Try each resolved model in order; return the first non-empty completion.
 
     A 429 retries the same model with capped exponential backoff; any other error
@@ -93,16 +93,14 @@ def call(task: str, system: str, user: str, *, max_tokens: int | None = None) ->
             except Exception as e:
                 last_err = e
                 if _is_rate_limit(e) and attempt < _RATE_LIMIT_RETRIES - 1:
-                    logger.warning(
-                        "⚠️ llm tier=%s model=%s rate-limited; backoff %ss", task, model, backoff
-                    )
+                    logger.warning("⚠️ llm model=%s rate-limited; backoff %ss", model, backoff)
                     time.sleep(backoff)
                     backoff = min(backoff * 2, _BACKOFF_CAP_S)
                     continue
-                logger.warning("⚠️ llm tier=%s model=%s unavailable, next candidate", task, model)
+                logger.warning("⚠️ llm model=%s unavailable, next candidate", model)
                 break
 
-    raise RuntimeError(f"all models failed for tier {task!r}: {last_err}")
+    raise RuntimeError(f"all models failed: {last_err}")
 
 
 # == Helper Functions =========================================================

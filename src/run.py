@@ -23,9 +23,7 @@ def build_context(state: dict) -> Context:
     return Context(
         state=state,
         gather=lambda specs, since: gather(specs, state, since),
-        call=lambda tier, system, user, max_tokens=None: llm.call(
-            tier, system, user, max_tokens=max_tokens
-        ),
+        call=lambda system, user, max_tokens=None: llm.call(system, user, max_tokens=max_tokens),
         log=logger.info,
     )
 

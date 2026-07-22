@@ -46,7 +46,7 @@ def _produce(ctx: Context, items: list[Item]) -> str:
     if not relevant:
         ctx.log("newsletter: all items filtered as irrelevant")
         return ""
-    return ctx.call("summarize", system=SYNTHESIS_PROMPT, user=_synthesis_input(relevant))
+    return ctx.call(system=SYNTHESIS_PROMPT, user=_synthesis_input(relevant))
 
 
 def _item_summary(ctx: Context, item: Item) -> str:
@@ -55,7 +55,7 @@ def _item_summary(ctx: Context, item: Item) -> str:
     if len(text) < PASSTHROUGH_CHARS:
         return text or "(no content available)"
     user = f"Section: {item.section}\nTitle: {item.title}\nURL: {item.url}\nContent:\n{text}"
-    return ctx.call("summarize", system=ITEM_PROMPT, user=user)
+    return ctx.call(system=ITEM_PROMPT, user=user)
 
 
 def _synthesis_input(summarized: list[tuple[Item, str]]) -> str:

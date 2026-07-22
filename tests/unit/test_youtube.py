@@ -45,7 +45,7 @@ def _ctx(items, call):
 
 def test_run_summarizes_new_videos_and_consumes_all():
     videos = [_video("yt:A"), _video("yt:B")]
-    result = run(_ctx(videos, lambda tier, system, user, max_tokens=None: "- b1\n- b2\n- b3"))
+    result = run(_ctx(videos, lambda system, user, max_tokens=None: "- b1\n- b2\n- b3"))
 
     assert set(result.consumed) == {"yt:A", "yt:B"}  # dedup already scoped "new"; consume all
     assert "- Pure Science" in result.markdown

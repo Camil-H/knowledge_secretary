@@ -20,7 +20,7 @@ def _ctx(state, call=None):
     return Context(
         state=state,
         gather=lambda specs, since: [],
-        call=call or (lambda tier, system, user, max_tokens=None: ""),
+        call=call or (lambda system, user, max_tokens=None: ""),
         log=lambda m: None,
     )
 
@@ -85,7 +85,7 @@ def test_discover_urls_extracts_links_and_caps():
     reply = "https://a.com\nnot a url\nhttps://b.org\n  https://c.net  \n" + "\n".join(
         f"https://x{i}.com" for i in range(10)
     )
-    ctx = _ctx(_state(), call=lambda tier, system, user, max_tokens=None: reply)
+    ctx = _ctx(_state(), call=lambda system, user, max_tokens=None: reply)
     urls = _discover_urls(ctx, "PROTACs")
     assert urls[:3] == ["https://a.com", "https://b.org", "https://c.net"]
     assert len(urls) == MAX_SOURCE_URLS

@@ -91,7 +91,7 @@ def test_call_retries_same_model_on_rate_limit(monkeypatch):
         return _Completion("ok")
 
     monkeypatch.setattr(llm.litellm, "completion", fake_completion)
-    assert llm.call("summarize", "s", "u") == "ok"
+    assert llm.call("s", "u") == "ok"
     assert n["i"] == 2  # 429 -> backoff -> retried the same model
 
 
@@ -104,7 +104,7 @@ def test_call_falls_through_to_next_model_on_other_error(monkeypatch):
         return _Completion("second")
 
     monkeypatch.setattr(llm.litellm, "completion", fake_completion)
-    assert llm.call("summarize", "s", "u") == "second"
+    assert llm.call("s", "u") == "second"
 
 
 def test_call_uses_fallback_when_no_models_resolve(monkeypatch):
@@ -116,7 +116,7 @@ def test_call_uses_fallback_when_no_models_resolve(monkeypatch):
         return _Completion("ok")
 
     monkeypatch.setattr(llm.litellm, "completion", fake_completion)
-    assert llm.call("summarize", "s", "u") == "ok"
+    assert llm.call("s", "u") == "ok"
     assert seen["model"] == llm.FALLBACK_MODEL
 
 
@@ -128,4 +128,4 @@ def test_call_raises_when_all_candidates_fail(monkeypatch):
 
     monkeypatch.setattr(llm.litellm, "completion", fake_completion)
     with pytest.raises(RuntimeError, match="all models failed"):
-        llm.call("summarize", "s", "u")
+        llm.call("s", "u")
