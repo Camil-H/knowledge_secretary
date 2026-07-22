@@ -1,15 +1,14 @@
 """Podcast task: work through the topics in this dir's sources.yaml as a queue.
 Each run pops the next topic, asks an LLM for source URLs about it, keeps the
 reachable ones, and generates a long-form two-host episode from them via
-podcastfy (Gemini for both the transcript and multi-speaker TTS). A generated
-topic is removed from the queue
-so it never repeats; an empty queue produces nothing. The queue is seeded from
-sources.yaml on the first run and then lives in the committed state.
+podcastfy (Gemini transcript + geminimulti multi-speaker TTS). A generated topic
+is removed from the queue so it never repeats; an empty queue produces nothing.
+The queue is seeded from sources.yaml on the first run and then lives in the
+committed state.
 """
 
 import asyncio
 from pathlib import Path
-from typing import Any
 
 import httpx
 
@@ -22,17 +21,11 @@ QUEUE_KEY = "podcast_queue"  # kv list of topics still to do; seeded from TOPICS
 TOPICS = sources_loader.load(Path(__file__).parent, [])
 MAX_SOURCE_URLS = 5
 _URL_CHECK_TIMEOUT_S = 10
-# podcastfy has no OpenRouter path: Gemini runs the transcript and the multi-speaker TTS
-_PODCAST_LLM_MODEL = "gemini-2.5-flash"
-_TTS_MODEL = "geminimulti"
-_GEMINI_KEY_LABEL = "GEMINI_API_KEY"
-DISCOVER_PROMPT = (
-    "You are a research librarian. For the given podcast topic, list up to 5 URLs of "
-    "high-quality, real, publicly accessible articles or references a technical podcast "
-    "could be built from. Output ONLY the URLs, one per line — no prose, no numbering."
-)
+_TTS_MODEL = "geminimulti"  # Google multi-speaker TTS (en-US-Studio-MultiSpeaker)
+_LLM_MODEL = "gemini-3.0-flash"  # transcript LLM
+_GEMINI_KEY_LABEL = "GEMINI_API_KEY"  # env var name podcastfy reads the key from
+DISCOVER_PROMPT = (Path(__file__).parent / "discover.md").read_text()
 CONVERSATION_CONFIG = {
-    "word_count": 8000,
     "conversation_style": ["technical", "analytical", "engaging"],
     "roles_person1": "curious host who drives the narrative with sharp questions",
     "roles_person2": "domain expert who explains with depth and precision",
@@ -43,11 +36,10 @@ CONVERSATION_CONFIG = {
         "Edge Cases and Open Questions",
         "Key Takeaways",
     ],
-    "podcast_name": "Knowledge Secretary",
-    "podcast_tagline": "A daily technical deep-dive",
+    "podcast_name": "Daily Podcast",
+    "podcast_tagline": "A daily podcast",
     "output_language": "English",
     "engagement_techniques": ["analogies", "worked examples", "rhetorical questions"],
-    "creativity": 0,
 }
 
 
@@ -111,20 +103,18 @@ async def _generate_episode(topic: str, ctx: Context) -> str | None:
     urls = await _validate_urls(_discover_urls(ctx, topic))
     ctx.log(f"podcast: {len(urls)} reachable source url(s) for {topic!r}")
     instructions = (Path(__file__).parent / "prompt.md").read_text()
-    conversation = {**CONVERSATION_CONFIG, "user_instructions": instructions}
     try:
         from podcastfy.client import generate_podcast
 
-        kwargs: dict[str, Any] = {
-            "llm_model_name": _PODCAST_LLM_MODEL,
-            "api_key_label": _GEMINI_KEY_LABEL,
-            "tts_model": _TTS_MODEL,
-            "longform": True,
-            "conversation_config": conversation,
-        }
-        if urls:
-            return generate_podcast(urls=urls, **kwargs)
-        return generate_podcast(text=topic, **kwargs)
+        return generate_podcast(
+            urls=urls or None,
+            text=None if urls else topic,
+            conversation_config={**CONVERSATION_CONFIG, "user_instructions": instructions},
+            tts_model=_TTS_MODEL,
+            llm_model_name=_LLM_MODEL,
+            api_key_label=_GEMINI_KEY_LABEL,
+            longform=True,
+        )
     except Exception as exc:
         ctx.log(f"podcast: generate_podcast failed: {exc}")
         return None
