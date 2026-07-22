@@ -1,40 +1,20 @@
-"""YouTube channel + transcript fetching. Stateless; caching is the caller's job."""
+"""YouTube uploads-feed + transcript fetching. Stateless."""
 
 import logging
 import re
 
-import httpx
 from youtube_transcript_api import YouTubeTranscriptApi
 
 from src.fetchers import rss
 
 logger = logging.getLogger(__name__)
 
-_CHANNEL_PAGE = "https://www.youtube.com/{handle}"
 _UPLOADS_FEED = "https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"
-_CHANNEL_ID_RE = re.compile(r'"channelId":"(UC[\w-]+)"')
 _VIDEO_ID_RE = re.compile(r"(?:v=|youtu\.be/|/shorts/)([\w-]{11})")
-_HTTP_TIMEOUT_S = 30
-
-
-def resolve_channel_id(handle: str) -> str | None:
-    """Scrape a channel page to resolve its UC… channel_id (or None)."""
-    try:
-        resp = httpx.get(
-            _CHANNEL_PAGE.format(handle=handle), timeout=_HTTP_TIMEOUT_S, follow_redirects=True
-        )
-        m = _CHANNEL_ID_RE.search(resp.text)
-    except Exception as e:
-        logger.warning("⚠️ youtube resolve %s failed: %s", handle, e)
-        return None
-    if not m:
-        logger.warning("⚠️ youtube resolve %s: channelId not found", handle)
-        return None
-    return m.group(1)
 
 
 def channel_videos(channel_id: str) -> dict:
-    """Recent uploads for a channel via its videos.xml feed.
+    """Recent uploads via the channel's videos.xml feed.
 
     Returns {"channel": <title>, "videos": [...]} where each video is
     {video_id, title, url, published (tz-aware UTC | None), summary}.

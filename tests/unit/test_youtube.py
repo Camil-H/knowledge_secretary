@@ -10,7 +10,7 @@ _TEST_SPEC = {
     "key": "yt_x",
     "kind": "yt_channel",
     "section": "Pure Science",
-    "handle": "@x",
+    "channel_id": "UC_test",
     "enrich": ["transcript"],
 }
 

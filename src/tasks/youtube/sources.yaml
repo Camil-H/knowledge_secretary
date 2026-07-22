@@ -1,14 +1,14 @@
-- { key: yt_physionic,    kind: yt_channel, section: "Biology & Health",   handle: "@Physionic",              enrich: [transcript] }
-- { key: yt_dhio,         kind: yt_channel, section: "Biology & Health",   handle: "@DigitalHealthInsideOut", enrich: [transcript] }
-- { key: yt_bekey,        kind: yt_channel, section: "Biology & Health",   handle: "@BeKey-Hub",              enrich: [transcript] }
-- { key: yt_passescience, kind: yt_channel, section: "Pure Science",       handle: "@PasseScience",           enrich: [transcript] }
-- { key: yt_veritasium,   kind: yt_channel, section: "Pure Science",       handle: "@veritasium",             enrich: [transcript] }
-- { key: yt_minutephysics,kind: yt_channel, section: "Pure Science",       handle: "@MinutePhysics",          enrich: [transcript] }
-- { key: yt_quanta,       kind: yt_channel, section: "Pure Science",       handle: "@QuantaScienceChannel",   enrich: [transcript] }
-- { key: yt_scienceeton,  kind: yt_channel, section: "Pure Science",       handle: "@ScienceEtonnante",       enrich: [transcript] }
-- { key: yt_aleph0,       kind: yt_channel, section: "Pure Science",       handle: "@Aleph0",                 enrich: [transcript] }
-- { key: yt_eljj,         kind: yt_channel, section: "Pure Science",       handle: "@ElJj",                   enrich: [transcript] }
-- { key: yt_underscore,   kind: yt_channel, section: "Tech & Engineering", handle: "@Underscore_",            enrich: [transcript] }
-- { key: yt_wendover,     kind: yt_channel, section: "Tech & Engineering", handle: "@Wendoverproductions",    enrich: [transcript] }
-- { key: yt_heureka,      kind: yt_channel, section: "Economics",          handle: "@Heu7reka",               enrich: [transcript] }
-- { key: yt_crashcourse,  kind: yt_channel, section: "Other",              handle: "@crashcourse",            enrich: [transcript] }
+- { key: yt_physionic,    kind: yt_channel, section: "Biology & Health",   channel_id: UCj3p_1jOCJXB_L_we-DjLbA, enrich: [transcript] }  # @Physionic
+- { key: yt_dhio,         kind: yt_channel, section: "Biology & Health",   channel_id: UCwsu0LcxzxDgn1C1zxc3hAw, enrich: [transcript] }  # @DigitalHealthInsideOut
+- { key: yt_bekey,        kind: yt_channel, section: "Biology & Health",   channel_id: UC73ReuNCWVq1zqBurvjeOpw, enrich: [transcript] }  # @BeKey-Hub
+- { key: yt_passescience, kind: yt_channel, section: "Pure Science",       channel_id: UCsz9DiwPtgDvxJ-njWnieZw, enrich: [transcript] }  # @PasseScience
+- { key: yt_veritasium,   kind: yt_channel, section: "Pure Science",       channel_id: UCHnyfMqiRRG1u-2MsSQLbXA, enrich: [transcript] }  # @veritasium
+- { key: yt_minutephysics,kind: yt_channel, section: "Pure Science",       channel_id: UCUHW94eEFW7hkUMVaZz4eDg, enrich: [transcript] }  # @MinutePhysics
+- { key: yt_quanta,       kind: yt_channel, section: "Pure Science",       channel_id: UCTpmmkp1E4nmZqWPS-dl5bg, enrich: [transcript] }  # @QuantaScienceChannel
+- { key: yt_scienceeton,  kind: yt_channel, section: "Pure Science",       channel_id: UCaNlbnghtwlsGF-KzAFThqA, enrich: [transcript] }  # @ScienceEtonnante
+- { key: yt_aleph0,       kind: yt_channel, section: "Pure Science",       channel_id: UCzBjutX2PmitNF4avysL-vg, enrich: [transcript] }  # @Aleph0
+- { key: yt_eljj,         kind: yt_channel, section: "Pure Science",       channel_id: UCgkhWgBGRp0sdFy2MHDWfSg, enrich: [transcript] }  # @ElJj
+- { key: yt_underscore,   kind: yt_channel, section: "Tech & Engineering", channel_id: UCWedHS9qKebauVIK2J7383g, enrich: [transcript] }  # @Underscore_
+- { key: yt_wendover,     kind: yt_channel, section: "Tech & Engineering", channel_id: UC9RM-iSvTu1uPJb8X5yp3EQ, enrich: [transcript] }  # @Wendoverproductions
+- { key: yt_heureka,      kind: yt_channel, section: "Economics",          channel_id: UC7sXGI8p8PvKosLWagkK9wQ, enrich: [transcript] }  # @Heu7reka
+- { key: yt_crashcourse,  kind: yt_channel, section: "Other",              channel_id: UCX6b17PVsYBQ0ip5gyeme-Q, enrich: [transcript] }  # @crashcourse

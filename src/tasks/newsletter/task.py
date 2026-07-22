@@ -12,7 +12,7 @@ from src.tasks.runner import run_source_task
 
 EDITOR_PROMPT = (Path(__file__).parent / "prompt.md").read_text()
 SOURCES = sources_loader.load(Path(__file__).parent, [])
-ITEM_CHAR_LIMIT = 2000  # per-item body budget in the editor input
+ITEM_CHAR_LIMIT = 12000  # per-item body budget in the editor input (keep near full article)
 
 
 # == Task =====================================================================
