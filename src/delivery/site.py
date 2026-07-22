@@ -27,7 +27,7 @@ _LABELS = {"newsletter": "Newsletter", "youtube": "YouTube", "podcast": "Podcast
 _PAGE = (Path(__file__).parent / "template.html").read_text()
 
 TITLE = "Knowledge Secretary"
-SUBTITLE = "Daily biopharma newsletter, YouTube digest, and technical podcast"
+SUBTITLE = "Daily newsletter, YouTube digest, and technical podcast"
 HISTORY_DIR = "history"
 HISTORY_DAYS = 7
 OUT_DIR = "public"
