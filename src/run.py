@@ -9,12 +9,12 @@ import logging
 import sys
 
 import src.tasks  # noqa: F401  (registers task buckets)
-from src.core import gather as gather_mod
 from src.core import llm
 from src.core import state as state_mod
 from src.core.models import Context
 from src.core.registry import deliverers, tasks
 from src.delivery import site as _site  # noqa: F401  (registers the site deliverer)
+from src.tasks.runner import gather
 
 logger = logging.getLogger("knowledge_secretary")
 
@@ -22,7 +22,7 @@ logger = logging.getLogger("knowledge_secretary")
 def build_context(state: dict) -> Context:
     return Context(
         state=state,
-        gather=lambda specs, since: gather_mod.gather(specs, state, since),
+        gather=lambda specs, since: gather(specs, state, since),
         call=lambda tier, system, user, max_tokens=None: llm.call(
             tier, system, user, max_tokens=max_tokens
         ),

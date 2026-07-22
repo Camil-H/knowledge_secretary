@@ -3,8 +3,8 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from src.core.models import Context, Item
-from src.tasks import youtube as youtube_task
-from src.tasks.youtube import run
+from src.tasks.youtube import task as youtube_task
+from src.tasks.youtube.task import run
 
 _TEST_SPEC = {
     "key": "yt_x",

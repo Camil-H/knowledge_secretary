@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 
 from src.core.models import Context, Item
-from src.tasks.newsletter import (
+from src.tasks.newsletter.task import (
     ITEM_CHAR_LIMIT,
     ITEM_PROMPT,
     PASSTHROUGH_CHARS,
