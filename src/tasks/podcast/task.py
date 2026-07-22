@@ -40,6 +40,7 @@ CONVERSATION_CONFIG = {
     "podcast_tagline": "A daily podcast",
     "output_language": "English",
     "engagement_techniques": ["analogies", "worked examples", "rhetorical questions"],
+    "creativity": 0.3,
 }
 
 
