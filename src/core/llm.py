@@ -77,10 +77,7 @@ def call(task: str, system: str, user: str, *, max_tokens: int | None = None) ->
     falls through to the next candidate. Raises RuntimeError only if every
     candidate fails — the caller decides whether to tolerate that and logs it.
     """
-    models = resolve_models(task)
-    if not models:
-        raise RuntimeError(f"no models resolved for tier {task!r}")
-
+    models = resolve_models(task) or [FALLBACK_MODEL]
     messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
     last_err: Exception | None = None
     for model in models:

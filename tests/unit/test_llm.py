@@ -109,6 +109,19 @@ def test_call_falls_through_to_next_model_on_other_error(monkeypatch):
     assert llm.call("summarize", "s", "u") == "second"
 
 
+def test_call_uses_fallback_when_no_models_resolve(monkeypatch):
+    monkeypatch.setattr(llm, "resolve_models", lambda task: [])
+    seen = {}
+
+    def fake_completion(model, messages, max_tokens=None):
+        seen["model"] = model
+        return _Completion("ok")
+
+    monkeypatch.setattr(llm.litellm, "completion", fake_completion)
+    assert llm.call("summarize", "s", "u") == "ok"
+    assert seen["model"] == llm.FALLBACK_MODEL
+
+
 def test_call_raises_when_all_candidates_fail(monkeypatch):
     monkeypatch.setattr(llm, "resolve_models", lambda task: ["openrouter/a:free"])
 
