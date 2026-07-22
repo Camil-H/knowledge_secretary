@@ -20,7 +20,7 @@ from src.tasks.runner import run_source_task
 SYNTHESIS_PROMPT = (Path(__file__).parent / "prompt.md").read_text()
 ITEM_PROMPT = (Path(__file__).parent / "item_prompt.md").read_text()
 SOURCES = sources_loader.load(Path(__file__).parent, [])
-ITEM_CHAR_LIMIT = 12000  # full body passed to the per-item summarizer
+ITEM_CHAR_LIMIT = 12000
 PASSTHROUGH_CHARS = 400  # shorter items (tweets, teasers) skip the per-item LLM call
 IRRELEVANT = "IRRELEVANT"  # sentinel the item summarizer returns for off-topic items
 
@@ -53,7 +53,7 @@ def _produce(ctx: Context, items: list[Item]) -> str:
 def _item_summary(ctx: Context, item: Item) -> str:
     """Summarize one item from its FULL body; short items pass through verbatim."""
     text = _clean(item.text)
-    if len(text) < PASSTHROUGH_CHARS:  # tweets / thin teasers: not worth an LLM call
+    if len(text) < PASSTHROUGH_CHARS:
         return text or "(no content available)"
     user = f"Section: {item.section}\nTitle: {item.title}\nURL: {item.url}\nContent:\n{text}"
     return ctx.call("summarize", system=ITEM_PROMPT, user=user)

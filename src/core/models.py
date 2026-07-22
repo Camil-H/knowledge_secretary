@@ -18,23 +18,22 @@ class Item:
     """
 
     id: str
-    source: str  # per-task source spec key, e.g. "pipeline", "yt_physionic"
-    section: str  # grouping label for output, e.g. "Biology & Health"
+    source: str
+    section: str
     title: str
     url: str
     published: datetime
-    text: str = ""  # full text / transcript / abstract / teaser (may be empty)
-    meta: dict = field(default_factory=dict)  # channel, authors, lang, ...
+    text: str = ""
+    meta: dict = field(default_factory=dict)
 
 
 @dataclass
 class Result:
     subject: str = ""
     markdown: str = ""
-    artifacts: list[str] = field(default_factory=list)  # file paths, e.g. podcast mp3
-    meta: dict = field(default_factory=dict)  # e.g. {"topic": ...} for the feed
-    # Item ids to mark seen ONLY after this Result is delivered successfully, so a
-    # failed send doesn't burn that run's content (it resurfaces next run).
+    artifacts: list[str] = field(default_factory=list)
+    meta: dict = field(default_factory=dict)
+    # marked seen only after successful delivery, so a failed send doesn't burn the run
     consumed: list[str] = field(default_factory=list)
 
 
@@ -50,11 +49,6 @@ class Context:
 
     cfg: dict
     state: dict
-    # gather(specs: list[dict], since: datetime) -> list[Item]
-    #   Fetch NEW (deduped) items for the task's own source specs, published >= since.
-    #   Does NOT mark items seen — the caller marks only what it actually consumes.
     gather: Callable
-    # call(tier: str, system: str, user: str, *, max_tokens: int | None = None) -> str
-    #   tier in {"summarize", "podcast"}. Tiered LLM call with free-model fallback.
     call: Callable
     log: Callable

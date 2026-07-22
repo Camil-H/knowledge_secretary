@@ -26,7 +26,7 @@ class Registry:
         return dict(self._d)
 
 
-sources = Registry("source")  # kind -> fetch(spec, since, state) -> list[Item]
-enrichers = Registry("enricher")  # name -> enrich(item) -> Item
-deliverers = Registry("deliverer")  # name -> deliver(result, cfg) -> None
-tasks = Registry("task")  # name -> run(ctx) -> Result
+sources = Registry("source")
+enrichers = Registry("enricher")
+deliverers = Registry("deliverer")
+tasks = Registry("task")

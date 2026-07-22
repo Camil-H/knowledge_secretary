@@ -56,7 +56,7 @@ def main(argv: list[str]) -> int:
 def _run_task(name: str, cfg: dict, state: dict) -> None:
     logger.info("🚀 running task %s", name)
     result = tasks.get(name)(build_context(cfg, state))
-    result.meta.setdefault("task", name)  # deliverers (e.g. site) key output by task
+    result.meta.setdefault("task", name)
     for d in cfg["tasks"][name].get("deliver", []):
         deliverers.get(d)(result, cfg)
     # only now that delivery succeeded do we consider these items handled
