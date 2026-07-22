@@ -1,10 +1,11 @@
 """OpenRouter-only LLM calls: dynamic free-model selection + rate-limit backoff.
 
 Models are the live zero-cost OpenRouter catalog (ids ending in `:free`), ranked
-by context_length. LiteLLM reads the key from OPENROUTER_API_KEY. Free models
-share a fixed ~20 RPM account cap, so a 429 is retried with capped exponential
-backoff (switching models can't clear an account-wide limit); other errors fall
-through.
+by context_length — or by max_completion_tokens when resolving for the podcast,
+which needs long OUTPUT. LiteLLM reads the key from OPENROUTER_API_KEY. Free
+models share a fixed ~20 RPM account cap, so a 429 is retried with capped
+exponential backoff (switching models can't clear an account-wide limit); other
+errors fall through.
 """
 
 import logging
@@ -18,6 +19,8 @@ logger = logging.getLogger(__name__)
 litellm.drop_params = True  # tolerate provider-specific unsupported params
 
 OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models"
+RANK_OUTPUT = "max_output_tokens"
+RANK_CONTEXT = "context"
 _FREE_LIMIT = 8
 _HTTP_TIMEOUT_S = 20
 _RATE_LIMIT_RETRIES = 4
@@ -30,8 +33,8 @@ FALLBACK_MODEL = "openrouter/deepseek/deepseek-chat-v3-0324:free"
 # == Model resolution =========================================================
 
 
-def _free_openrouter_models(*, limit: int = _FREE_LIMIT) -> list[str]:
-    """Live-fetch zero-cost OpenRouter models, ranked by context length.
+def _free_openrouter_models(rank: str, *, limit: int = _FREE_LIMIT) -> list[str]:
+    """Live-fetch zero-cost OpenRouter models, ranked for the use case.
 
     Degrades to [] (a missing free list is non-fatal — call() falls back to
     FALLBACK_MODEL), so this is logged as a warning rather than raised.
@@ -48,13 +51,20 @@ def _free_openrouter_models(*, limit: int = _FREE_LIMIT) -> list[str]:
         if str(m.get("pricing", {}).get("prompt")) == "0"
         and str(m.get("pricing", {}).get("completion")) == "0"
     ]
-    free.sort(key=lambda m: m.get("context_length") or 0, reverse=True)
+
+    def _rank_key(m: dict) -> int:
+        if rank == RANK_OUTPUT:
+            return (m.get("top_provider") or {}).get("max_completion_tokens") or 0
+        return m.get("context_length") or 0
+
+    free.sort(key=_rank_key, reverse=True)
     return [f"openrouter/{m['id']}" for m in free[:limit]]
 
 
-def resolve_models() -> list[str]:
-    """Ranked zero-cost OpenRouter models, highest context first."""
-    return _free_openrouter_models()
+def resolve_models(podcast: bool | None = None) -> list[str]:
+    """Ranked zero-cost OpenRouter models. The podcast ranks by max_completion_tokens
+    (it needs long OUTPUT); everything else ranks by context length."""
+    return _free_openrouter_models(RANK_OUTPUT if podcast else RANK_CONTEXT)
 
 
 # == Completion ===============================================================

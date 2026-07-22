@@ -68,12 +68,13 @@ def _no_sleep(monkeypatch):
 
 def test_free_filter_excludes_paid(monkeypatch):
     _patch_models(monkeypatch)
-    assert all("paid" not in m for m in llm._free_openrouter_models())
+    assert all("paid" not in m for m in llm._free_openrouter_models(llm.RANK_CONTEXT))
 
 
-def test_resolve_ranks_by_context(monkeypatch):
+def test_resolve_ranks_by_tier(monkeypatch):
     _patch_models(monkeypatch)
-    assert llm.resolve_models()[0] == "openrouter/big-ctx"  # highest context wins
+    assert llm.resolve_models(podcast=True)[0] == "openrouter/big-out"  # output-tokens win
+    assert llm.resolve_models()[0] == "openrouter/big-ctx"  # context by default
 
 
 # ----- completion: rate-limit backoff + fall-through -----
