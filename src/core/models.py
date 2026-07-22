@@ -1,8 +1,4 @@
-"""Frozen data contracts shared by every source, task, and deliverer.
-
-The source, task, and deliverer modules code directly against these — change
-field names/semantics carefully.
-"""
+"""Frozen data contracts shared by every source, task, and deliverer."""
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -11,11 +7,8 @@ from datetime import datetime
 
 @dataclass
 class Item:
-    """One unit of content from any source. `published` MUST be tz-aware UTC.
-
-    `id` MUST be globally unique and source-prefixed for dedup, e.g.
-    "rss:<link>", "pubmed:<pmid>", "biorxiv:<doi>", "x:<tweet_id>", "yt:<video_id>".
-    """
+    """One unit of content. `published` is tz-aware UTC; `id` is globally unique and
+    source-prefixed for dedup (e.g. "rss:<link>", "pubmed:<pmid>", "yt:<video_id>")."""
 
     id: str
     source: str
@@ -39,13 +32,8 @@ class Result:
 
 @dataclass
 class Context:
-    """Injected into every task's run(ctx).
-
-    Tasks reach network/LLM work ONLY through these injected helpers (never
-    importing `sources`/`llm` directly), which keeps buckets self-contained and
-    unit-testable with fakes. Tasks MAY import `src.core.state` for pure dedup/KV
-    dict ops (mark/get_kv/set_kv) — that is data manipulation, not I/O.
-    """
+    """Injected into every task's run(ctx): tasks reach LLM/gather/log only through
+    these helpers, which keeps buckets self-contained and fake-testable."""
 
     state: dict
     gather: Callable

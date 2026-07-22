@@ -1,8 +1,5 @@
-"""YouTube digest task (a gather-based task; see src/tasks/runner.py).
-
-produce() summarizes each NEW video's transcript — dedup decides "new since the
-last run"; there is no clock window — and renders them grouped by section.
-"""
+"""YouTube digest (gather-based; see src/tasks/runner.py): summarize each new
+video's transcript, render grouped by section."""
 
 from datetime import UTC, datetime
 from pathlib import Path
@@ -27,7 +24,7 @@ def run(ctx: Context) -> Result:
     return run_source_task(ctx, SOURCES, _produce, subject)
 
 
-# == Helper Functions =========================================================
+# == Produce ==================================================================
 
 
 def _produce(ctx: Context, items: list[Item]) -> str:

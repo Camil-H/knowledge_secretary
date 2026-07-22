@@ -1,1 +1,2 @@
-from . import adapters, task  # noqa: F401  (imported for registration side effects)
+from . import adapters as adapters
+from . import task as task

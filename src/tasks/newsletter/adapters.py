@@ -1,9 +1,5 @@
 """Newsletter source adapters + enrichers — thin mappers over src/fetchers.
-
-Kinds: `feed` (RSS), `pubmed`, `biorxiv`, `twitter`. Enricher: `article_text`.
-Adapters just map a fetcher's raw output to Items; the fetchers own the I/O and
-graceful degradation.
-"""
+Kinds: feed/pubmed/biorxiv/twitter. Enricher: article_text."""
 
 from datetime import UTC, datetime
 

@@ -1,19 +1,13 @@
-"""Entrypoint: python -m src.run [newsletter|youtube|podcast|all]
-
-Discovers registered tasks, builds a Context with injected helpers, runs the
-requested task(s), delivers each Result to the static site, marks consumed items
-seen ONLY after successful delivery, then prunes + saves dedup state.
-"""
+"""Entrypoint: python -m src.run [newsletter|youtube|podcast|all]."""
 
 import logging
 import sys
 
-import src.tasks  # noqa: F401  (registers task buckets)
 from src.core import llm
 from src.core import state as state_mod
 from src.core.models import Context
 from src.core.registry import deliverers, tasks
-from src.delivery import site as _site  # noqa: F401  (registers the site deliverer)
+from src.delivery import site as site
 from src.tasks.runner import gather
 
 logger = logging.getLogger("knowledge_secretary")

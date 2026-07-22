@@ -1,8 +1,4 @@
-"""Dedup memory + tiny persistent KV, stored as state/seen.json and committed
-back by the workflow each run.
-
-Shape: {"ids": {item_id: "YYYY-MM-DD"}, "kv": {arbitrary}}
-"""
+"""Dedup memory + tiny KV persisted as state/seen.json: {"ids": {id: date}, "kv": {}}."""
 
 import json
 import os

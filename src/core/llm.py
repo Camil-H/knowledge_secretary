@@ -1,12 +1,4 @@
-"""OpenRouter-only LLM calls: dynamic free-model selection + rate-limit backoff.
-
-Models are the live zero-cost OpenRouter catalog (ids ending in `:free`), ranked
-by context_length — or by max_completion_tokens when resolving for the podcast,
-which needs long OUTPUT. LiteLLM reads the key from OPENROUTER_API_KEY. Free
-models share a fixed ~20 RPM account cap, so a 429 is retried with capped
-exponential backoff (switching models can't clear an account-wide limit); other
-errors fall through.
-"""
+"""OpenRouter-only LLM calls: live free-model selection + rate-limit backoff."""
 
 import logging
 import time
@@ -26,7 +18,6 @@ _HTTP_TIMEOUT_S = 20
 _RATE_LIMIT_RETRIES = 4
 _BACKOFF_START_S = 2
 _BACKOFF_CAP_S = 30
-# used when the live free list is empty
 FALLBACK_MODEL = "openrouter/deepseek/deepseek-chat-v3-0324:free"
 
 
@@ -34,11 +25,7 @@ FALLBACK_MODEL = "openrouter/deepseek/deepseek-chat-v3-0324:free"
 
 
 def _free_openrouter_models(rank: str, *, limit: int = _FREE_LIMIT) -> list[str]:
-    """Live-fetch zero-cost OpenRouter models, ranked for the use case.
-
-    Degrades to [] (a missing free list is non-fatal — call() falls back to
-    FALLBACK_MODEL), so this is logged as a warning rather than raised.
-    """
+    """Live-fetch zero-cost OpenRouter models, ranked for the use case ([] on failure)."""
     try:
         data = httpx.get(OPENROUTER_MODELS_URL, timeout=_HTTP_TIMEOUT_S).json()["data"]
     except Exception as e:
@@ -62,8 +49,7 @@ def _free_openrouter_models(rank: str, *, limit: int = _FREE_LIMIT) -> list[str]
 
 
 def resolve_models(podcast: bool | None = None) -> list[str]:
-    """Ranked zero-cost OpenRouter models. The podcast ranks by max_completion_tokens
-    (it needs long OUTPUT); everything else ranks by context length."""
+    """Ranked zero-cost models — by output tokens for the podcast, else by context."""
     return _free_openrouter_models(RANK_OUTPUT if podcast else RANK_CONTEXT)
 
 
@@ -71,12 +57,8 @@ def resolve_models(podcast: bool | None = None) -> list[str]:
 
 
 def call(system: str, user: str, *, max_tokens: int | None = None) -> str:
-    """Try each resolved model in order; return the first non-empty completion.
-
-    A 429 retries the same model with capped exponential backoff; any other error
-    falls through to the next candidate. Raises RuntimeError only if every
-    candidate fails — the caller decides whether to tolerate that and logs it.
-    """
+    """First non-empty completion across the resolved models: 429 retries the same
+    model with backoff, other errors fall through, all-fail raises RuntimeError."""
     models = resolve_models() or [FALLBACK_MODEL]
     messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
     last_err: Exception | None = None

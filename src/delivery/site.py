@@ -1,11 +1,5 @@
-"""Deliverer: `site` — persists each task's daily output as JSON history
-(committed to this repo, pruned to N days) and re-renders the last N days into
-a single static HTML page.
-
-History writes and rendering may raise (run.py tolerates per-task failure).
-`_upload_release_asset` degrades silently — a missing/failed GitHub release
-shouldn't fail the run — logging any failure once here.
-"""
+"""Deliverer `site`: append each task's daily output to JSON history (committed,
+pruned to N days) and re-render the last N days into one static HTML page."""
 
 import glob
 import json
@@ -145,8 +139,7 @@ def _task_html(task: str, payload: dict) -> str:
 
 
 def _upload_release_asset(mp3_path: str, subject: str, topic: str, repo: str) -> str | None:
-    """Create (or update) a dated GH release with mp3_path attached; return the
-    asset's public download URL, or None on failure."""
+    """Attach mp3 to a dated GH release; return its public download URL or None."""
     if not repo:
         logger.warning("⚠️ site: no episode_repo configured, skipping podcast upload")
         return None

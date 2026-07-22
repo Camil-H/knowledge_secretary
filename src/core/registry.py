@@ -1,8 +1,4 @@
-"""Tiny name->callable registries. One instance per plugin kind.
-
-Adding a new source protocol, enricher, deliverer, or task never touches the
-dispatcher: you register into one of these and the framework discovers it.
-"""
+"""Tiny name->callable registries — one instance per plugin kind."""
 
 
 class Registry:

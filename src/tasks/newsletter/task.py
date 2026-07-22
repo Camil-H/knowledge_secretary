@@ -1,9 +1,5 @@
-"""Newsletter digest task (a gather-based task; see src/tasks/runner.py).
-
-produce() renders the new items into one editor input — each item's section,
-title, url, and trimmed body — and asks the editor prompt to filter, dedupe, and
-synthesize them into a single newsletter in one pass.
-"""
+"""Newsletter digest (gather-based; see src/tasks/runner.py). One editor pass:
+each item's section/title/url/trimmed-body -> prompt.md filters and synthesizes."""
 
 from datetime import UTC, datetime
 from pathlib import Path

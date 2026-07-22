@@ -1,17 +1,5 @@
-"""Fetch driver + shared runner for the gather-based tasks (newsletter, youtube).
-
-`gather` is the single fetch driver each task reaches via `Context.gather`: it
-dispatches each source spec to its registered adapter (by `kind`), keeps only NEW
-items (dedup) published within the lookback, and runs each spec's enrichers. It
-never marks items seen — run.py marks only what a task actually consumes.
-
-`run_source_task` is the shell both gather-based tasks share: load sources,
-gather, hand the items to a task-specific `produce`, and consume them all. Dedup
-(state.is_new, inside gather) does the real "new since the last run" filtering;
-LOOKBACK_HOURS just bounds how far back gather scans the feeds (a generous margin
-so a missed daily run isn't dropped). The podcast task uses neither — it has no
-gather step (it consumes a local topic queue).
-"""
+"""Fetch driver (gather) + the load->gather->produce->consume shell shared by the
+gather-based tasks (newsletter, youtube). The podcast uses neither."""
 
 import logging
 from collections.abc import Callable
@@ -27,10 +15,7 @@ LOOKBACK_HOURS = 48  # feed-scan window; dedup filters already-seen items on top
 
 
 def gather(specs: list[dict], state: dict, since: datetime) -> list[Item]:
-    """Return NEW items (state.is_new) published >= since, enriched per spec.
-
-    A single source crashing is logged and skipped, never raised.
-    """
+    """NEW items (is_new) published >= since, enriched per spec; crashing sources skipped."""
     gathered: list[Item] = []
     for spec in specs:
         try:
@@ -50,8 +35,7 @@ def gather(specs: list[dict], state: dict, since: datetime) -> list[Item]:
 def run_source_task(
     ctx: Context, source_specs: list[dict], produce: Callable, subject: str
 ) -> Result:
-    """Gather new items for `source_specs`, render them via `produce` -> markdown,
-    and consume all gathered items."""
+    """Gather new items, render via `produce` -> markdown, consume all gathered."""
     since = datetime.now(UTC) - timedelta(hours=LOOKBACK_HOURS)
     items = ctx.gather(source_specs, since)
     ctx.log(f"{subject}: {len(items)} new item(s)")

@@ -31,7 +31,7 @@ def _state(queue=None):
 
 
 def _stub_generate(monkeypatch, result):
-    async def _gen(topic, ctx):
+    async def _gen(ctx, topic):
         return result
 
     monkeypatch.setattr(podcast_task, "_generate_episode", _gen)
@@ -60,7 +60,7 @@ def test_run_uses_the_persisted_queue(monkeypatch):
 def test_run_empty_queue_is_noop(monkeypatch):
     calls = {"n": 0}
 
-    async def _gen(topic, ctx):
+    async def _gen(ctx, topic):
         calls["n"] += 1
         return "/tmp/ep.mp3"
 

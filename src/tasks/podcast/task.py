@@ -1,11 +1,5 @@
-"""Podcast task: work through the topics in this dir's sources.yaml as a queue.
-Each run pops the next topic, asks an LLM for source URLs about it, keeps the
-reachable ones, and generates a long-form two-host episode from them via
-podcastfy (a free OpenRouter model for the transcript, free Edge TTS for audio).
-A generated topic is removed from the queue so it never repeats; an empty queue
-produces nothing. The queue is seeded from sources.yaml on the first run and
-then lives in the committed state.
-"""
+"""Podcast task: pop the next topic from the sources.yaml queue and generate a
+two-host episode via podcastfy (free OpenRouter transcript, free Edge TTS)."""
 
 import asyncio
 from pathlib import Path
@@ -47,10 +41,7 @@ CONVERSATION_CONFIG = {
 
 @tasks.register("podcast")
 def run(ctx: Context) -> Result:
-    """Pop the next topic off the queue, generate its episode, and return it as a
-    Result with the mp3 (if any) as the sole artifact. The topic is removed from
-    the queue once generated; an empty queue produces nothing.
-    """
+    """Pop the next queued topic, generate its episode, drop it from the queue on success."""
     queue = state_mod.get_kv(ctx.state, QUEUE_KEY, list(TOPICS))
     if not queue:
         ctx.log("podcast: topic queue empty — nothing to generate")
@@ -59,7 +50,7 @@ def run(ctx: Context) -> Result:
     topic = queue[0]
     ctx.log(f"podcast: topic={topic!r} ({len(queue)} left)")
     subject = f"Podcast — {topic}"
-    audio_path = asyncio.run(_generate_episode(topic, ctx))
+    audio_path = asyncio.run(_generate_episode(ctx, topic))
     if audio_path is None:
         return Result(subject=subject, markdown="", artifacts=[], meta={"topic": topic})
 
@@ -80,12 +71,8 @@ def _discover_urls(ctx: Context, topic: str) -> list[str]:
 # == Episode generation =======================================================
 
 
-async def _generate_episode(topic: str, ctx: Context) -> str | None:
-    """Discover reachable source URLs for `topic` and generate a long-form two-host
-    episode from them via podcastfy (falling back to the bare topic if none are
-    reachable). Degrades to None on any failure so a bad run never crashes the
-    pipeline.
-    """
+async def _generate_episode(ctx: Context, topic: str) -> str | None:
+    """Episode from reachable discovered URLs (or the bare topic); None on any failure."""
     urls = await validate_urls(_discover_urls(ctx, topic))
     ctx.log(f"podcast: {len(urls)} reachable source url(s) for {topic!r}")
     instructions = (Path(__file__).parent / "prompt.md").read_text()

@@ -1,9 +1,4 @@
-"""Load a task's source list / topic list from its committed `sources.yaml`.
-
-The newsletter/youtube `sources.yaml` is a list of source-spec dicts; the
-podcast's is a list of topic strings. Returns `default` if the file is missing
-or empty.
-"""
+"""Load a task's committed sources.yaml (source-spec list, or podcast topic list)."""
 
 import logging
 from pathlib import Path

@@ -1,7 +1,5 @@
-"""Importing this package registers every task bucket via @tasks.register.
+"""Importing this package registers every task bucket."""
 
-Add a new task = add a bucket dir with an __init__.py that registers itself,
-then import it here.
-"""
-
-from . import newsletter, podcast, youtube  # noqa: F401
+from . import newsletter as newsletter
+from . import podcast as podcast
+from . import youtube as youtube
