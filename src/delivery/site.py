@@ -11,77 +11,21 @@ import glob
 import json
 import logging
 import os
+import string
 import subprocess
 from datetime import UTC, datetime
+from pathlib import Path
 
 import markdown
 
-from .models import Result
-from .registry import deliverers
+from src.core.models import Result
+from src.core.registry import deliverers
 
 logger = logging.getLogger(__name__)
 
 _LABELS = {"newsletter": "Newsletter", "youtube": "YouTube", "podcast": "Podcast"}
 
-_PAGE = """<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="robots" content="noindex, nofollow">
-<title>{title}</title>
-<style>
-  :root {{ color-scheme: light; }}
-  body {{
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-    max-width: 780px;
-    margin: 0 auto;
-    padding: 2rem 1.25rem 4rem;
-    line-height: 1.55;
-    color: #1c1c1c;
-    background: #fbfbfa;
-  }}
-  h1 {{ margin-bottom: 0.2rem; }}
-  .subtitle {{ color: #555; margin-top: 0; }}
-  .updated {{ color: #888; font-size: 0.85rem; }}
-  .day {{
-    margin: 1.75rem 0;
-    padding: 1rem 1.25rem;
-    background: #fff;
-    border: 1px solid #e3e2df;
-    border-radius: 10px;
-  }}
-  .day h2 {{ margin-top: 0; }}
-  details.day summary {{
-    cursor: pointer;
-    font-weight: 600;
-    font-size: 1.1rem;
-    padding: 0.25rem 0;
-    list-style: none;
-  }}
-  details.day summary::-webkit-details-marker {{ display: none; }}
-  details.day summary::before {{ content: "▸ "; }}
-  details.day[open] summary::before {{ content: "▾ "; }}
-  article.task {{
-    margin-top: 1.25rem;
-    padding-top: 1rem;
-    border-top: 1px solid #eee;
-  }}
-  article.task:first-of-type {{ border-top: none; padding-top: 0; }}
-  article.task h3 {{ margin-bottom: 0.4rem; }}
-  audio {{ width: 100%; margin-top: 0.4rem; }}
-  .topic {{ color: #444; font-style: italic; }}
-  a {{ color: #0a5; }}
-</style>
-</head>
-<body>
-<h1>{title}</h1>
-<p class="subtitle">{subtitle}</p>
-<p class="updated">Updated {updated}</p>
-{days}
-</body>
-</html>
-"""
+_PAGE = (Path(__file__).parent / "template.html").read_text()
 
 
 # == Site =====================================================================
@@ -100,8 +44,9 @@ def site(result: Result, cfg: dict) -> None:
     entry = _load_entry(conf["history_dir"], today)
 
     if result.artifacts:
+        episode_repo = os.environ.get("GITHUB_REPOSITORY", "")
         audio_url = _upload_release_asset(
-            result.artifacts[0], result.subject, result.meta.get("topic", ""), conf["episode_repo"]
+            result.artifacts[0], result.subject, result.meta.get("topic", ""), episode_repo
         )
         payload = {
             "kind": "podcast",
@@ -161,7 +106,7 @@ def _render(conf: dict) -> None:
     entries = entries[:history_days]
 
     days_html = "\n".join(_render_day(entry, is_latest=(i == 0)) for i, entry in enumerate(entries))
-    page = _PAGE.format(
+    page = string.Template(_PAGE).substitute(
         title=conf.get("title", ""),
         subtitle=conf.get("subtitle", ""),
         updated=datetime.now(UTC).isoformat(),

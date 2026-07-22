@@ -10,7 +10,7 @@ from datetime import UTC, datetime, time, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from src.core import userdata
+from src.core import sources_loader
 from src.core.models import Context, Item, Result
 from src.core.registry import tasks
 from src.tasks.youtube import adapters as _adapters  # noqa: F401  (registers adapter/enricher)
@@ -18,7 +18,7 @@ from src.tasks.youtube import adapters as _adapters  # noqa: F401  (registers ad
 PROMPT = (Path(__file__).parent / "prompt.md").read_text()
 TRANSCRIPT_CHAR_LIMIT = 12000
 _NO_TRANSCRIPT = ["- (no transcript available)"]
-SOURCES = userdata.load(Path(__file__).parent, [])
+SOURCES = sources_loader.load(Path(__file__).parent, [])
 
 
 # == Task =====================================================================

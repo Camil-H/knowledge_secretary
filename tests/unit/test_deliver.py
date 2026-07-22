@@ -1,8 +1,8 @@
 import glob
 import os
 
-from src.core import deliver
 from src.core.models import Result
+from src.delivery import site as deliver
 
 # ----- test doubles -----
 

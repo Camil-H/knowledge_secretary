@@ -62,6 +62,9 @@ jobs:
         with:
           python-version: "3.12"
       - run: uv sync
+      # twitter-cli is invoked as a subprocess, not imported as a library, so `uv tool install`
+      # (not a project dependency) is correct; it also keeps its scraping deps out of uv.lock and
+      # isolates failures so only the optional X source degrades, not the newsletter+youtube job.
       - name: Install twitter-cli (X source for the newsletter; optional)
         run: uv tool install twitter-cli || echo "twitter-cli install failed; X will degrade to empty"
       - run: uv run python -m src.run newsletter || true

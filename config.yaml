@@ -1,7 +1,6 @@
 # ============================================================================
 # knowledge_secretary configuration — FRAMEWORK settings only.
 # Your source lists live per task in src/tasks/<task>/sources.yaml (committed).
-# Secrets are referenced as ${ENV_VAR} and injected from GitHub Actions secrets.
 # ============================================================================
 
 timezone: America/New_York
@@ -41,4 +40,3 @@ delivery:
     out_dir: "public"
     title: "Knowledge Secretary"
     subtitle: "Daily biopharma newsletter, YouTube digest, and technical podcast"
-    episode_repo: "${GITHUB_REPOSITORY}"   # this repo's Releases host the podcast mp3s

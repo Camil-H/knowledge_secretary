@@ -19,7 +19,7 @@ def load(task_dir: Path, default: list | None = None):
     """Return the parsed list from <task_dir>/sources.yaml, or `default`."""
     path = task_dir / _FILENAME
     if not path.exists():
-        logger.warning("⚠️ userdata: %s has no %s", task_dir.name, _FILENAME)
+        logger.warning("⚠️ sources_loader: %s has no %s", task_dir.name, _FILENAME)
         return default
     with open(path) as f:
         data = yaml.safe_load(f)

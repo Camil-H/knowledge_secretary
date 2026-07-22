@@ -15,14 +15,14 @@ import re
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from src.core import userdata
+from src.core import sources_loader
 from src.core.models import Context, Item, Result
 from src.core.registry import tasks
 from src.tasks.newsletter import adapters as _adapters  # noqa: F401  (registers adapters/enrichers)
 
 SYNTHESIS_PROMPT = (Path(__file__).parent / "prompt.md").read_text()
 ITEM_PROMPT = (Path(__file__).parent / "item_prompt.md").read_text()
-SOURCES = userdata.load(Path(__file__).parent, [])
+SOURCES = sources_loader.load(Path(__file__).parent, [])
 ITEM_CHAR_LIMIT = 12000  # full body passed to the per-item summarizer
 PASSTHROUGH_CHARS = 400  # shorter items (tweets, teasers) skip the per-item LLM call
 IRRELEVANT = "IRRELEVANT"  # sentinel the item summarizer returns for off-topic items

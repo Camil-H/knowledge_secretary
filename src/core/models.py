@@ -8,8 +8,6 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 
-# == Contracts ================================================================
-
 
 @dataclass
 class Item:
@@ -24,15 +22,13 @@ class Item:
     section: str  # grouping label for output, e.g. "Biology & Health"
     title: str
     url: str
-    published: datetime  # tz-aware UTC
+    published: datetime
     text: str = ""  # full text / transcript / abstract / teaser (may be empty)
     meta: dict = field(default_factory=dict)  # channel, authors, lang, ...
 
 
 @dataclass
 class Result:
-    """What a task returns to the dispatcher for delivery."""
-
     subject: str = ""
     markdown: str = ""
     artifacts: list[str] = field(default_factory=list)  # file paths, e.g. podcast mp3
@@ -61,4 +57,4 @@ class Context:
     # call(tier: str, system: str, user: str, *, max_tokens: int | None = None) -> str
     #   tier in {"summarize", "podcast"}. Tiered LLM call with free-model fallback.
     call: Callable
-    log: Callable  # log(msg: str) -> None
+    log: Callable

@@ -5,13 +5,13 @@ backend and the best free OpenRouter model for the transcript.
 
 from pathlib import Path
 
-from src.core import llm, userdata
+from src.core import llm, sources_loader
 from src.core import state as state_mod
 from src.core.models import Context, Result
 from src.core.registry import tasks
 
 STATE_KEY = "podcast_idx"
-TOPICS = userdata.load(Path(__file__).parent, [])
+TOPICS = sources_loader.load(Path(__file__).parent, [])
 _OPENROUTER_KEY_LABEL = "OPENROUTER_API_KEY"
 # used only if the live free-model list is empty; harmless if stale (podcastfy just fails softly)
 _PODCAST_FALLBACK_MODEL = "openrouter/deepseek/deepseek-chat-v3-0324:free"

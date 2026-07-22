@@ -11,12 +11,12 @@ import sys
 
 import src.tasks  # noqa: F401  (registers task buckets)
 from src.core import config as config_mod
-from src.core import deliver as _deliver  # noqa: F401  (registers deliverers)
 from src.core import gather as gather_mod
 from src.core import llm
 from src.core import state as state_mod
 from src.core.models import Context
 from src.core.registry import deliverers, tasks
+from src.delivery import site as _site  # noqa: F401  (registers the site deliverer)
 
 logger = logging.getLogger("knowledge_secretary")
 

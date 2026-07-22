@@ -85,7 +85,7 @@ no Python constants, no example file, no gitignore, no fallback:
 - **podcast**: the YAML root is a top-level list of topic strings (replaces the
   old root `topics.yaml`).
 
-`src/core/userdata.py` is the loader tasks use to read these: it reads the task
+`src/core/sources_loader.py` is the loader tasks use to read these: it reads the task
 dir's committed `sources.yaml` via `yaml.safe_load` and returns the parsed
 list. Tasks load their list at import time; the podcast task uses its topic
 list to drive the rotation. `config.yaml` no longer holds source lists or a
@@ -101,7 +101,7 @@ def gather(specs: list[dict], state: dict, since: datetime) -> list[Item]:
     # Does NOT mark — the caller marks only what it consumes (Result.consumed).
 ```
 
-### Deliverers (in `src/core/deliver.py`)
+### Deliverers (in `src/delivery/site.py`)
 ```python
 @deliverers.register("site")
 def site(result: Result, cfg: dict) -> None:
