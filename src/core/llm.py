@@ -25,6 +25,8 @@ _HTTP_TIMEOUT_S = 20
 _RATE_LIMIT_RETRIES = 4
 _BACKOFF_START_S = 2
 _BACKOFF_CAP_S = 30
+# used when the live free list is empty
+FALLBACK_MODEL = "openrouter/deepseek/deepseek-chat-v3-0324:free"
 
 
 # == Model resolution =========================================================
