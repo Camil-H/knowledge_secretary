@@ -10,7 +10,7 @@ Runs entirely on free tiers: free LLMs (LiteLLM with a live OpenRouter-free fall
 
 ## How it works
 
-- `src/core/` — shared spine: data contracts (`Item`/`Result`/`Context`), registries, dedup state, the tiered LLM client, source adapters + enrichers (`gather`), the `sources.yaml` loader (`src/core/userdata.py`), and deliverers.
+- `src/core/` — shared spine: data contracts (`Item`/`Result`/`Context`), the plugin registries, dedup state (`state.py`), the `sources.yaml` loader (`sources_loader.py`), the OpenRouter LLM client (`llm.py`), and the `gather` driver. `src/fetchers/` holds the deterministic by-source-type clients (rss, url, youtube, x, pubmed, biorxiv); `src/delivery/` renders and publishes the page. Flow: **fetchers → task adapters → gather → task produce → delivery**.
 - `src/tasks/<name>/` — one self-contained bucket per task (`__init__.py`, `prompt.md`, `adapters.py` for the framework's source/enricher code, `sources.yaml` for the committed source data). Adding a task is a new bucket; nothing else changes.
 - Per-task source data (feeds, queries, handles, topics) lives in `src/tasks/<task>/sources.yaml`, committed directly to the repo (it's a public template and the source lists are non-sensitive). For newsletter and YouTube the file is a list of source-spec dicts (kinds: `feed`, `pubmed`, `biorxiv`, `twitter`, `yt_channel`; enrichers: `article_text`, `transcript`); for the podcast it's a top-level list of topic strings for its rotation. Adding a blog, channel, or topic is one line in that file.
 - Dedup state lives in `state/seen.json`, committed back each run. Items are marked seen **only after successful delivery**, so a failed send never drops content.

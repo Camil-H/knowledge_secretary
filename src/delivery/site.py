@@ -1,6 +1,6 @@
 """Deliverer: `site` — persists each task's daily output as JSON history
 (committed to this repo, pruned to N days) and re-renders the last N days into
-a single static HTML page. See CONTRACTS.md for signatures.
+a single static HTML page.
 
 History writes and rendering may raise (run.py tolerates per-task failure).
 `_upload_release_asset` degrades silently — a missing/failed GitHub release

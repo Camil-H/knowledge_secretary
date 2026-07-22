@@ -1,7 +1,7 @@
 """Frozen data contracts shared by every source, task, and deliverer.
 
-DO NOT change field names/semantics without updating CONTRACTS.md — the source,
-task, and deliverer modules code directly against these.
+The source, task, and deliverer modules code directly against these — change
+field names/semantics carefully.
 """
 
 from collections.abc import Callable

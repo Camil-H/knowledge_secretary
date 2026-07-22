@@ -1,7 +1,7 @@
 """YouTube source adapter + enricher — thin mappers over src/fetchers.youtube.
 
 Kind: `yt_channel`. Enricher: `transcript`. Channel-id resolution is cached in
-state here (the fetcher stays stateless). See CONTRACTS.md.
+state here (the fetcher stays stateless).
 """
 
 from datetime import datetime

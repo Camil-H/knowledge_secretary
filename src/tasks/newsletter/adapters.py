@@ -2,7 +2,7 @@
 
 Kinds: `feed` (RSS), `pubmed`, `biorxiv`, `twitter`. Enricher: `article_text`.
 Adapters just map a fetcher's raw output to Items; the fetchers own the I/O and
-graceful degradation. See CONTRACTS.md.
+graceful degradation.
 """
 
 from datetime import UTC, datetime
