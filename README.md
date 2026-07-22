@@ -6,7 +6,7 @@ A $0, fully-automated daily digest. Once a day, via GitHub Actions, it:
 2. **YouTube** — summarizes new uploads from configured channels within a daily time window.
 3. **Podcast** — generates a long, technical two-host podcast on the next topic from a queue (each topic used once), published to the static site with the audio embedded as a player.
 
-Runs on free tiers where it can: the newsletter and YouTube digests use free LLMs (LiteLLM over OpenRouter's `:free` models), free data sources, and GitHub Actions on a public repo (unlimited minutes). The podcast is the exception — podcastfy has no OpenRouter path, so its transcript and multi-speaker audio run on Google's Gemini (`geminimulti` TTS); that leans on the Gemini/Cloud TTS free tier, which a daily long-form episode may exceed.
+Runs entirely on free tiers: every LLM call — newsletter, YouTube, and the podcast transcript (podcastfy routes through LiteLLM) — uses OpenRouter's `:free` models; the podcast audio is free Microsoft Edge TTS; plus free data sources and GitHub Actions on a public repo (unlimited minutes).
 
 ## How it works
 
@@ -32,8 +32,7 @@ There's no central config file — framework knobs live as constants next to the
 
 | Secret | Purpose |
 | --- | --- |
-| `OPENROUTER_API_KEY` | newsletter, YouTube, and podcast source-discovery LLM calls (free `:free` models). A one-time $10 OpenRouter top-up raises the free cap to 1,000 req/day (20 RPM). |
-| `GEMINI_API_KEY` | podcast only — podcastfy runs the transcript on Gemini and the audio on `geminimulti` multi-speaker TTS. Relies on the Gemini/Cloud TTS free tier (verify a daily long episode stays within it). |
+| `OPENROUTER_API_KEY` | all LLM calls — newsletter, YouTube, podcast source-discovery, and the podcast transcript (via podcastfy/LiteLLM) — using free `:free` models. A one-time $10 OpenRouter top-up raises the free cap to 1,000 req/day (20 RPM). |
 | `PAGES_DEPLOY_TOKEN` | PAT with write access to the Pages repo (`Camil-H/camil-h.github.io`) so the workflow can publish the site cross-repo |
 | `TWITTER_AUTH_TOKEN`, `TWITTER_CT0` | X/Twitter session tokens for the `twitter-cli` X source (optional; degrades to nothing if absent) |
 
@@ -45,7 +44,7 @@ This repo is a template — the committed source lists are one example (Camil's 
 
 ## Stack
 
-Python 3.12 · uv · LiteLLM · feedparser · trafilatura · youtube-transcript-api · podcastfy (Gemini `geminimulti` TTS) · ruff · ty · pytest.
+Python 3.12 · uv · LiteLLM · feedparser · trafilatura · youtube-transcript-api · podcastfy + edge-tts · ruff · ty · pytest.
 
 ## Contributing
 

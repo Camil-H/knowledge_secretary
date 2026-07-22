@@ -1,7 +1,7 @@
 """Podcast task: work through the topics in this dir's sources.yaml as a queue.
 Each run pops the next topic, asks an LLM for source URLs about it, keeps the
 reachable ones, and generates a long-form two-host episode from them via
-podcastfy (Gemini transcript + geminimulti multi-speaker TTS). A generated topic
+podcastfy (a free OpenRouter model for the transcript, free Edge TTS for audio). A generated topic
 is removed from the queue so it never repeats; an empty queue produces nothing.
 The queue is seeded from sources.yaml on the first run and then lives in the
 committed state.
@@ -12,7 +12,7 @@ from pathlib import Path
 
 import httpx
 
-from src.core import sources_loader
+from src.core import llm, sources_loader
 from src.core import state as state_mod
 from src.core.models import Context, Result
 from src.core.registry import tasks
@@ -21,9 +21,7 @@ QUEUE_KEY = "podcast_queue"  # kv list of topics still to do; seeded from TOPICS
 TOPICS = sources_loader.load(Path(__file__).parent, [])
 MAX_SOURCE_URLS = 5
 _URL_CHECK_TIMEOUT_S = 10
-_TTS_MODEL = "geminimulti"  # Google multi-speaker TTS (en-US-Studio-MultiSpeaker)
-_LLM_MODEL = "gemini-3.0-flash"  # transcript LLM
-_GEMINI_KEY_LABEL = "GEMINI_API_KEY"  # env var name podcastfy reads the key from
+_OPENROUTER_KEY_LABEL = "OPENROUTER_API_KEY"  # transcript LLM: podcastfy -> LiteLLM -> OpenRouter
 DISCOVER_PROMPT = (Path(__file__).parent / "discover.md").read_text()
 CONVERSATION_CONFIG = {
     "conversation_style": ["technical", "analytical", "engaging"],
@@ -41,6 +39,8 @@ CONVERSATION_CONFIG = {
     "output_language": "English",
     "engagement_techniques": ["analogies", "worked examples", "rhetorical questions"],
     "creativity": 0.3,
+    # free Edge TTS (no key); podcastfy's own default is the paid openai voice
+    "text_to_speech": {"default_tts_model": "edge"},
 }
 
 
@@ -104,6 +104,7 @@ async def _generate_episode(topic: str, ctx: Context) -> str | None:
     urls = await _validate_urls(_discover_urls(ctx, topic))
     ctx.log(f"podcast: {len(urls)} reachable source url(s) for {topic!r}")
     instructions = (Path(__file__).parent / "prompt.md").read_text()
+    model = (llm.resolve_models(podcast=True) or [llm.FALLBACK_MODEL])[0]
     try:
         from podcastfy.client import generate_podcast
 
@@ -111,9 +112,8 @@ async def _generate_episode(topic: str, ctx: Context) -> str | None:
             urls=urls or None,
             text=None if urls else topic,
             conversation_config={**CONVERSATION_CONFIG, "user_instructions": instructions},
-            tts_model=_TTS_MODEL,
-            llm_model_name=_LLM_MODEL,
-            api_key_label=_GEMINI_KEY_LABEL,
+            llm_model_name=model,
+            api_key_label=_OPENROUTER_KEY_LABEL,
             longform=True,
         )
     except Exception as exc:
