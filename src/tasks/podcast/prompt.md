@@ -5,7 +5,7 @@ This text is passed to podcastfy as the conversation guidance.
 # Format
 - Two hosts: HOST1 (curious, drives the narrative with sharp questions) and HOST2 (the expert, explains with depth and precision).
 - Conversational but substantive — this is a technical deep-dive, not a fluff chat.
-- Target a long-form episode: thorough coverage, multiple angles, worked examples where useful.
+- Target a long-form episode - 45 min worth of content: thorough coverage, multiple angles, worked examples where useful.
 
 # Content rules
 - Go deep and technical. Assume an audience that wants mechanism, tradeoffs, and specifics, not a surface overview.
