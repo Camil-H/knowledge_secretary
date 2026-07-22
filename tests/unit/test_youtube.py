@@ -1,13 +1,10 @@
-from datetime import UTC, datetime, time, timedelta
-from zoneinfo import ZoneInfo
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
 from src.core.models import Context, Item
 from src.tasks import youtube as youtube_task
-from src.tasks.youtube import _window_utc, run
-
-TZ = ZoneInfo("America/New_York")
+from src.tasks.youtube import run
 
 _TEST_SPEC = {
     "key": "yt_x",
@@ -20,89 +17,50 @@ _TEST_SPEC = {
 
 @pytest.fixture(autouse=True)
 def _patch_sources(monkeypatch):
-    # run() reads the module-level SOURCES for section ordering + the audit
+    # produce() reads the module-level SOURCES for section ordering
     monkeypatch.setattr(youtube_task, "SOURCES", [_TEST_SPEC])
 
 
-# ----- window math (DST-safe) -----
-
-
-def test_window_summer_edt():
-    now_et = datetime(2026, 7, 15, 15, 0, tzinfo=TZ)  # EDT = UTC-4
-    start, end = _window_utc(now_et, {"start": "08:00", "end": "07:59"}, TZ)
-    assert start == datetime(2026, 7, 14, 12, 0, tzinfo=UTC)  # 08:00 EDT
-    assert end == datetime(2026, 7, 15, 11, 59, 59, tzinfo=UTC)  # 07:59 EDT
-
-
-def test_window_winter_est():
-    now_et = datetime(2026, 1, 15, 15, 0, tzinfo=TZ)  # EST = UTC-5
-    start, end = _window_utc(now_et, {"start": "08:00", "end": "07:59"}, TZ)
-    assert start == datetime(2026, 1, 14, 13, 0, tzinfo=UTC)  # 08:00 EST
-    assert end == datetime(2026, 1, 15, 12, 59, 59, tzinfo=UTC)  # 07:59 EST
-
-
-# ----- task: window filtering + consumed (the burn-fix) -----
-
-
-def _cfg():
-    return {
-        "timezone": "America/New_York",
-        "tasks": {"youtube": {"window_et": {"start": "08:00", "end": "07:59"}}},
-    }
-
-
-def _et_to_utc(d, hh):
-    return datetime.combine(d, time(hh, 0), tzinfo=TZ).astimezone(UTC)
-
-
-def test_run_keeps_only_in_window_and_reports_consumed():
-    today = datetime.now(TZ).date()
-    in_item = Item(
-        id="yt:IN",
+def _video(vid, *, text="transcript body"):
+    return Item(
+        id=vid,
         source="yt_x",
         section="Pure Science",
-        title="In Video",
-        url="http://y/IN",
-        published=_et_to_utc(today - timedelta(days=1), 12),
-        text="transcript body",
-        meta={"channel": "ChanX"},
-    )
-    # published today 23:00 ET is always after the 07:59 window end -> excluded, not burned
-    out_item = Item(
-        id="yt:OUT",
-        source="yt_x",
-        section="Pure Science",
-        title="Out Video",
-        url="http://y/OUT",
-        published=_et_to_utc(today, 23),
-        text="later",
+        title=f"Vid {vid}",
+        url=f"http://y/{vid}",
+        published=datetime.now(UTC) - timedelta(hours=1),
+        text=text,
         meta={"channel": "ChanX"},
     )
 
-    ctx = Context(
-        cfg=_cfg(),
+
+def _ctx(items, call):
+    return Context(
+        cfg={},
         state={"ids": {}, "kv": {}},
-        gather=lambda specs, since: [in_item, out_item],
-        call=lambda tier, system, user, max_tokens=None: "- b1\n- b2\n- b3",
+        gather=lambda specs, since: items,
+        call=call,
         log=lambda m: None,
     )
-    result = run(ctx)
 
-    assert result.consumed == ["yt:IN"]  # OUT stays unmarked -> resurfaces next run
-    assert "In Video" in result.markdown
-    assert "Out Video" not in result.markdown
+
+def test_run_summarizes_new_videos_and_consumes_all():
+    videos = [_video("yt:A"), _video("yt:B")]
+    result = run(_ctx(videos, lambda tier, system, user, max_tokens=None: "- b1\n- b2\n- b3"))
+
+    assert set(result.consumed) == {"yt:A", "yt:B"}  # dedup already scoped "new"; consume all
     assert "- Pure Science" in result.markdown
+    assert "Vid yt:A" in result.markdown and "Vid yt:B" in result.markdown
     assert "- b1" in result.markdown
 
 
-def test_run_empty_window_yields_blank_markdown():
-    ctx = Context(
-        cfg=_cfg(),
-        state={"ids": {}, "kv": {}},
-        gather=lambda specs, since: [],
-        call=lambda *a, **k: "x",
-        log=lambda m: None,
-    )
-    result = run(ctx)
+def test_run_video_without_transcript_gets_note():
+    result = run(_ctx([_video("yt:C", text="")], lambda *a, **k: "unused"))
+    assert "(no transcript available)" in result.markdown
+    assert result.consumed == ["yt:C"]
+
+
+def test_run_no_new_videos_blank_markdown():
+    result = run(_ctx([], lambda *a, **k: "x"))
     assert result.markdown == ""
     assert result.consumed == []

@@ -89,8 +89,12 @@ no Python constants, no example file, no gitignore, no fallback:
 dir's committed `sources.yaml` via `yaml.safe_load` and returns the parsed
 list. Tasks load their list at import time; the podcast task uses its topic
 list to drive the rotation. `config.yaml` no longer holds source lists or a
-`topics_file` — it keeps only framework settings (timezone, window_hours,
-models, per-task `deliver` + YouTube's `window_et`, `delivery.site`).
+`topics_file` — it keeps only framework settings (LLM `models`, per-task `deliver`, `delivery.site`).
+
+Gather-based tasks (newsletter, youtube) share `src/tasks/runner.py`'s
+`run_source_task(ctx, sources, produce, subject)`, which gathers new items
+(LOOKBACK_HOURS lookback + dedup) and consumes all of them; the podcast task has
+no gather step and doesn't use it.
 
 ### gather (in `src/core/gather.py`) — the one driver tasks call via Context.gather
 ```python

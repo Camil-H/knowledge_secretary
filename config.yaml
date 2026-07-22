@@ -3,9 +3,6 @@
 # Your source lists live per task in src/tasks/<task>/sources.yaml (committed).
 # ============================================================================
 
-timezone: America/New_York
-window_hours: 24          # newsletter lookback; youtube uses its own ET clock window
-
 # --- LLM tiers (see src/core/llm.py) ---------------------------------------
 models:
   # OpenRouter-only: live zero-cost models ($0 tokens), ranked and tried in order
@@ -24,7 +21,6 @@ tasks:
     deliver: [site]
   youtube:
     deliver: [site]
-    window_et: { start: "08:00", end: "07:59" }   # yesterday 08:00 ET -> today 07:59 ET, inclusive
   podcast:
     deliver: [site]
 

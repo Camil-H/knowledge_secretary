@@ -31,16 +31,7 @@ class _Recorder:
 
 
 def _cfg():
-    return {
-        "window_hours": 24,
-        "tasks": {
-            "newsletter": {
-                "sources": [
-                    {"key": "pipeline", "kind": "feed", "section": "Blogs", "url": "http://b"},
-                ]
-            }
-        },
-    }
+    return {}  # newsletter.run() reads no cfg — sources come from the module, lookback from runner
 
 
 def _item(item_id, text, section="Blogs"):
