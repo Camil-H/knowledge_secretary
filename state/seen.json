@@ -135,5 +135,14 @@
     "yt:BMZbbewOLvU": "2026-07-23",
     "yt:lqOsxjV0UEI": "2026-07-23"
   },
-  "kv": {}
+  "kv": {
+    "podcast_queue": [
+      "Covalent inhibitors: reversible vs irreversible warheads, selectivity, and the KRAS G12C story",
+      "mRNA therapeutics beyond vaccines: LNP delivery, self-amplifying RNA, and manufacturing constraints",
+      "AlphaFold and structure-based drug design: what it changed and what it didn't",
+      "Antibody-drug conjugates: linker chemistry, payload classes, and the therapeutic index problem",
+      "GLP-1 agonists: pharmacology, the incretin axis, and the next-generation multi-agonists",
+      "Allosteric modulation vs orthosteric binding in GPCR drug discovery"
+    ]
+  }
 }
