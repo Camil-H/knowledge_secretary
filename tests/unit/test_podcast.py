@@ -21,6 +21,7 @@ from src.tasks.podcast.task import (
 )
 
 _TOPICS = ["PROTACs", "ADCs", "mRNA"]
+_SOURCE_TEXT = "extracted article body"
 
 
 @pytest.fixture(autouse=True)
@@ -113,8 +114,11 @@ def _discovery_ctx():
     return _ctx(_state(), call=lambda system, user, max_tokens=None: "https://source.example.com")
 
 
-def _stub_episode_collaborators(monkeypatch, *, validated_urls, models, generate_podcast):
-    """Stub _generate_episode's three collaborators: validate_urls (reachability),
+def _stub_episode_collaborators(
+    monkeypatch, *, validated_urls, models, generate_podcast, article_text=None
+):
+    """Stub _generate_episode's collaborators: validate_urls (reachability),
+    article_text (per-URL source extraction, defaulting to canned text),
     llm.resolve_models (model choice), and podcastfy.client.generate_podcast
     (via sys.modules, since it's imported locally inside the function)."""
 
@@ -122,6 +126,7 @@ def _stub_episode_collaborators(monkeypatch, *, validated_urls, models, generate
         return validated_urls
 
     monkeypatch.setattr(podcast_task, "validate_urls", _validate)
+    monkeypatch.setattr(podcast_task, "article_text", article_text or (lambda url: _SOURCE_TEXT))
     monkeypatch.setattr(podcast_task.llm, "resolve_models", lambda podcast=None: models)
 
     import podcastfy.client
@@ -144,15 +149,16 @@ def test_generate_episode_returns_none_when_generate_podcast_raises(monkeypatch)
 
 
 @pytest.mark.parametrize(
-    "validated_urls, expected_urls, expected_text",
+    "validated_urls, article_text, expected_urls, expected_text",
     [
-        ([], None, "PROTACs"),
-        (["https://source.example.com"], ["https://source.example.com"], None),
+        ([], None, None, "PROTACs"),
+        (["https://source.example.com"], lambda url: _SOURCE_TEXT, None, _SOURCE_TEXT),
+        (["https://source.example.com"], lambda url: None, ["https://source.example.com"], None),
     ],
-    ids=["no_reachable_urls", "reachable_urls"],
+    ids=["no_reachable_urls", "extracted_text_reused", "no_text_falls_back_to_urls"],
 )
-def test_generate_episode_passes_urls_or_topic_text_based_on_reachability(
-    monkeypatch, validated_urls, expected_urls, expected_text
+def test_generate_episode_prefers_extracted_text_then_urls_then_topic(
+    monkeypatch, validated_urls, article_text, expected_urls, expected_text
 ):
     captured = {}
 
@@ -165,12 +171,42 @@ def test_generate_episode_passes_urls_or_topic_text_based_on_reachability(
         validated_urls=validated_urls,
         models=["openrouter/some-model"],
         generate_podcast=_capture,
+        article_text=article_text,
     )
     result = asyncio.run(_generate_episode(_discovery_ctx(), "PROTACs"))
     assert result == "/tmp/ep.mp3"
     assert captured["urls"] == expected_urls
     assert captured["text"] == expected_text
     assert captured["tts_model"] == podcast_task._TTS_MODEL == "gemini"
+
+
+def test_generate_episode_extracts_sources_once_across_model_retries(monkeypatch):
+    urls = ["https://source.example.com"]
+    extract_calls = []
+
+    def _article_text(url):
+        extract_calls.append(url)
+        return _SOURCE_TEXT
+
+    attempts = []
+
+    def _capture(**kwargs):
+        attempts.append(kwargs["text"])
+        if len(attempts) == 1:
+            raise RuntimeError("upstream rate limit")
+        return "/tmp/ep.mp3"
+
+    _stub_episode_collaborators(
+        monkeypatch,
+        validated_urls=urls,
+        models=["openrouter/first", "openrouter/second"],
+        generate_podcast=_capture,
+        article_text=_article_text,
+    )
+    result = asyncio.run(_generate_episode(_discovery_ctx(), "PROTACs"))
+    assert result == "/tmp/ep.mp3"
+    assert len(extract_calls) == len(urls)  # fetched once, not once per model attempt
+    assert attempts == [_SOURCE_TEXT, _SOURCE_TEXT]  # same extracted text reused on retry
 
 
 def test_generate_episode_cascades_to_next_model_when_one_fails(monkeypatch):

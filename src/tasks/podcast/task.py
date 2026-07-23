@@ -8,12 +8,14 @@ from src.core import llm, sources_loader
 from src.core import state as state_mod
 from src.core.models import Context, Result
 from src.core.registry import tasks
+from src.fetchers.url import article_text
 from src.tasks.podcast.utils import validate_urls
 
 QUEUE_KEY = "podcast_queue"  # kv list of topics still to do; seeded from TOPICS
 TOPICS = sources_loader.load(Path(__file__).parent, [])
 MAX_SOURCE_URLS = 10
-_MAX_MODEL_ATTEMPTS = 4  # cap the transcript-LLM fallback cascade (each attempt re-fetches sources)
+_MAX_MODEL_ATTEMPTS = 4  # cap the transcript-LLM fallback cascade
+_SOURCE_SEPARATOR = "\n\n"  # joins extracted article bodies into one text blob for podcastfy
 _OPENROUTER_KEY_LABEL = "OPENROUTER_API_KEY"  # transcript LLM: podcastfy -> LiteLLM -> OpenRouter
 # Google Cloud TTS, keyed by GEMINI_API_KEY (a GCP Cloud-TTS key, not AI Studio). Passed as an
 # explicit arg because podcastfy ignores a nested text_to_speech override, else defaults to openai.
@@ -83,6 +85,14 @@ async def _generate_episode(ctx: Context, topic: str) -> str | None:
         ctx.logger.info(f"podcast: {len(urls)} reachable source url(s) for {topic!r}")
     else:
         ctx.logger.warning("⚠️ podcast: no reachable source URLs for %r; using topic text", topic)
+    # Extract source text once so a model retry re-runs only the transcript LLM call, not
+    # podcastfy's per-attempt headless-browser crawl of every URL.
+    source_text = await _extract_sources(urls) if urls else ""
+    if urls and not source_text:
+        ctx.logger.warning("⚠️ podcast: no text extracted from source URLs; podcastfy will re-crawl")
+    pf_urls = None if source_text else (urls or None)
+    pf_text = source_text or (None if urls else topic)
+
     instructions = (Path(__file__).parent / "prompt.md").read_text()
     from podcastfy.client import generate_podcast
 
@@ -91,8 +101,8 @@ async def _generate_episode(ctx: Context, topic: str) -> str | None:
     for model in models[:_MAX_MODEL_ATTEMPTS]:
         try:
             return generate_podcast(
-                urls=urls or None,
-                text=None if urls else topic,
+                urls=pf_urls,
+                text=pf_text,
                 conversation_config={**CONVERSATION_CONFIG, "user_instructions": instructions},
                 llm_model_name=model,
                 api_key_label=_OPENROUTER_KEY_LABEL,
@@ -104,3 +114,9 @@ async def _generate_episode(ctx: Context, topic: str) -> str | None:
             ctx.logger.warning("⚠️ podcast: model=%s failed: %s", model, exc)
     ctx.logger.warning("⚠️ podcast: all models failed for %r: %s", topic, last_err)
     return None
+
+
+async def _extract_sources(urls: list[str]) -> str:
+    """Extract and join article bodies from the reachable URLs; '' if none yield text."""
+    texts = await asyncio.gather(*(asyncio.to_thread(article_text, url) for url in urls))
+    return _SOURCE_SEPARATOR.join(text for text in texts if text)
