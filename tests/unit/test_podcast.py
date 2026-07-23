@@ -170,8 +170,8 @@ def test_generate_episode_passes_urls_or_topic_text_based_on_reachability(
     assert result == "/tmp/ep.mp3"
     assert captured["urls"] == expected_urls
     assert captured["text"] == expected_text
-    # must select free Edge TTS explicitly; podcastfy otherwise defaults to the paid openai voice
-    assert captured["tts_model"] == podcast_task._TTS_MODEL == "edge"
+    # must select the TTS backend explicitly; podcastfy otherwise defaults to the paid openai voice
+    assert captured["tts_model"] == podcast_task._TTS_MODEL == "gemini"
 
 
 def test_generate_episode_falls_back_to_fallback_model_when_resolve_models_empty(monkeypatch):

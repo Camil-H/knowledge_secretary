@@ -1,5 +1,5 @@
 """Podcast task: pop the next topic from the sources.yaml queue and generate a
-two-host episode via podcastfy (free OpenRouter transcript, free Edge TTS)."""
+two-host episode via podcastfy (OpenRouter transcript LLM, Gemini/Google-Cloud TTS)."""
 
 import asyncio
 from pathlib import Path
@@ -14,10 +14,12 @@ QUEUE_KEY = "podcast_queue"  # kv list of topics still to do; seeded from TOPICS
 TOPICS = sources_loader.load(Path(__file__).parent, [])
 MAX_SOURCE_URLS = 10
 _OPENROUTER_KEY_LABEL = "OPENROUTER_API_KEY"  # transcript LLM: podcastfy -> LiteLLM -> OpenRouter
-# free Edge TTS (no API key). podcastfy's default is the paid openai voice, and it only reads
-# the override from a TOP-LEVEL conversation_config key or this explicit arg — never from a
-# nested text_to_speech.default_tts_model — so it must be passed to generate_podcast() directly.
-_TTS_MODEL = "edge"
+# TTS backend, passed to generate_podcast() directly: podcastfy only honors the engine choice
+# from a TOP-LEVEL conversation_config key or this explicit arg, never a nested
+# text_to_speech.default_tts_model. "gemini" is Google Cloud Text-to-Speech (Journey voices),
+# keyed by GEMINI_API_KEY in the env — which must be a GCP key with the Cloud TTS API enabled,
+# not a Google AI Studio key. podcastfy reads that env var itself via its own config loader.
+_TTS_MODEL = "gemini"
 DISCOVER_PROMPT = (Path(__file__).parent / "source_discovery_prompt.md").read_text()
 CONVERSATION_CONFIG = {
     "conversation_style": ["technical", "analytical", "engaging"],
