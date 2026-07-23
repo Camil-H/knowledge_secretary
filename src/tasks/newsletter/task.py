@@ -1,7 +1,9 @@
-"""Newsletter digest (gather-based; see src/tasks/runner.py). One editor pass:
-each item's section/title/url/trimmed-body -> prompt.md filters and synthesizes."""
+"""Newsletter digest (gather-based; see src/tasks/runner.py). One editor pass when the
+day's items fit the prompt budget; a map-reduce over batches when they don't — every
+source is always represented, just trimmed harder on busy days."""
 
 from datetime import UTC, datetime
+from itertools import batched
 from pathlib import Path
 
 from src.core import sources_loader
@@ -11,8 +13,16 @@ from src.tasks.newsletter.utils import clean
 from src.tasks.runner import run_source_task
 
 EDITOR_PROMPT = (Path(__file__).parent / "prompt.md").read_text()
+SYNTHESIS_PROMPT = (Path(__file__).parent / "synthesis_prompt.md").read_text()
 SOURCES = sources_loader.load(Path(__file__).parent, [])
 ITEM_CHAR_LIMIT = 20000
+# Conservative whole-prompt char budget. call() cascades to progressively smaller free
+# models, so this is sized for the smallest context we could land on — roughly a 32k-token
+# model at ~4 chars/token, minus headroom for the system prompt and the completion. Not
+# per-selected-model: we can't know which rung of the cascade will answer.
+TOTAL_CHAR_BUDGET = 120000
+# Smallest body kept per source, so every item stays substantive even on the busiest days.
+ITEM_CHAR_FLOOR = 1000
 
 
 # == Task =====================================================================
@@ -28,12 +38,39 @@ def run(ctx: Context) -> Result:
 
 
 def _produce(ctx: Context, items: list[Item]) -> str:
-    """Render all items into one editor input and synthesize the newsletter."""
-    return ctx.call(system=EDITOR_PROMPT, user=_editor_input(items))
+    """Synthesize the newsletter, always including every source.
+
+    Each item gets an equal share of the prompt budget, trimmed harder as volume grows.
+    When even the per-item floor won't fit one prompt, fall back to map-reduce so nothing
+    is dropped."""
+    if ITEM_CHAR_FLOOR * len(items) > TOTAL_CHAR_BUDGET:
+        return _map_reduce(ctx, items)
+    per_item = _per_item_budget(len(items))
+    return ctx.call(system=EDITOR_PROMPT, user=_editor_input(items, per_item))
 
 
-def _editor_input(items: list[Item]) -> str:
-    """One block per item (title, url, trimmed body), grouped by section."""
+def _map_reduce(ctx: Context, items: list[Item]) -> str:
+    """Summarize items in budget-sized batches, then synthesize one newsletter from the
+    batch fragments — every source survives, at the cost of extra LLM calls."""
+    batch_size = TOTAL_CHAR_BUDGET // ITEM_CHAR_FLOOR
+    fragments = [
+        ctx.call(system=EDITOR_PROMPT, user=_editor_input(list(batch), ITEM_CHAR_FLOOR))
+        for batch in batched(items, batch_size)
+    ]
+    return ctx.call(system=SYNTHESIS_PROMPT, user="\n\n".join(fragments))
+
+
+# == Helper Functions =========================================================
+
+
+def _per_item_budget(n_items: int) -> int:
+    """Per-item body budget: an equal share of TOTAL_CHAR_BUDGET, clamped to
+    [ITEM_CHAR_FLOOR, ITEM_CHAR_LIMIT]."""
+    return max(ITEM_CHAR_FLOOR, min(TOTAL_CHAR_BUDGET // n_items, ITEM_CHAR_LIMIT))
+
+
+def _editor_input(items: list[Item], per_item: int) -> str:
+    """One block per item (title, url, body trimmed to `per_item`), grouped by section."""
     grouped: dict[str, list[Item]] = {}
     for item in items:
         grouped.setdefault(item.section, []).append(item)
@@ -42,6 +79,6 @@ def _editor_input(items: list[Item]) -> str:
     for section, entries in grouped.items():
         blocks.append(f"## {section}")
         for item in entries:
-            body = clean(item.text)[:ITEM_CHAR_LIMIT] or "(no content available)"
+            body = clean(item.text)[:per_item] or "(no content available)"
             blocks.append(f"### {item.title}\n{item.url}\n{body}")
     return "\n\n".join(blocks)
