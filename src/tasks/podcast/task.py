@@ -14,11 +14,8 @@ QUEUE_KEY = "podcast_queue"  # kv list of topics still to do; seeded from TOPICS
 TOPICS = sources_loader.load(Path(__file__).parent, [])
 MAX_SOURCE_URLS = 10
 _OPENROUTER_KEY_LABEL = "OPENROUTER_API_KEY"  # transcript LLM: podcastfy -> LiteLLM -> OpenRouter
-# TTS backend, passed to generate_podcast() directly: podcastfy only honors the engine choice
-# from a TOP-LEVEL conversation_config key or this explicit arg, never a nested
-# text_to_speech.default_tts_model. "gemini" is Google Cloud Text-to-Speech (Journey voices),
-# keyed by GEMINI_API_KEY in the env — which must be a GCP key with the Cloud TTS API enabled,
-# not a Google AI Studio key. podcastfy reads that env var itself via its own config loader.
+# Google Cloud TTS, keyed by GEMINI_API_KEY (a GCP Cloud-TTS key, not AI Studio). Passed as an
+# explicit arg because podcastfy ignores a nested text_to_speech override, else defaults to openai.
 _TTS_MODEL = "gemini"
 DISCOVER_PROMPT = (Path(__file__).parent / "source_discovery_prompt.md").read_text()
 CONVERSATION_CONFIG = {
