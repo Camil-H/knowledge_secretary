@@ -11,8 +11,9 @@ from src.tasks.podcast.utils import _url_ok
 
 
 class _Resp:
-    def __init__(self, code):
+    def __init__(self, code, headers=None):
         self.status_code = code
+        self.headers = headers or {}
 
 
 def _respond(result):
@@ -50,9 +51,68 @@ def test_validate_urls_drops_unreachable(monkeypatch):
         async def get(self, url):
             return _Resp(404)
 
+    monkeypatch.setattr(utils, "is_safe_url", lambda _u: True)
     monkeypatch.setattr(utils.httpx, "AsyncClient", lambda *a, **k: _FakeClient())
     urls = asyncio.run(utils.validate_urls(["https://ok.com", "https://bad.com"]))
     assert urls == ["https://ok.com"]
+
+
+def test_validate_urls_drops_unsafe_url(monkeypatch):
+    class _FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        async def head(self, url):
+            raise AssertionError("an unsafe URL must not be fetched")
+
+        get = head
+
+    monkeypatch.setattr(utils, "is_safe_url", lambda _u: False)
+    monkeypatch.setattr(utils.httpx, "AsyncClient", lambda *a, **k: _FakeClient())
+    assert asyncio.run(utils.validate_urls(["http://169.254.169.254"])) == []
+
+
+def test_validate_urls_follows_safe_redirect(monkeypatch):
+    class _FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        async def head(self, url):
+            if url == "https://start.com":
+                return _Resp(301, {"location": "https://dest.com"})
+            return _Resp(200)
+
+        async def get(self, url):
+            return _Resp(404)
+
+    monkeypatch.setattr(utils, "is_safe_url", lambda _u: True)
+    monkeypatch.setattr(utils.httpx, "AsyncClient", lambda *a, **k: _FakeClient())
+    assert asyncio.run(utils.validate_urls(["https://start.com"])) == ["https://start.com"]
+
+
+def test_validate_urls_rejects_redirect_to_unsafe_host(monkeypatch):
+    class _FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        async def head(self, url):
+            return _Resp(302, {"location": "http://169.254.169.254/"})
+
+        async def get(self, url):
+            return _Resp(404)
+
+    monkeypatch.setattr(utils, "is_safe_url", lambda u: "169.254" not in u)
+    monkeypatch.setattr(utils.httpx, "AsyncClient", lambda *a, **k: _FakeClient())
+    assert asyncio.run(utils.validate_urls(["https://start.com"])) == []
 
 
 def test_validate_urls_empty_list_skips_client_construction(monkeypatch):
@@ -70,6 +130,7 @@ def test_validate_urls_empty_list_skips_client_construction(monkeypatch):
         pytest.param(httpx.ConnectError("boom"), None, False, id="request_raises"),
     ],
 )
-def test_url_ok_head_fallback_and_error_branches(head_result, get_result, expected):
+def test_url_ok_head_fallback_and_error_branches(monkeypatch, head_result, get_result, expected):
+    monkeypatch.setattr(utils, "is_safe_url", lambda _u: True)
     client = _FakeAsyncClient(head_result, get_result)
     assert asyncio.run(_url_ok(cast(httpx.AsyncClient, client), "https://example.com")) == expected

@@ -4,11 +4,16 @@ import logging
 
 import trafilatura
 
+from src.core.net import is_safe_url
+
 logger = logging.getLogger(__name__)
 
 
 def article_text(url: str) -> str | None:
     """Return the extracted main article text, or None if unavailable."""
+    if not is_safe_url(url):
+        logger.warning("⚠️ url %s degraded: unsafe target", url)
+        return None
     try:
         downloaded = trafilatura.fetch_url(url)
         return trafilatura.extract(downloaded) if downloaded else None

@@ -384,6 +384,7 @@ def test_biorxiv_recent_degrades_on_http_or_json_error(monkeypatch, fake_get):
 
 
 def test_article_text_none_when_fetch_fails_without_extracting(monkeypatch):
+    monkeypatch.setattr(url_fetcher, "is_safe_url", lambda _u: True)
     extract_calls = []
     monkeypatch.setattr(url_fetcher.trafilatura, "fetch_url", lambda _u: None)
     monkeypatch.setattr(
@@ -395,6 +396,7 @@ def test_article_text_none_when_fetch_fails_without_extracting(monkeypatch):
 
 
 def test_article_text_returns_extracted_text_on_success(monkeypatch):
+    monkeypatch.setattr(url_fetcher, "is_safe_url", lambda _u: True)
     monkeypatch.setattr(url_fetcher.trafilatura, "fetch_url", lambda _u: "<html>raw</html>")
     monkeypatch.setattr(url_fetcher.trafilatura, "extract", lambda d: f"extracted:{d}")
 
@@ -402,8 +404,17 @@ def test_article_text_returns_extracted_text_on_success(monkeypatch):
 
 
 def test_article_text_none_on_any_exception(monkeypatch):
+    monkeypatch.setattr(url_fetcher, "is_safe_url", lambda _u: True)
     monkeypatch.setattr(url_fetcher.trafilatura, "fetch_url", _raiser(RuntimeError("boom")))
     assert url_fetcher.article_text("http://x") is None
+
+
+def test_article_text_none_when_url_unsafe(monkeypatch):
+    monkeypatch.setattr(url_fetcher, "is_safe_url", lambda _u: False)
+    monkeypatch.setattr(
+        url_fetcher.trafilatura, "fetch_url", _raiser(AssertionError("must not fetch"))
+    )
+    assert url_fetcher.article_text("http://169.254.169.254") is None
 
 
 # ----- youtube.channel_videos (maps rss.fetch output) -----
