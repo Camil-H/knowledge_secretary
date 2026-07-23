@@ -1,5 +1,6 @@
 """Frozen data contracts shared by every source, task, and deliverer."""
 
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -38,4 +39,4 @@ class Context:
     state: dict
     gather: Callable
     call: Callable
-    log: Callable
+    logger: logging.Logger

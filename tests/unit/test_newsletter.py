@@ -1,3 +1,4 @@
+import logging
 from datetime import UTC, datetime
 
 from src.core.models import Context, Item
@@ -21,7 +22,7 @@ def _ctx(items, call):
         state={"ids": {}, "kv": {}},
         gather=lambda specs, since: items,
         call=call,
-        log=lambda m: None,
+        logger=logging.getLogger("test"),
     )
 
 

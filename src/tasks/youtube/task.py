@@ -34,7 +34,7 @@ def _produce(ctx: Context, items: list[Item]) -> str:
         grouped.setdefault(item.section, []).append((item, _summarize(ctx, item)))
     missing = sum(1 for it in items if not it.text)
     if missing:
-        ctx.log(f"youtube: {missing}/{len(items)} videos had no transcript")
+        ctx.logger.info(f"youtube: {missing}/{len(items)} videos had no transcript")
     return _render(_section_order(SOURCES), grouped)
 
 

@@ -2,7 +2,6 @@
 two-host episode via podcastfy (free OpenRouter transcript, free Edge TTS)."""
 
 import asyncio
-import logging
 from pathlib import Path
 
 from src.core import llm, sources_loader
@@ -10,8 +9,6 @@ from src.core import state as state_mod
 from src.core.models import Context, Result
 from src.core.registry import tasks
 from src.tasks.podcast.utils import validate_urls
-
-logger = logging.getLogger(__name__)
 
 QUEUE_KEY = "podcast_queue"  # kv list of topics still to do; seeded from TOPICS
 TOPICS = sources_loader.load(Path(__file__).parent, [])
@@ -47,11 +44,11 @@ def run(ctx: Context) -> Result:
     """Pop the next queued topic, generate its episode, drop it from the queue on success."""
     queue = state_mod.get_kv(ctx.state, QUEUE_KEY, list(TOPICS))
     if not queue:
-        ctx.log("podcast: topic queue empty — nothing to generate")
+        ctx.logger.info("podcast: topic queue empty — nothing to generate")
         return Result(subject="Podcast — (queue empty)", markdown="")
 
     topic = queue[0]
-    ctx.log(f"podcast: topic={topic!r} ({len(queue)} left)")
+    ctx.logger.info(f"podcast: topic={topic!r} ({len(queue)} left)")
     subject = f"Podcast — {topic}"
     audio_path = asyncio.run(_generate_episode(ctx, topic))
     if audio_path is None:
@@ -78,9 +75,9 @@ async def _generate_episode(ctx: Context, topic: str) -> str | None:
     """Episode from reachable discovered URLs (or the bare topic); None on any failure."""
     urls = await validate_urls(_discover_urls(ctx, topic))
     if urls:
-        ctx.log(f"podcast: {len(urls)} reachable source url(s) for {topic!r}")
+        ctx.logger.info(f"podcast: {len(urls)} reachable source url(s) for {topic!r}")
     else:
-        logger.warning("⚠️ podcast: no reachable source URLs for %r; using topic text", topic)
+        ctx.logger.warning("⚠️ podcast: no reachable source URLs for %r; using topic text", topic)
     instructions = (Path(__file__).parent / "prompt.md").read_text()
     model = (llm.resolve_models(podcast=True) or [llm.FALLBACK_MODEL])[0]
     try:
@@ -95,5 +92,5 @@ async def _generate_episode(ctx: Context, topic: str) -> str | None:
             longform=True,
         )
     except Exception as exc:
-        logger.warning("⚠️ podcast: generate_podcast failed for %r: %s", topic, exc)
+        ctx.logger.warning("⚠️ podcast: generate_podcast failed for %r: %s", topic, exc)
         return None

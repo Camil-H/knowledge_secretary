@@ -38,6 +38,6 @@ def run_source_task(
     """Gather new items, render via `produce` -> markdown, consume all gathered."""
     since = datetime.now(UTC) - timedelta(hours=LOOKBACK_HOURS)
     items = ctx.gather(source_specs, since)
-    ctx.log(f"{subject}: {len(items)} new item(s)")
+    ctx.logger.info(f"{subject}: {len(items)} new item(s)")
     markdown = produce(ctx, items) if items else ""
     return Result(subject=subject, markdown=markdown, consumed=[it.id for it in items])

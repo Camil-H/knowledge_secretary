@@ -2,6 +2,8 @@
 touched — _generate_episode is stubbed for the queue cases and ctx.call is faked
 for discovery."""
 
+import logging
+
 import pytest
 
 from src.core.models import Context
@@ -21,7 +23,7 @@ def _ctx(state, call=None):
         state=state,
         gather=lambda specs, since: [],
         call=call or (lambda system, user, max_tokens=None: ""),
-        log=lambda m: None,
+        logger=logging.getLogger("test"),
     )
 
 
