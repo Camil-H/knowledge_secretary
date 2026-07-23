@@ -1,4 +1,4 @@
-# knowledge_secretary
+# Knowledge Secretary
 
 A $0, fully-automated daily digest. Once a day, via GitHub Actions, it:
 
