@@ -23,12 +23,15 @@ def gather(specs: list[dict], state: dict, since: datetime) -> list[Item]:
         except Exception:
             logger.exception("❌ gather: source %s crashed", spec.get("key"))
             continue
+        kept = 0
         for item in fetched:
             if not state_mod.is_new(state, item) or item.published < since:
                 continue
             for name in spec.get("enrich", []):
                 item = enrichers.get(name)(item)
             gathered.append(item)
+            kept += 1
+        logger.info("gather: %s → %d new item(s)", spec.get("key"), kept)
     return gathered
 
 
