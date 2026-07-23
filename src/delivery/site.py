@@ -2,6 +2,7 @@
 pruned to N days) and re-render the last N days into one static HTML page."""
 
 import glob
+import html
 import json
 import logging
 import os
@@ -9,8 +10,10 @@ import string
 import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import markdown
+import nh3
 
 from src.core.models import Result
 from src.core.registry import deliverers
@@ -19,6 +22,10 @@ logger = logging.getLogger(__name__)
 
 _LABELS = {"newsletter": "Newsletter", "youtube": "YouTube", "podcast": "Podcast"}
 _PAGE = (Path(__file__).parent / "template.html").read_text()
+# Rendered markdown is public-facing: keep formatting, drop script/handlers and any
+# non-web href scheme. audio src= is validated separately when read back from history.
+_MARKDOWN_URL_SCHEMES = {"http", "https", "mailto"}
+_AUDIO_URL_SCHEMES = ("http", "https")
 
 TITLE = "Knowledge Secretary"
 SUBTITLE = "Daily newsletter, YouTube digest, and technical podcast"
@@ -116,7 +123,7 @@ def _render_day(entry: dict, *, is_latest: bool) -> str:
     tasks_html = "".join(
         _task_html(task, entry["tasks"][task]) for task in _LABELS if task in entry["tasks"]
     )
-    date = entry["date"]
+    date = html.escape(entry["date"])
     heading = f'<time class="js-date" datetime="{date}">{date}</time>'
     if is_latest:
         return f'<section class="day today"><h2>{heading}</h2>{tasks_html}</section>'
@@ -124,21 +131,32 @@ def _render_day(entry: dict, *, is_latest: bool) -> str:
 
 
 def _task_html(task: str, payload: dict) -> str:
-    label = _LABELS.get(task, task)
+    label = html.escape(_LABELS.get(task, task))
     if payload.get("kind") == "podcast":
-        audio_url = payload.get("audio_url")
+        audio_url = _safe_audio_url(payload.get("audio_url"))
         audio_html = (
-            f'<audio controls src="{audio_url}"></audio>'
+            f'<audio controls src="{html.escape(audio_url)}"></audio>'
             if audio_url
             else "<p>(audio unavailable)</p>"
         )
-        body = f'<p class="topic">{payload.get("topic", "")}</p>{audio_html}'
+        body = f'<p class="topic">{html.escape(payload.get("topic", ""))}</p>{audio_html}'
     else:
-        body = markdown.markdown(payload.get("markdown", ""), extensions=["extra"])
-    notices = "".join(f'<p class="notice">⚠️ {n}</p>' for n in payload.get("notices", []))
+        rendered = markdown.markdown(payload.get("markdown", ""), extensions=["extra"])
+        body = nh3.clean(rendered, url_schemes=_MARKDOWN_URL_SCHEMES)
+    notices = "".join(
+        f'<p class="notice">⚠️ {html.escape(n)}</p>' for n in payload.get("notices", [])
+    )
     return (
         f'<article class="task {task}"><h3 class="task-label">{label}</h3>{notices}{body}</article>'
     )
+
+
+def _safe_audio_url(url: str | None) -> str | None:
+    """Guard the audio src= sink: accept only http(s) URLs read back from history JSON,
+    so a javascript:/data: value can never reach the rendered attribute."""
+    if url and urlsplit(url).scheme.lower() in _AUDIO_URL_SCHEMES:
+        return url
+    return None
 
 
 # ----- podcast release upload -----

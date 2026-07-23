@@ -111,6 +111,55 @@ def test_site_notices_only_result_still_records():
     assert "x_biotech: creds expired" in _index_html()
 
 
+# ----- site: render-boundary XSS hardening -----
+
+
+def test_task_html_neutralizes_hostile_markdown():
+    payload = {
+        "kind": "markdown",
+        "markdown": (
+            "<script>alert(1)</script>[x](javascript:alert(1))\n\n<img src=x onerror=alert(1)>"
+        ),
+    }
+    html_out = site._task_html("newsletter", payload)
+    assert "<script>" not in html_out
+    assert "javascript:" not in html_out
+    assert "onerror" not in html_out
+
+
+def test_task_html_escapes_hostile_notice():
+    payload = {"kind": "markdown", "markdown": "", "notices": ["<script>alert(1)</script>"]}
+    html_out = site._task_html("newsletter", payload)
+    assert "<script>alert(1)</script>" not in html_out
+    assert "&lt;script&gt;" in html_out
+
+
+def test_task_html_escapes_hostile_topic():
+    payload = {"kind": "podcast", "topic": "<img src=x onerror=alert(1)>", "audio_url": None}
+    html_out = site._task_html("podcast", payload)
+    assert "<img" not in html_out
+    assert "&lt;img" in html_out
+
+
+@pytest.mark.parametrize(
+    "url, is_rendered",
+    [
+        ("https://ok/ep.mp3", True),
+        ("http://ok/ep.mp3", True),
+        ("javascript:alert(1)", False),
+        ("data:audio/mp3;base64,AAAA", False),
+        (None, False),
+    ],
+)
+def test_task_html_audio_url_scheme_is_validated(url, is_rendered):
+    html_out = site._task_html("podcast", {"kind": "podcast", "topic": "", "audio_url": url})
+    if is_rendered:
+        assert f'src="{url}"' in html_out
+    else:
+        assert "<audio" not in html_out
+        assert "(audio unavailable)" in html_out
+
+
 # ----- helpers -----
 
 
