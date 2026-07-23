@@ -5,8 +5,11 @@ import logging
 from datetime import UTC, datetime
 
 import feedparser
+import httpx
 
 logger = logging.getLogger(__name__)
+
+_HTTP_TIMEOUT_S = 30
 
 
 def fetch(url: str) -> dict:
@@ -17,8 +20,9 @@ def fetch(url: str) -> dict:
     underlying feedparser entry, for callers that need extras (e.g. yt_videoid).
     """
     try:
-        parsed = feedparser.parse(url)
-        status = getattr(parsed, "status", 0) or 0
+        resp = httpx.get(url, timeout=_HTTP_TIMEOUT_S)
+        parsed = feedparser.parse(resp.content)
+        status = resp.status_code
         if status >= 400 or (getattr(parsed, "bozo", 0) and not parsed.entries):
             exc = getattr(parsed, "bozo_exception", "")
             logger.warning("⚠️ rss %s degraded: status=%s %s", url, status, exc)
@@ -34,7 +38,7 @@ def fetch(url: str) -> dict:
             for e in parsed.entries
         ]
         return {"title": parsed.feed.get("title", ""), "entries": entries}
-    except Exception as e:  # feedparser surfaces malformed-feed errors as assorted exceptions
+    except Exception as e:  # httpx transport errors + feedparser's assorted malformed-feed errors
         logger.warning("⚠️ rss %s degraded: %s", url, e)
         return {"title": "", "entries": []}
 

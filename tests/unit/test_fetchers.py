@@ -29,6 +29,12 @@ class _BadJsonResp:
         raise ValueError("not json")
 
 
+class _FakeHttpResp:
+    def __init__(self, content=b"", status_code=200):
+        self.content = content
+        self.status_code = status_code
+
+
 def _raiser(exc):
     def _raise(*_a, **_k):
         raise exc
@@ -212,7 +218,8 @@ def test_rss_fetch_normalizes_entries(monkeypatch):
         feed = {"title": "Feed"}
         entries = [entry]
 
-    monkeypatch.setattr(rss.feedparser, "parse", lambda _u: _Parsed())
+    monkeypatch.setattr(rss.httpx, "get", lambda *a, **k: _FakeHttpResp())
+    monkeypatch.setattr(rss.feedparser, "parse", lambda _content: _Parsed())
     out = rss.fetch("http://x")
     assert out["title"] == "Feed"
     assert len(out["entries"]) == 1
@@ -229,13 +236,20 @@ def test_rss_fetch_entry_id_falls_back_to_link(monkeypatch):
         feed = {"title": "Feed"}
         entries = [entry]
 
-    monkeypatch.setattr(rss.feedparser, "parse", lambda _u: _Parsed())
+    monkeypatch.setattr(rss.httpx, "get", lambda *a, **k: _FakeHttpResp())
+    monkeypatch.setattr(rss.feedparser, "parse", lambda _content: _Parsed())
     out = rss.fetch("http://x")
     assert out["entries"][0]["id"] == "http://only-link"
 
 
 def test_rss_fetch_degrades_on_parse_error(monkeypatch):
+    monkeypatch.setattr(rss.httpx, "get", lambda *a, **k: _FakeHttpResp())
     monkeypatch.setattr(rss.feedparser, "parse", _raiser(ValueError("malformed feed")))
+    assert rss.fetch("http://x") == {"title": "", "entries": []}
+
+
+def test_rss_fetch_degrades_on_http_timeout(monkeypatch):
+    monkeypatch.setattr(rss.httpx, "get", _raiser(httpx.TimeoutException("timed out")))
     assert rss.fetch("http://x") == {"title": "", "entries": []}
 
 
