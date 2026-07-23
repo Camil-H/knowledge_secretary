@@ -10,12 +10,15 @@ Runs on free tiers: every LLM call — newsletter, YouTube, and the podcast tran
 
 ## How it works
 
-- `src/core/` — shared spine: data contracts (`Item`/`Result`/`Context`), the plugin registries, dedup state (`state.py`), the `sources.yaml` loader (`sources_loader.py`), and the OpenRouter LLM client (`llm.py`). `src/fetchers/` holds the deterministic by-source-type clients (rss, url, youtube, x, pubmed, biorxiv); `src/tasks/runner.py` holds the `gather` fetch driver and the shell the gather-based tasks share; `src/delivery/` renders and publishes the page. Flow: **fetchers → task adapters → gather → task produce → delivery**.
-- `src/tasks/<name>/` — one self-contained bucket per task (`task.py` for the pipeline, `prompt.md`, `adapters.py` for the framework's source/enricher code, `sources.yaml` for the committed source data; `__init__.py` just imports the two for registration). Adding a task is a new bucket; nothing else changes.
-- Per-task source data (feeds, queries, handles, topics) lives in `src/tasks/<task>/sources.yaml`, committed directly to the repo (it's a public template and the source lists are non-sensitive). For newsletter and YouTube the file is a list of source-spec dicts (kinds: `feed`, `pubmed`, `biorxiv`, `twitter`, `yt_channel`; enrichers: `article_text`, `transcript`); for the podcast it's a top-level list of topic strings it works through as a queue (each consumed once, in order). Adding a blog, channel, or topic is one line in that file.
-- Dedup state lives in `state/seen.json`, committed back each run. Items are marked seen **only after successful delivery**, so a failed send never drops content.
-- Every task's output is rendered to a single static page — last 7 days, newest first, older days collapsed behind `<details>` toggles — and published to GitHub Pages.
-- Prompts are plain Markdown (`src/tasks/*/prompt.md`) — edit behavior without touching code.
+The three products are independent daily tasks that share one shape: **gather → summarize → publish**.
+
+- **Newsletter** — pulls new items from your blogs, journals and preprints (PubMed, bioRxiv), and X accounts, then an LLM writes them up, grouped into sections you define.
+- **YouTube** — finds new uploads from your channels within the day's window and summarizes each from its transcript, falling back to the video description when no transcript is available.
+- **Podcast** — takes the next topic from a queue, discovers sources for it, and generates a long two-host episode, published with an embedded audio player.
+
+What each product *reads* is source data you control — one `sources.yaml` per task. How each product *writes* is driven by a plain-Markdown prompt per task. So adapting the digest to a different field is editing config and prose, not code: swap the sources, rewrite the prompts, rename the sections.
+
+Every run renders to a single static page — the last 7 days, newest first, older days collapsed — published to GitHub Pages, and records what it has already seen so nothing repeats. Items are marked seen only after a successful publish, so a failed run never drops content.
 
 ## Run
 
@@ -24,7 +27,7 @@ uv sync
 uv run python -m src.run [newsletter|youtube|podcast|all]
 ```
 
-Scheduled by `.github/workflows/daily.yml` — podcast at 12:00 UTC (claims fresh LLM quota first), newsletter + YouTube at 13:05 UTC. `.github/workflows/ci.yml` runs ruff, ty, and pytest.
+`.github/workflows/daily.yml` runs the tasks on a daily schedule; `.github/workflows/ci.yml` runs ruff, ty, and pytest.
 
 ## Configuration
 
@@ -49,7 +52,7 @@ This repo is a template: the committed data is one example (the owner's blogs/ch
 - `podcast/sources.yaml` — the topic queue (a list of strings, consumed one per run).
 - If you rename sections, also update the section vocabulary in `src/tasks/newsletter/prompt.md`.
 
-**2. Secrets.** Set the repository secrets in the table above. If you cloned a working tree, a local `.env` may hold the owner's live keys — **delete and rotate them**; `.env` is gitignored so it is never pushed, but it is not something you inherit.
+**2. Secrets.** Set the repository secrets in the table above.
 
 **3. Publishing target.** In `.github/workflows/daily.yml`, both the `podcast` and `digest` jobs publish the site — repoint `external_repository`, `destination_dir`, and `PAGES_DEPLOY_TOKEN` to your own Pages repo. `keep_files: true` assumes you publish into a subpath of a larger site; drop it if the Pages repo is dedicated to this project. Podcast MP3s are hosted as GitHub Release assets of your own fork (needs `permissions: contents: write`, already set) — no change needed. The local build dir is `OUT_DIR` in `src/delivery/site.py`.
 
@@ -58,10 +61,6 @@ This repo is a template: the committed data is one example (the owner's blogs/ch
 **5. Schedule.** Cron times are in `.github/workflows/daily.yml` (UTC). The job `if:` guards key off the **exact** cron strings, so if you change a time you must update its matching `github.event.schedule == '...'` condition.
 
 **6. Start clean.** Delete `state/seen.json` (dedup state + the owner's podcast-queue progress) and `history/*.json` (rendered digests from prior runs) so your first run starts fresh.
-
-## Stack
-
-Python 3.12 · uv · LiteLLM · feedparser · trafilatura · youtube-transcript-api · podcastfy (Google Cloud TTS / edge-tts) · ruff · ty · pytest.
 
 ## Contributing
 
