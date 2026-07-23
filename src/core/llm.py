@@ -21,6 +21,8 @@ _RATE_LIMIT_RETRIES = 4
 _BACKOFF_START_S = 2
 _BACKOFF_CAP_S = 30
 FALLBACK_MODEL = "openrouter/google/gemma-4-31b-it:free"
+# unambiguous auth-failure phrasing only — a bare "auth" substring also matches "author" etc.
+_AUTH_PHRASES = ("no user or org", "invalid api key", "unauthorized")
 # ids passing the zero-price filter that aren't general text writers (music / guardrail / router)
 _EXCLUDE_IDS = ("lyria", "content-safety", "openrouter/free")
 
@@ -152,4 +154,4 @@ def _is_auth(e: Exception) -> bool:
     if getattr(e, "status_code", None) == 401:
         return True
     msg = str(e).lower()
-    return "no user or org" in msg or "auth" in msg
+    return any(phrase in msg for phrase in _AUTH_PHRASES)

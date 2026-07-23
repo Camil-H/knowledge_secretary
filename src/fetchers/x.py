@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 import subprocess
 
 from src.core.errors import AuthError, ExternalError
@@ -11,19 +12,16 @@ logger = logging.getLogger(__name__)
 _CLI = "twitter"
 _LIST_KEYS = ("tweets", "data", "results")
 _DEFAULT_LIMIT = 20
+# high-signal only — generic words like "session"/"cookie"/"expired" also show up in
+# unrelated network/timeout failures and would misclassify them as auth
 _AUTH_MARKERS = (
     "unauthorized",
-    "401",
-    "403",
     "forbidden",
     "authenticat",
-    "log in",
-    "logged in",
-    "session",
-    "cookie",
-    "expired",
     "credential",
+    "invalid api key",
 )
+_AUTH_STATUS_RE = re.compile(r"\b(401|403)\b")
 
 
 # == Exceptions ===============================================================
@@ -68,7 +66,7 @@ def recent_tweets(handle: str, *, limit: int = _DEFAULT_LIMIT) -> list[dict]:
 
 def _is_auth_failure(stderr: str | None) -> bool:
     text = (stderr or "").lower()
-    return any(marker in text for marker in _AUTH_MARKERS)
+    return any(marker in text for marker in _AUTH_MARKERS) or bool(_AUTH_STATUS_RE.search(text))
 
 
 def _extract(data) -> list[dict]:

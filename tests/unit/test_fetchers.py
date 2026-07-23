@@ -118,13 +118,39 @@ def test_recent_tweets_raises_auth_error_on_expired_cookies(monkeypatch):
     assert "renew" in str(ei.value).lower()  # message tells the operator what to do
 
 
-def test_recent_tweets_degrades_on_non_auth_called_process_error(monkeypatch, caplog):
-    err = subprocess.CalledProcessError(1, "twitter", stderr="temporary network failure")
+@pytest.mark.parametrize(
+    "stderr",
+    [
+        "temporary network failure",
+        "Error fetching tweets by author handle",  # "author" isn't an auth marker
+        "session timed out, expired connection",  # generic words alone aren't auth-shaped
+    ],
+)
+def test_recent_tweets_degrades_on_non_auth_called_process_error(monkeypatch, caplog, stderr):
+    err = subprocess.CalledProcessError(1, "twitter", stderr=stderr)
     monkeypatch.setattr(x.subprocess, "run", _raiser(err))
     with caplog.at_level(logging.WARNING):
         out = x.recent_tweets("someuser")
     assert out == []
     assert any("degraded" in r.message for r in caplog.records)
+
+
+# ----- x._is_auth_failure -----
+
+
+@pytest.mark.parametrize(
+    "stderr,expected",
+    [
+        ("Error: 401 Unauthorized — session expired", True),
+        ("HTTP 403 forbidden", True),
+        ("invalid api key", True),
+        ("request id 14012 failed", False),  # "401" as a number substring, not a status code
+        ("session expired, please log in again", False),  # generic words alone
+        (None, False),
+    ],
+)
+def test_x_is_auth_failure(stderr, expected):
+    assert x._is_auth_failure(stderr) is expected
 
 
 def test_recent_tweets_propagates_unexpected_format(monkeypatch):

@@ -402,8 +402,11 @@ def test_is_rate_limit(exc, expected):
             True,
             id="no_user_or_org_substring",
         ),
-        pytest.param(ValueError("Authentication failed"), True, id="auth_substring"),
+        pytest.param(ValueError("invalid API key provided"), True, id="invalid_api_key"),
         pytest.param(ValueError("totally unrelated"), False, id="negative"),
+        pytest.param(
+            ValueError("Unknown author, please retry"), False, id="author_substring_not_auth"
+        ),
     ],
 )
 def test_is_auth(exc, expected):
