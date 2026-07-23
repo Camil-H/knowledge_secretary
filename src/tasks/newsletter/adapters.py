@@ -88,8 +88,8 @@ def article_text(item: Item) -> Item:
 
 
 def _tweet_item(tweet: dict, spec: dict, handle: str) -> Item:
-    tweet_id = str(tweet.get("id") or tweet.get("tweet_id") or "")
-    raw_date = (tweet.get("created_at") or tweet.get("date") or "").replace("Z", "+00:00")
+    tweet_id = str(tweet.get("id") or "")
+    raw_date = (tweet.get("createdAtISO") or tweet.get("createdAt") or "").replace("Z", "+00:00")
     if not tweet_id or not raw_date:
         raise x.UnexpectedXFormat(f"@{handle} tweet missing id/date; keys={list(tweet)[:10]}")
     try:

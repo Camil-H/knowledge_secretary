@@ -24,10 +24,7 @@ class UnexpectedXFormat(ExternalError):
 
 
 def recent_tweets(handle: str, *, limit: int = _DEFAULT_LIMIT) -> list[dict]:
-    """Recent tweets via `twitter user-posts <handle> --max N --json`; [] on failure.
-
-    #TODO: field names follow twitter-cli's SCHEMA.md — verify against a live run.
-    """
+    """Recent tweets via `twitter user-posts <handle> --max N --json`; [] on failure."""
     try:
         proc = subprocess.run(
             [_CLI, "user-posts", handle, "--max", str(limit), "--json"],

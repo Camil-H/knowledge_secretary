@@ -105,7 +105,7 @@ def test_twitter_iterates_every_handle(monkeypatch):
 
     def _recent_tweets(handle):
         calls.append(handle)
-        return [{"id": f"{handle}1", "created_at": "2024-01-01T00:00:00Z", "text": "hi"}]
+        return [{"id": f"{handle}1", "createdAtISO": "2024-01-01T00:00:00Z", "text": "hi"}]
 
     monkeypatch.setattr(adapters.x, "recent_tweets", _recent_tweets)
 
@@ -146,7 +146,7 @@ def test_article_text_leaves_original_when_no_body(monkeypatch, body):
 @pytest.mark.parametrize(
     "tweet",
     [
-        {"created_at": "2024-01-01T00:00:00Z"},
+        {"createdAtISO": "2024-01-01T00:00:00Z"},
         {"id": "1"},
         {},
     ],
@@ -158,7 +158,7 @@ def test_tweet_item_missing_id_or_date_raises(tweet):
 
 
 def test_tweet_item_unparseable_date_chains_value_error():
-    tweet = {"id": "1", "created_at": "not-a-date"}
+    tweet = {"id": "1", "createdAtISO": "not-a-date"}
 
     with pytest.raises(x.UnexpectedXFormat) as ei:
         _tweet_item(tweet, _spec(), "h")
@@ -166,8 +166,8 @@ def test_tweet_item_unparseable_date_chains_value_error():
     assert isinstance(ei.value.__cause__, ValueError)
 
 
-def test_tweet_item_z_suffix_normalized_and_alt_fields_accepted():
-    tweet = {"tweet_id": "42", "date": "2024-06-01T10:00:00Z", "text": "hello"}
+def test_tweet_item_z_suffix_normalized_and_createdat_fallback_accepted():
+    tweet = {"id": "42", "createdAt": "2024-06-01T10:00:00Z", "text": "hello"}
 
     item = _tweet_item(tweet, _spec(), "h")
 
@@ -177,7 +177,7 @@ def test_tweet_item_z_suffix_normalized_and_alt_fields_accepted():
 
 def test_tweet_item_missing_url_falls_back_and_title_truncated():
     long_text = "x" * 100
-    tweet = {"id": "7", "created_at": "2024-01-01T00:00:00Z", "text": long_text}
+    tweet = {"id": "7", "createdAtISO": "2024-01-01T00:00:00Z", "text": long_text}
 
     item = _tweet_item(tweet, _spec(), "handle1")
 
