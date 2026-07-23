@@ -88,10 +88,77 @@ def test_free_filter_excludes_paid(monkeypatch):
     assert all("paid" not in m for m in llm._free_openrouter_models(llm.RANK_CONTEXT))
 
 
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {"id": "google/lyria-3-pro-preview", "context_length": 1000000},
+        {"id": "nvidia/x-content-safety:free", "context_length": 1000000},
+        {"id": "openrouter/free", "context_length": 1000000},
+        {
+            "id": "x/music:free",
+            "context_length": 1000000,
+            "architecture": {"output_modalities": ["audio"]},
+        },
+    ],
+    ids=["music", "guardrail", "router", "audio-output"],
+)
+def test_free_filter_excludes_non_text_writers(monkeypatch, bad):
+    bad = {**bad, "pricing": {"prompt": "0", "completion": "0"}}
+    good = {
+        "id": "good/writer",
+        "pricing": {"prompt": "0", "completion": "0"},
+        "context_length": 1000,
+    }
+    monkeypatch.setattr(llm.httpx, "get", lambda *a, **k: _FakeResp({"data": [bad, good]}))
+    # the non-writer ranks first by its 1M context, but must be filtered out entirely
+    assert llm._free_openrouter_models(llm.RANK_CONTEXT) == ["openrouter/good/writer"]
+
+
 def test_resolve_ranks_by_tier(monkeypatch):
     _patch_models(monkeypatch)
+    # none of _MODELS' ids are in the PREFERRED lists, so live ranking order stands
     assert llm.resolve_models(podcast=True)[0] == "openrouter/big-out"  # output-tokens win
     assert llm.resolve_models()[0] == "openrouter/big-ctx"  # context by default
+
+
+def test_resolve_models_prefers_curated_ids_present_in_live_list(monkeypatch):
+    preferred_first, preferred_second = llm.PREFERRED_CONTEXT[0], llm.PREFERRED_CONTEXT[1]
+    models = {
+        "data": [
+            {
+                "id": "openrouter/big-ctx".removeprefix("openrouter/"),
+                "pricing": {"prompt": "0", "completion": "0"},
+                "context_length": 200000,
+                "top_provider": {"max_completion_tokens": 4000},
+            },
+            {
+                "id": preferred_second.removeprefix("openrouter/"),
+                "pricing": {"prompt": "0", "completion": "0"},
+                "context_length": 500,  # would rank last on live context ranking
+                "top_provider": {"max_completion_tokens": 10},
+            },
+            {
+                "id": preferred_first.removeprefix("openrouter/"),
+                "pricing": {"prompt": "0", "completion": "0"},
+                "context_length": 100,  # would rank last on live context ranking
+                "top_provider": {"max_completion_tokens": 10},
+            },
+        ]
+    }
+    monkeypatch.setattr(llm.httpx, "get", lambda *a, **k: _FakeResp(models))
+
+    result = llm.resolve_models()
+
+    # preferred ids present in the live list lead, in PREFERRED_CONTEXT order,
+    # despite ranking last by raw context length
+    assert result[:2] == [preferred_first, preferred_second]
+    assert result[2] == "openrouter/big-ctx"
+
+
+def test_resolve_models_skips_absent_preferred_ids_without_crashing(monkeypatch):
+    _patch_models(monkeypatch)  # none of PREFERRED_CONTEXT's ids are present
+    assert not any(m in llm.PREFERRED_CONTEXT for m in llm.resolve_models())
+    assert llm.resolve_models() == ["openrouter/big-ctx", "openrouter/big-out"]
 
 
 # ----- model list degradation -----

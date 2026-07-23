@@ -20,7 +20,28 @@ _HTTP_TIMEOUT_S = 20
 _RATE_LIMIT_RETRIES = 4
 _BACKOFF_START_S = 2
 _BACKOFF_CAP_S = 30
-FALLBACK_MODEL = "openrouter/deepseek/deepseek-chat-v3-0324:free"
+FALLBACK_MODEL = "openrouter/google/gemma-4-31b-it:free"
+# ids passing the zero-price filter that aren't general text writers (music / guardrail / router)
+_EXCLUDE_IDS = ("lyria", "content-safety", "openrouter/free")
+
+# Curated known-good free models, best first. Layered on top of the live ranking in
+# resolve_models(): a preferred id absent from the current live list is simply skipped.
+PREFERRED_CONTEXT = [
+    "openrouter/google/gemma-4-31b-it:free",
+    "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free",
+    "openrouter/google/gemma-4-26b-a4b-it:free",
+    "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
+    "openrouter/nvidia/nemotron-3-nano-30b-a3b:free",
+    "openrouter/openai/gpt-oss-20b:free",
+]
+PREFERRED_OUTPUT = [
+    "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
+    "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free",
+    "openrouter/google/gemma-4-31b-it:free",
+    "openrouter/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+    "openrouter/cohere/north-mini-code:free",
+    "openrouter/openai/gpt-oss-20b:free",
+]
 
 
 # == Model resolution =========================================================
@@ -39,6 +60,7 @@ def _free_openrouter_models(rank: str, *, limit: int = _FREE_LIMIT) -> list[str]
         for m in data
         if str(m.get("pricing", {}).get("prompt")) == "0"
         and str(m.get("pricing", {}).get("completion")) == "0"
+        and _writes_text(m)
     ]
 
     def _rank_key(m: dict) -> int:
@@ -51,8 +73,18 @@ def _free_openrouter_models(rank: str, *, limit: int = _FREE_LIMIT) -> list[str]
 
 
 def resolve_models(podcast: bool | None = None) -> list[str]:
-    """Ranked zero-cost models — by output tokens for the podcast, else by context."""
-    return _free_openrouter_models(RANK_OUTPUT if podcast else RANK_CONTEXT)
+    """Ranked zero-cost models — by output tokens for the podcast, else by context.
+
+    Curated PREFERRED ids present in the live-ranked list lead, in preferred order;
+    the rest of the live ranking follows, deduped. A preferred id currently unavailable
+    for free is silently skipped, and an empty live fetch still yields []."""
+    live = _free_openrouter_models(RANK_OUTPUT if podcast else RANK_CONTEXT)
+    preferred = PREFERRED_OUTPUT if podcast else PREFERRED_CONTEXT
+    live_set = set(live)
+    ordered_preferred = [m for m in preferred if m in live_set]
+    preferred_set = set(ordered_preferred)
+    remaining = [m for m in live if m not in preferred_set]
+    return ordered_preferred + remaining
 
 
 # == Completion ===============================================================
@@ -93,6 +125,15 @@ def call(system: str, user: str, *, max_tokens: int | None = None) -> str:
 
 
 # == Helper Functions =========================================================
+
+
+def _writes_text(model: dict) -> bool:
+    """Exclude free ids that pass the price filter but aren't general text writers
+    (music/guardrail/router models, or non-text output)."""
+    if any(bad in model.get("id", "") for bad in _EXCLUDE_IDS):
+        return False
+    out = (model.get("architecture") or {}).get("output_modalities")
+    return not out or "text" in out
 
 
 def _is_rate_limit(e: Exception) -> bool:
