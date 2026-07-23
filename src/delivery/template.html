@@ -54,13 +54,13 @@
 <p class="updated">Updated <time class="js-datetime" datetime="$updated">$updated</time></p>
 $days
 <script>
-  // Reformat UTC dates to the viewer's locale (js-date: calendar day, no tz shift; js-datetime: instant).
+  // Render UTC dates in the viewer's locale format, pinned to UTC so the calendar day never drifts.
   for (const el of document.querySelectorAll("time.js-date"))
     el.textContent = new Date(el.getAttribute("datetime"))
       .toLocaleDateString(undefined, {dateStyle: "full", timeZone: "UTC"});
   for (const el of document.querySelectorAll("time.js-datetime"))
     el.textContent = new Date(el.getAttribute("datetime"))
-      .toLocaleString(undefined, {dateStyle: "medium", timeStyle: "short"});
+      .toLocaleString(undefined, {dateStyle: "medium", timeStyle: "short", timeZone: "UTC"}) + " UTC";
 </script>
 </body>
 </html>
