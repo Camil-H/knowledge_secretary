@@ -1,6 +1,7 @@
 """OpenRouter-only LLM calls: live free-model selection + rate-limit backoff."""
 
 import logging
+import os
 import time
 
 import httpx
@@ -15,11 +16,14 @@ litellm.drop_params = True  # tolerate provider-specific unsupported params
 OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models"
 RANK_OUTPUT = "max_output_tokens"
 RANK_CONTEXT = "context"
-_FREE_LIMIT = 8
+_FREE_LIMIT = int(os.environ.get("LLM_FREE_LIMIT", "8"))
 _HTTP_TIMEOUT_S = 20
-_RATE_LIMIT_RETRIES = 4
+_RATE_LIMIT_RETRIES = int(os.environ.get("LLM_RATE_LIMIT_RETRIES", "4"))
 _BACKOFF_START_S = 2
 _BACKOFF_CAP_S = 30
+# wall-clock budget for the whole model cascade, so a many-item run can't burn
+# tens of minutes purely on backoff sleep (monotonic, immune to clock changes).
+_DEADLINE_S = float(os.environ.get("LLM_DEADLINE_S", "120"))
 FALLBACK_MODEL = "openrouter/google/gemma-4-31b-it:free"
 # unambiguous auth-failure phrasing only — a bare "auth" substring also matches "author" etc.
 _AUTH_PHRASES = ("no user or org", "invalid api key", "unauthorized")
@@ -111,11 +115,16 @@ def resolve_models(podcast: bool | None = None) -> list[str]:
 def call(system: str, user: str, *, max_tokens: int | None = None) -> str:
     """First non-empty completion across the resolved models: 429 retries the same
     model with backoff, an auth failure raises immediately, other errors fall
-    through, all-fail raises ExternalError."""
+    through, all-fail raises ExternalError. A wall-clock deadline caps total
+    time so the cascade is abandoned rather than walking every model x retry."""
     models = resolve_models() or [FALLBACK_MODEL]
     messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
+    deadline = time.monotonic() + _DEADLINE_S
     last_err: Exception | None = None
     for model in models:
+        if time.monotonic() >= deadline:
+            logger.warning("⚠️ llm deadline %ss reached, abandoning cascade", _DEADLINE_S)
+            break
         logger.info("🚀 llm model=%s", model)
         backoff = _BACKOFF_START_S
         for attempt in range(_RATE_LIMIT_RETRIES):
@@ -132,8 +141,11 @@ def call(system: str, user: str, *, max_tokens: int | None = None) -> str:
                 if _is_auth(e):
                     raise AuthError("openrouter", cause=e) from e
                 if _is_rate_limit(e) and attempt < _RATE_LIMIT_RETRIES - 1:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        break  # outer deadline guard abandons the cascade next iteration
                     logger.warning("⚠️ llm model=%s rate-limited; backoff %ss", model, backoff)
-                    time.sleep(backoff)
+                    time.sleep(min(backoff, remaining))
                     backoff = min(backoff * 2, _BACKOFF_CAP_S)
                     continue
                 logger.warning("⚠️ llm model=%s unavailable, next candidate: %s", model, e)

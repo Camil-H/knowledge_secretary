@@ -47,6 +47,14 @@ def _raiser(exc: Exception):
     return _raise
 
 
+def _fake_clock(monkeypatch, start: float = 0.0):
+    """Deterministic monotonic clock; sleep advances it so backoff spends the budget."""
+    clock = {"t": start}
+    monkeypatch.setattr(llm.time, "monotonic", lambda: clock["t"])
+    monkeypatch.setattr(llm.time, "sleep", lambda s: clock.__setitem__("t", clock["t"] + s))
+    return clock
+
+
 _MODELS = {
     "data": [
         {
@@ -394,6 +402,40 @@ def test_call_backoff_doubles_and_caps(monkeypatch):
         expected.append(backoff)
         backoff = min(backoff * 2, llm._BACKOFF_CAP_S)
     assert sleeps == expected
+
+
+# ----- completion: deadline / budget -----
+
+
+def test_call_abandons_cascade_once_deadline_exceeded(monkeypatch):
+    _fake_clock(monkeypatch)
+    monkeypatch.setattr(llm, "_DEADLINE_S", 5.0)
+    models = [f"openrouter/m{i}:free" for i in range(llm._FREE_LIMIT)]
+    monkeypatch.setattr(llm, "resolve_models", lambda: models)
+    tried = []
+
+    def fake_completion(model, messages, max_tokens=None):
+        tried.append(model)
+        raise _RateErr("rate limit exceeded")
+
+    monkeypatch.setattr(llm.litellm, "completion", fake_completion)
+    with pytest.raises(ExternalError, match="all models failed"):
+        llm.call("s", "u")
+
+    # backoff sleeps push the fake clock past the deadline, so the cascade is
+    # abandoned well before every model x retry is walked
+    assert len(set(tried)) < len(models)
+    assert len(tried) < len(models) * llm._RATE_LIMIT_RETRIES
+
+
+def test_call_returns_first_success_within_deadline(monkeypatch):
+    _fake_clock(monkeypatch)
+    monkeypatch.setattr(llm, "_DEADLINE_S", 5.0)
+    monkeypatch.setattr(llm, "resolve_models", lambda: ["openrouter/a:free", "openrouter/b:free"])
+    monkeypatch.setattr(
+        llm.litellm, "completion", lambda model, messages, max_tokens=None: _Completion("ok")
+    )
+    assert llm.call("s", "u") == "ok"
 
 
 # ----- completion: empty / whitespace content -----
