@@ -2,8 +2,8 @@ name: daily-digest
 
 on:
   schedule:
-    - cron: "0 12 * * *"   # 12:00 UTC — podcast first, claims fresh LLM quota
-    - cron: "5 13 * * *"   # 13:05 UTC — newsletter + youtube (past 07:59 ET year-round; DST handled in code)
+    - cron: "0 6 * * *"   # 06:00 UTC — podcast first
+    - cron: "30 6 * * *"   #06:30 UTC — newsletter + youtube
   workflow_dispatch:
     inputs:
       task:
