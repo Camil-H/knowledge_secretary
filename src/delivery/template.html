@@ -19,31 +19,30 @@
   h1 { margin-bottom: 0.2rem; }
   .subtitle { color: #555; margin-top: 0; }
   .updated { color: #888; font-size: 0.85rem; }
-  .day {
-    margin: 1.75rem 0;
-    padding: 1rem 1.25rem;
-    background: #fff;
-    border: 1px solid #e3e2df;
-    border-radius: 10px;
-  }
-  .day h2 { margin-top: 0; }
+  .day { margin: 2rem 0; }
+  .day h2 { margin: 0 0 0.75rem; font-size: 1.15rem; }
   details.day summary {
     cursor: pointer;
     font-weight: 600;
     font-size: 1.1rem;
-    padding: 0.25rem 0;
+    padding: 0.25rem 0 0.6rem;
     list-style: none;
   }
   details.day summary::-webkit-details-marker { display: none; }
   details.day summary::before { content: "▸ "; }
   details.day[open] summary::before { content: "▾ "; }
   article.task {
-    margin-top: 1.25rem;
-    padding-top: 1rem;
-    border-top: 1px solid #eee;
+    margin: 0.85rem 0;
+    padding: 1rem 1.25rem;
+    background: #fff;
+    border: 1px solid #e3e2df;
+    border-left: 4px solid #ccc;
+    border-radius: 10px;
   }
-  article.task:first-of-type { border-top: none; padding-top: 0; }
-  article.task h3 { margin-bottom: 0.4rem; }
+  article.task.newsletter { border-left-color: #0a7; }
+  article.task.youtube { border-left-color: #d33; }
+  article.task.podcast { border-left-color: #06c; }
+  article.task h3 { margin-top: 0; margin-bottom: 0.5rem; }
   audio { width: 100%; margin-top: 0.4rem; }
   .topic { color: #444; font-style: italic; }
   a { color: #0a5; }
@@ -58,7 +57,7 @@ $days
   // Reformat UTC dates to the viewer's locale (js-date: calendar day, no tz shift; js-datetime: instant).
   for (const el of document.querySelectorAll("time.js-date"))
     el.textContent = new Date(el.getAttribute("datetime"))
-      .toLocaleDateString(undefined, {dateStyle: "long", timeZone: "UTC"});
+      .toLocaleDateString(undefined, {dateStyle: "full", timeZone: "UTC"});
   for (const el of document.querySelectorAll("time.js-datetime"))
     el.textContent = new Date(el.getAttribute("datetime"))
       .toLocaleString(undefined, {dateStyle: "medium", timeStyle: "short"});
