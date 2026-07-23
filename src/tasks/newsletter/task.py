@@ -16,12 +16,9 @@ EDITOR_PROMPT = (Path(__file__).parent / "prompt.md").read_text()
 SYNTHESIS_PROMPT = (Path(__file__).parent / "synthesis_prompt.md").read_text()
 SOURCES: list[SourceSpec] = sources_loader.load(Path(__file__).parent, []) or []
 ITEM_CHAR_LIMIT = 20000
-# Conservative whole-prompt char budget. call() cascades to progressively smaller free
-# models, so this is sized for the smallest context we could land on — roughly a 32k-token
-# model at ~4 chars/token, minus headroom for the system prompt and the completion. Not
-# per-selected-model: we can't know which rung of the cascade will answer.
+# Sized for the smallest model call() might fall back to (~32k tokens), not the selected one —
+# we can't know which rung of the cascade answers.
 TOTAL_CHAR_BUDGET = 120000
-# Smallest body kept per source, so every item stays substantive even on the busiest days.
 ITEM_CHAR_FLOOR = 1000
 
 

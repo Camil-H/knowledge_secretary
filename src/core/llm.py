@@ -25,8 +25,7 @@ _HTTP_TIMEOUT_S = 20
 _RATE_LIMIT_RETRIES = int(os.environ.get("LLM_RATE_LIMIT_RETRIES", "4"))
 _BACKOFF_START_S = 2
 _BACKOFF_CAP_S = 30
-# wall-clock budget for the whole model cascade, so a many-item run can't burn
-# tens of minutes purely on backoff sleep (monotonic, immune to clock changes).
+# wall-clock cap for the whole cascade so a many-item run can't burn minutes on backoff sleep
 _DEADLINE_S = float(os.environ.get("LLM_DEADLINE_S", "120"))
 FALLBACK_MODEL = "openrouter/google/gemma-4-31b-it:free"
 # unambiguous auth-failure phrasing only — a bare "auth" substring also matches "author" etc.
@@ -56,8 +55,7 @@ PREFERRED_OUTPUT = [
 
 # == Model resolution =========================================================
 
-# rank mode -> resolved live ranking, memoized for the process lifetime so the
-# catalog is fetched at most once per mode per run (see _reset_model_cache for tests).
+# rank mode -> live ranking, memoized per process (see _reset_model_cache for tests)
 _MODEL_CACHE: dict[str, list[str]] = {}
 
 

@@ -14,8 +14,8 @@ from src.tasks.podcast.utils import reachable_urls
 QUEUE_KEY = "podcast_queue"  # kv list of topics still to do; seeded from TOPICS
 TOPICS: list[str] = sources_loader.load(Path(__file__).parent, []) or []
 MAX_SOURCE_URLS = 10
-_MAX_MODEL_ATTEMPTS = 4  # cap the transcript-LLM fallback cascade
-_SOURCE_SEPARATOR = "\n\n"  # joins extracted article bodies into one text blob for podcastfy
+_MAX_MODEL_ATTEMPTS = 4
+_SOURCE_SEPARATOR = "\n\n"
 _OPENROUTER_KEY_LABEL = "OPENROUTER_API_KEY"  # transcript LLM: podcastfy -> LiteLLM -> OpenRouter
 # Google Cloud TTS, keyed by GEMINI_API_KEY (a GCP Cloud-TTS key, not AI Studio). Passed as an
 # explicit arg because podcastfy ignores a nested text_to_speech override, else defaults to openai.

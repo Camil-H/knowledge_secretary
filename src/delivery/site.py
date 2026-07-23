@@ -195,10 +195,8 @@ def _upload_release_asset(mp3_path: str, subject: str, topic: str, repo: str) ->
     title = subject or topic or tag
     notes = topic or title
     try:
-        # flags before "--", positionals (tag, mp3_path) after: a positional that starts
-        # with "-" can't be parsed as a flag. --title/--notes use "=" so a value starting
-        # with "-" (e.g. an LLM-generated subject) is bound to its own flag, not read as
-        # a separate option.
+        # "--" ends flag parsing so tag/mp3_path (which may start with "-") aren't read as
+        # flags; --title=/--notes= bind a "-"-leading value to its own flag.
         create = subprocess.run(
             [
                 "gh",

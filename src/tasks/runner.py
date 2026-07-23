@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 LOOKBACK_HOURS = 48  # feed-scan window; dedup filters already-seen items on top
 _NOTICES_KEY = "_notices"  # transient: gather appends, run_source_task drains before state is saved
-_MAX_FETCH_WORKERS = 8  # cap on concurrent source fetches (sync, IO-bound)
+_MAX_FETCH_WORKERS = 8
 
 
 def gather(specs: list[SourceSpec], state: State, since: datetime) -> list[Item]:
