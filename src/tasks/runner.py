@@ -8,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 
 from src.core import state as state_mod
 from src.core.errors import AuthError
-from src.core.models import Context, Item, Result
+from src.core.models import Context, Item, Result, SourceSpec, State
 from src.core.registry import enrichers, sources
 
 logger = logging.getLogger(__name__)
@@ -18,14 +18,14 @@ _NOTICES_KEY = "_notices"  # transient: gather appends, run_source_task drains b
 _MAX_FETCH_WORKERS = 8  # cap on concurrent source fetches (sync, IO-bound)
 
 
-def gather(specs: list[dict], state: dict, since: datetime) -> list[Item]:
+def gather(specs: list[SourceSpec], state: State, since: datetime) -> list[Item]:
     """NEW items (is_new) published >= since, enriched per spec; crashing sources skipped.
 
     Fetches run concurrently on a bounded pool; filtering, dedup and enrichment then run in
     spec order on this thread, keeping state single-threaded and output order deterministic."""
     gathered: list[Item] = []
 
-    def _fetch(spec: dict) -> list[Item]:
+    def _fetch(spec: SourceSpec) -> list[Item]:
         return sources.get(spec["kind"])(spec, since, state)
 
     workers = min(_MAX_FETCH_WORKERS, len(specs)) or 1
@@ -56,7 +56,10 @@ def gather(specs: list[dict], state: dict, since: datetime) -> list[Item]:
 
 
 def run_source_task(
-    ctx: Context, source_specs: list[dict], produce: Callable, subject: str
+    ctx: Context,
+    source_specs: list[SourceSpec],
+    produce: Callable[[Context, list[Item]], str],
+    subject: str,
 ) -> Result:
     """Gather new items, render via `produce` -> markdown, consume all gathered."""
     since = datetime.now(UTC) - timedelta(hours=LOOKBACK_HOURS)

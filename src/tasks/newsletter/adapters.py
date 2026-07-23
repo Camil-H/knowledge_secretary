@@ -3,7 +3,7 @@ Kinds: feed/pubmed/biorxiv/twitter. Enricher: article_text."""
 
 from datetime import UTC, datetime
 
-from src.core.models import Item
+from src.core.models import Item, SourceSpec, State
 from src.core.registry import enrichers, sources
 from src.fetchers import biorxiv, pubmed, rss, url, x
 
@@ -11,7 +11,7 @@ from src.fetchers import biorxiv, pubmed, rss, url, x
 
 
 @sources.register("feed")
-def feed(spec: dict, since: datetime, state: dict) -> list[Item]:
+def feed(spec: SourceSpec, since: datetime, state: State) -> list[Item]:
     """Plain RSS/Atom feed (blogs, news sites, journal TOCs, agency feeds)."""
     items = []
     for e in rss.fetch(spec["url"])["entries"]:
@@ -32,7 +32,7 @@ def feed(spec: dict, since: datetime, state: dict) -> list[Item]:
 
 
 @sources.register("pubmed")
-def pubmed_source(spec: dict, since: datetime, state: dict) -> list[Item]:
+def pubmed_source(spec: SourceSpec, since: datetime, state: State) -> list[Item]:
     return [
         Item(
             id="pubmed:" + r["pmid"],
@@ -48,7 +48,7 @@ def pubmed_source(spec: dict, since: datetime, state: dict) -> list[Item]:
 
 
 @sources.register("biorxiv")
-def biorxiv_source(spec: dict, since: datetime, state: dict) -> list[Item]:
+def biorxiv_source(spec: SourceSpec, since: datetime, state: State) -> list[Item]:
     return [
         Item(
             id="biorxiv:" + r["doi"],
@@ -64,7 +64,7 @@ def biorxiv_source(spec: dict, since: datetime, state: dict) -> list[Item]:
 
 
 @sources.register("twitter")
-def twitter(spec: dict, since: datetime, state: dict) -> list[Item]:
+def twitter(spec: SourceSpec, since: datetime, state: State) -> list[Item]:
     return [
         _tweet_item(tweet, spec, handle)
         for handle in spec.get("handles", [])
@@ -87,7 +87,7 @@ def article_text(item: Item) -> Item:
 # == Helper Functions =========================================================
 
 
-def _tweet_item(tweet: dict, spec: dict, handle: str) -> Item:
+def _tweet_item(tweet: dict, spec: SourceSpec, handle: str) -> Item:
     tweet_id = str(tweet.get("id") or "")
     raw_date = (tweet.get("createdAtISO") or tweet.get("createdAt") or "").replace("Z", "+00:00")
     if not tweet_id or not raw_date:

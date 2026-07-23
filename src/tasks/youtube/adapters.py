@@ -3,7 +3,7 @@ Kind: yt_channel (by exact channel_id). Enricher: transcript."""
 
 from datetime import datetime
 
-from src.core.models import Item
+from src.core.models import Item, SourceSpec, State
 from src.core.registry import enrichers, sources
 from src.fetchers import youtube as yt
 
@@ -11,7 +11,7 @@ from src.fetchers import youtube as yt
 
 
 @sources.register("yt_channel")
-def yt_channel(spec: dict, since: datetime, state: dict) -> list[Item]:
+def yt_channel(spec: SourceSpec, since: datetime, state: State) -> list[Item]:
     """A YouTube channel's uploads feed, keyed by the exact spec['channel_id']."""
     data = yt.channel_videos(spec["channel_id"])
     items = []

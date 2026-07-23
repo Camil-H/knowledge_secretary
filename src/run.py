@@ -5,7 +5,7 @@ import sys
 
 from src.core import llm
 from src.core import state as state_mod
-from src.core.models import Context
+from src.core.models import Context, State
 from src.core.registry import deliverers, tasks
 from src.delivery import site as site
 from src.tasks.runner import gather
@@ -13,7 +13,7 @@ from src.tasks.runner import gather
 logger = logging.getLogger("knowledge_secretary")
 
 
-def build_context(state: dict) -> Context:
+def build_context(state: State) -> Context:
     return Context(
         state=state,
         gather=lambda specs, since: gather(specs, state, since),
@@ -41,7 +41,7 @@ def main(argv: list[str]) -> int:
     return 1 if failures else 0
 
 
-def _run_task(name: str, state: dict) -> None:
+def _run_task(name: str, state: State) -> None:
     logger.info("🚀 running task %s", name)
     result = tasks.get(name)(build_context(state))
     result.meta.setdefault("task", name)

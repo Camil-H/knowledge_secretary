@@ -5,14 +5,14 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from src.core import sources_loader
-from src.core.models import Context, Item, Result
+from src.core.models import Context, Item, Result, SourceSpec
 from src.core.registry import tasks
 from src.tasks.runner import run_source_task
 
 PROMPT = (Path(__file__).parent / "prompt.md").read_text()
 TRANSCRIPT_CHAR_LIMIT = 12000
 _NO_TRANSCRIPT = ["- (no transcript available)"]
-SOURCES = sources_loader.load(Path(__file__).parent, [])
+SOURCES: list[SourceSpec] = sources_loader.load(Path(__file__).parent, []) or []
 
 
 # == Task =====================================================================
@@ -38,7 +38,7 @@ def _produce(ctx: Context, items: list[Item]) -> str:
     return _render(_section_order(SOURCES), grouped)
 
 
-def _section_order(specs: list[dict]) -> list[str]:
+def _section_order(specs: list[SourceSpec]) -> list[str]:
     """Section names in the order they first appear across the task's specs."""
     order: list[str] = []
     for spec in specs:

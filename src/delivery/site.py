@@ -10,6 +10,7 @@ import string
 import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlsplit
 
 import markdown
@@ -19,6 +20,11 @@ from src.core.models import Result
 from src.core.registry import deliverers
 
 logger = logging.getLogger(__name__)
+
+# A day's history file: {"date": str, "tasks": {task: Payload}}. Payload is a
+# per-task record whose keys vary by "kind" (markdown vs podcast).
+type HistoryEntry = dict[str, Any]
+type Payload = dict[str, Any]
 
 _LABELS = {"newsletter": "Newsletter", "youtube": "YouTube", "podcast": "Podcast"}
 _PAGE = (Path(__file__).parent / "template.html").read_text()
@@ -48,7 +54,7 @@ def site(result: Result) -> None:
     today = datetime.now(UTC).strftime("%Y-%m-%d")
     entry = _load_entry(HISTORY_DIR, today)
 
-    payload: dict
+    payload: Payload
     if result.artifacts:
         episode_repo = os.environ.get("GITHUB_REPOSITORY", "")
         audio_url = _upload_release_asset(
@@ -77,7 +83,7 @@ def site(result: Result) -> None:
 # ----- history -----
 
 
-def _load_entry(history_dir: str, date: str) -> dict:
+def _load_entry(history_dir: str, date: str) -> HistoryEntry:
     path = os.path.join(history_dir, f"{date}.json")
     if not os.path.exists(path):
         return {"date": date, "tasks": {}}
@@ -85,7 +91,7 @@ def _load_entry(history_dir: str, date: str) -> dict:
         return json.load(f)
 
 
-def _save_entry(history_dir: str, date: str, entry: dict) -> None:
+def _save_entry(history_dir: str, date: str, entry: HistoryEntry) -> None:
     os.makedirs(history_dir, exist_ok=True)
     path = os.path.join(history_dir, f"{date}.json")
     with open(path, "w") as f:
@@ -119,7 +125,7 @@ def _render() -> None:
         f.write(page)
 
 
-def _render_day(entry: dict, *, is_latest: bool) -> str:
+def _render_day(entry: HistoryEntry, *, is_latest: bool) -> str:
     tasks_html = "".join(
         _task_html(task, entry["tasks"][task]) for task in _LABELS if task in entry["tasks"]
     )
@@ -130,7 +136,7 @@ def _render_day(entry: dict, *, is_latest: bool) -> str:
     return f'<details class="day"><summary>{heading}</summary>{tasks_html}</details>'
 
 
-def _task_html(task: str, payload: dict) -> str:
+def _task_html(task: str, payload: Payload) -> str:
     label = html.escape(_LABELS.get(task, task))
     if payload.get("kind") == "podcast":
         audio_url = _safe_audio_url(payload.get("audio_url"))

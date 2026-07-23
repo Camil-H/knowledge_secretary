@@ -2,6 +2,7 @@
 
 import logging
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -10,7 +11,7 @@ logger = logging.getLogger(__name__)
 _FILENAME = "sources.yaml"
 
 
-def load(task_dir: Path, default: list | None = None):
+def load(task_dir: Path, default: list[Any] | None = None) -> list[Any] | None:
     """Return the parsed list from <task_dir>/sources.yaml, or `default`."""
     path = task_dir / _FILENAME
     if not path.exists():

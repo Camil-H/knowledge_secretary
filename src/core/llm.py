@@ -3,6 +3,7 @@
 import logging
 import os
 import time
+from typing import Any
 
 import httpx
 import litellm
@@ -10,6 +11,9 @@ import litellm
 from src.core.errors import AuthError, ExternalError
 
 logger = logging.getLogger(__name__)
+
+# One entry from the OpenRouter /models catalog; only a few keys are read.
+type ModelRecord = dict[str, Any]
 
 litellm.drop_params = True  # tolerate provider-specific unsupported params
 
@@ -70,7 +74,9 @@ def _free_openrouter_models(rank: str, *, limit: int = _FREE_LIMIT) -> list[str]
         return _MODEL_CACHE[rank]
 
     try:
-        data = httpx.get(OPENROUTER_MODELS_URL, timeout=_HTTP_TIMEOUT_S).json()["data"]
+        data: list[ModelRecord] = httpx.get(OPENROUTER_MODELS_URL, timeout=_HTTP_TIMEOUT_S).json()[
+            "data"
+        ]
     except (httpx.HTTPError, ValueError, KeyError) as e:
         logger.warning(
             "⚠️ openrouter model list degraded: %s status=%s",
@@ -87,7 +93,7 @@ def _free_openrouter_models(rank: str, *, limit: int = _FREE_LIMIT) -> list[str]
         and _writes_text(m)
     ]
 
-    def _rank_key(m: dict) -> int:
+    def _rank_key(m: ModelRecord) -> int:
         if rank == RANK_OUTPUT:
             return (m.get("top_provider") or {}).get("max_completion_tokens") or 0
         return m.get("context_length") or 0
@@ -166,7 +172,7 @@ def call(system: str, user: str, *, max_tokens: int | None = None) -> str:
 # == Helper Functions =========================================================
 
 
-def _writes_text(model: dict) -> bool:
+def _writes_text(model: ModelRecord) -> bool:
     """Exclude free ids that pass the price filter but aren't general text writers
     (music/guardrail/router models, or non-text output)."""
     if any(bad in model.get("id", "") for bad in _EXCLUDE_IDS):

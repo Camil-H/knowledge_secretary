@@ -7,14 +7,14 @@ from itertools import batched
 from pathlib import Path
 
 from src.core import sources_loader
-from src.core.models import Context, Item, Result
+from src.core.models import Context, Item, Result, SourceSpec
 from src.core.registry import tasks
 from src.tasks.newsletter.utils import clean
 from src.tasks.runner import run_source_task
 
 EDITOR_PROMPT = (Path(__file__).parent / "prompt.md").read_text()
 SYNTHESIS_PROMPT = (Path(__file__).parent / "synthesis_prompt.md").read_text()
-SOURCES = sources_loader.load(Path(__file__).parent, [])
+SOURCES: list[SourceSpec] = sources_loader.load(Path(__file__).parent, []) or []
 ITEM_CHAR_LIMIT = 20000
 # Conservative whole-prompt char budget. call() cascades to progressively smaller free
 # models, so this is sized for the smallest context we could land on — roughly a 32k-token

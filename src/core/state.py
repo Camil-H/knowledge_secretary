@@ -3,13 +3,14 @@
 import json
 import os
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
-from .models import Item
+from .models import Item, State
 
 DEFAULT_PATH = "state/seen.json"
 
 
-def load(path: str = DEFAULT_PATH) -> dict:
+def load(path: str = DEFAULT_PATH) -> State:
     if os.path.exists(path):
         with open(path) as f:
             data = json.load(f)
@@ -19,31 +20,31 @@ def load(path: str = DEFAULT_PATH) -> dict:
     return {"ids": {}, "kv": {}}
 
 
-def is_new(state: dict, item: Item) -> bool:
+def is_new(state: State, item: Item) -> bool:
     return item.id not in state["ids"]
 
 
-def mark_ids(state: dict, ids: list[str]) -> None:
+def mark_ids(state: State, ids: list[str]) -> None:
     today = datetime.now(UTC).date().isoformat()
     for item_id in ids:
         state["ids"][item_id] = today
 
 
-def get_kv(state: dict, key: str, default=None):
+def get_kv(state: State, key: str, default: Any = None) -> Any:
     return state["kv"].get(key, default)
 
 
-def set_kv(state: dict, key: str, value) -> None:
+def set_kv(state: State, key: str, value: Any) -> None:
     state["kv"][key] = value
 
 
-def prune(state: dict, days: int = 60) -> None:
+def prune(state: State, days: int = 60) -> None:
     # ISO dates sort lexicographically == chronologically.
     cutoff = (datetime.now(UTC).date() - timedelta(days=days)).isoformat()
     state["ids"] = {k: v for k, v in state["ids"].items() if v >= cutoff}
 
 
-def save(state: dict, path: str = DEFAULT_PATH) -> None:
+def save(state: State, path: str = DEFAULT_PATH) -> None:
     d = os.path.dirname(path)
     if d:
         os.makedirs(d, exist_ok=True)

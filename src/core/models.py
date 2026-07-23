@@ -4,6 +4,12 @@ import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Any
+
+# Persisted run state: {"ids": dict[str, str], "kv": dict, + transient keys}.
+type State = dict[str, Any]
+# One source's YAML spec; keys vary by "kind" (feed/pubmed/biorxiv/twitter/yt_channel).
+type SourceSpec = dict[str, Any]
 
 
 @dataclass
@@ -38,7 +44,7 @@ class Context:
     """Injected into every task's run(ctx): tasks reach LLM/gather/log only through
     these helpers, which keeps buckets self-contained and fake-testable."""
 
-    state: dict
-    gather: Callable
-    call: Callable
+    state: State
+    gather: Callable[[list[SourceSpec], datetime], list[Item]]
+    call: Callable[..., str]
     logger: logging.Logger
