@@ -26,7 +26,7 @@ def _item(*, iid="yt:X", url="https://youtu.be/X", text=""):
     return type(
         "_Item",
         (),
-        {"id": iid, "url": url, "text": text},
+        {"id": iid, "url": url, "text": text, "meta": {}},
     )()
 
 
@@ -96,7 +96,34 @@ def test_transcript_resolves_video_id_and_calls_yt_transcript(
 
     assert calls == [expected_arg]
     assert result.text == "the text"
+    assert result.meta["text_source"] == "transcript"
     assert result is item
+
+
+@pytest.mark.parametrize(
+    "fetched,initial_text,expected_text,expected_source",
+    [
+        ("real transcript", "desc", "real transcript", "transcript"),
+        (
+            "",
+            "desc",
+            "desc",
+            "description",
+        ),  # CI IP block -> empty transcript keeps RSS description
+        ("   ", "desc", "desc", "description"),  # whitespace-only transcript counts as empty
+        ("", "", "", "title"),  # neither transcript nor description -> title-only, tagged
+    ],
+    ids=["transcript", "empty-keeps-desc", "blank-keeps-desc", "no-desc-title-only"],
+)
+def test_transcript_degrades_to_description_when_transcript_empty(
+    monkeypatch, fetched, initial_text, expected_text, expected_source
+):
+    monkeypatch.setattr(adapters.yt, "transcript", lambda vid: fetched)
+
+    result = transcript(_item(iid="yt:A", text=initial_text))
+
+    assert result.text == expected_text
+    assert result.meta["text_source"] == expected_source
 
 
 def test_transcript_no_resolvable_video_id_leaves_text_unchanged_and_skips_yt_call(monkeypatch):
@@ -115,3 +142,4 @@ def test_transcript_no_resolvable_video_id_leaves_text_unchanged_and_skips_yt_ca
 
     assert called is False
     assert result.text == "original text"
+    assert result.meta["text_source"] == "description"
