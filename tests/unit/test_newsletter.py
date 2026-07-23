@@ -1,6 +1,8 @@
 import logging
 from datetime import UTC, datetime
 
+import pytest
+
 from src.core.models import Context, Item
 from src.tasks.newsletter.task import EDITOR_PROMPT, ITEM_CHAR_LIMIT, _editor_input, run
 
@@ -69,3 +71,11 @@ def test_editor_input_groups_by_section_and_trims_bodies():
     assert "## News" in out and "## Blogs" in out
     assert "http://u" in out and "short body" in out
     assert out.count("x") == ITEM_CHAR_LIMIT  # long body trimmed to the budget
+
+
+@pytest.mark.parametrize("text", ["", "   ", "\t\n  \n"], ids=["empty", "spaces", "whitespace"])
+def test_editor_input_blank_text_renders_placeholder(text):
+    out = _editor_input([_item("rss:1", text)])
+
+    assert "(no content available)" in out
+    assert out.split("\n")[-1] == "(no content available)"  # not an empty body line

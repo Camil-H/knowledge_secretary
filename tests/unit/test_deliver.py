@@ -1,10 +1,35 @@
 import glob
 import os
+from datetime import UTC, datetime
 
 import pytest
 
 from src.core.models import Result
 from src.delivery import site
+
+
+class _Resp:
+    """Stand-in for a `subprocess.CompletedProcess`."""
+
+    def __init__(self, returncode: int, stderr: str = ""):
+        self.returncode = returncode
+        self.stderr = stderr
+
+
+class _RecordingRun:
+    """Stub for `subprocess.run`: records every argv and replays canned responses in order."""
+
+    def __init__(self, *responses: _Resp):
+        self.responses = list(responses)
+        self.calls: list[list[str]] = []
+
+    def __call__(self, argv: list[str], **kwargs) -> _Resp:
+        self.calls.append(argv)
+        return self.responses.pop(0)
+
+
+def _todays_tag() -> str:
+    return "podcast-" + datetime.now(UTC).strftime("%Y-%m-%d")
 
 
 @pytest.fixture(autouse=True)
@@ -46,6 +71,18 @@ def test_site_podcast_uploads_and_renders_audio(monkeypatch):
     html = _index_html()
     assert '<audio controls src="https://fake/ep.mp3">' in html
     assert "PROTACs" in html
+
+
+def test_site_podcast_degrades_to_none_url_when_upload_fails(monkeypatch):
+    monkeypatch.setattr(site, "_upload_release_asset", lambda *a, **k: None)
+    site.site(
+        Result(subject="Ep 1", artifacts=["ep.mp3"], meta={"task": "podcast", "topic": "PROTACs"})
+    )
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
+    entry = site._load_entry(site.HISTORY_DIR, today)
+    assert entry["tasks"]["podcast"]["audio_url"] is None
+    html = _index_html()
+    assert "(audio unavailable)" in html
 
 
 def test_site_empty_result_is_noop():
@@ -103,4 +140,41 @@ def test_upload_release_asset_gh_error_degrades_to_none(monkeypatch):
         stderr = "boom"
 
     monkeypatch.setattr(site.subprocess, "run", lambda *a, **k: _R())
+    assert site._upload_release_asset("ep.mp3", "S", "T", "org/repo") is None
+
+
+def test_upload_release_asset_happy_path_returns_url_and_composes_create_argv(monkeypatch):
+    run = _RecordingRun(_Resp(0))
+    monkeypatch.setattr(site.subprocess, "run", run)
+
+    url = site._upload_release_asset("ep.mp3", "Subject", "Topic", "org/repo")
+
+    tag = _todays_tag()
+    assert url == f"https://github.com/org/repo/releases/download/{tag}/ep.mp3"
+    argv = run.calls[0]
+    assert argv[:4] == ["gh", "release", "create", tag]
+    assert "ep.mp3" in argv
+    assert argv[argv.index("--repo") + 1] == "org/repo"
+    assert argv[argv.index("--title") + 1] == "Subject"
+    assert argv[argv.index("--notes") + 1] == "Topic"
+
+
+def test_upload_release_asset_same_day_rerun_recovers_via_clobber_upload(monkeypatch):
+    run = _RecordingRun(_Resp(1, stderr="release already exists"), _Resp(0))
+    monkeypatch.setattr(site.subprocess, "run", run)
+
+    url = site._upload_release_asset("ep.mp3", "S", "T", "org/repo")
+
+    tag = _todays_tag()
+    assert url == f"https://github.com/org/repo/releases/download/{tag}/ep.mp3"
+    upload_argv = run.calls[1]
+    assert upload_argv[:4] == ["gh", "release", "upload", tag]
+    assert "--clobber" in upload_argv
+
+
+def test_upload_release_asset_subprocess_exception_returns_none(monkeypatch):
+    def _raise(*a, **k):
+        raise OSError("gh executable not found")
+
+    monkeypatch.setattr(site.subprocess, "run", _raise)
     assert site._upload_release_asset("ep.mp3", "S", "T", "org/repo") is None

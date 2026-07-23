@@ -1,6 +1,7 @@
 """OpenRouter model ranking + rate-limit backoff. Network, the model list, and
 sleep are all patched, so no real API calls, keys, or waits."""
 
+import httpx
 import pytest
 
 import src.core.llm as llm
@@ -29,6 +30,21 @@ class _Completion:
 
 class _RateErr(Exception):
     status_code = 429
+
+
+class _StatusErr(Exception):
+    """Generic error carrying an optional status_code, for _is_rate_limit/_is_auth matrices."""
+
+    def __init__(self, msg: str, *, status_code: int | None = None) -> None:
+        super().__init__(msg)
+        self.status_code = status_code
+
+
+def _raiser(exc: Exception):
+    def _raise(*_a, **_k):
+        raise exc
+
+    return _raise
 
 
 _MODELS = {
@@ -76,6 +92,69 @@ def test_resolve_ranks_by_tier(monkeypatch):
     _patch_models(monkeypatch)
     assert llm.resolve_models(podcast=True)[0] == "openrouter/big-out"  # output-tokens win
     assert llm.resolve_models()[0] == "openrouter/big-ctx"  # context by default
+
+
+# ----- model list degradation -----
+
+
+@pytest.mark.parametrize(
+    "get_stub",
+    [
+        pytest.param(_raiser(httpx.HTTPError("boom")), id="http_error"),
+        pytest.param(lambda *a, **k: _FakeResp({"unexpected": []}), id="missing_data_key"),
+    ],
+)
+def test_free_openrouter_models_degrades_to_empty(monkeypatch, get_stub):
+    monkeypatch.setattr(llm.httpx, "get", get_stub)
+    assert llm._free_openrouter_models(llm.RANK_CONTEXT) == []
+
+
+def test_call_reaches_fallback_when_model_list_degrades(monkeypatch):
+    monkeypatch.setattr(llm.httpx, "get", _raiser(httpx.HTTPError("boom")))
+    seen = {}
+
+    def fake_completion(model, messages, max_tokens=None):
+        seen["model"] = model
+        return _Completion("ok")
+
+    monkeypatch.setattr(llm.litellm, "completion", fake_completion)
+    assert llm.call("s", "u") == "ok"
+    assert seen["model"] == llm.FALLBACK_MODEL
+
+
+# ----- rank key edge cases -----
+
+_EDGE_MODELS = {
+    "data": [
+        {
+            "id": "no-provider",
+            "pricing": {"prompt": "0", "completion": "0"},
+            "top_provider": None,
+            "context_length": 5000,
+        },
+        {
+            "id": "no-context",
+            "pricing": {"prompt": "0", "completion": "0"},
+            "top_provider": {"max_completion_tokens": 10},
+            # context_length intentionally absent
+        },
+    ]
+}
+
+
+@pytest.mark.parametrize(
+    "rank, expected_first",
+    [
+        # top_provider=None -> ranks 0, loses to the 10-token model
+        (llm.RANK_OUTPUT, "openrouter/no-context"),
+        # missing context_length -> ranks 0, loses to the 5000-context model
+        (llm.RANK_CONTEXT, "openrouter/no-provider"),
+    ],
+)
+def test_free_openrouter_models_rank_key_handles_missing_fields(monkeypatch, rank, expected_first):
+    monkeypatch.setattr(llm.httpx, "get", lambda *a, **k: _FakeResp(_EDGE_MODELS))
+    result = llm._free_openrouter_models(rank)
+    assert result[0] == expected_first
 
 
 # ----- completion: rate-limit backoff + fall-through -----
@@ -144,3 +223,121 @@ def test_call_raises_auth_error_immediately(monkeypatch):
     with pytest.raises(AuthError):
         llm.call("s", "u")
     assert tried == ["openrouter/a:free"]  # auth fails loudly on the first model, no fallback
+
+
+def test_call_external_error_carries_last_exception_as_cause(monkeypatch):
+    monkeypatch.setattr(llm, "resolve_models", lambda: ["openrouter/a:free"])
+    boom = ValueError("nope")
+
+    monkeypatch.setattr(llm.litellm, "completion", _raiser(boom))
+    with pytest.raises(ExternalError) as exc_info:
+        llm.call("s", "u")
+    assert exc_info.value.cause is boom
+
+
+# ----- completion: persistent rate limit exhausts retries -----
+
+
+@pytest.mark.parametrize(
+    "models, expect_next_model",
+    [
+        pytest.param(["openrouter/a:free"], False, id="single_model_raises"),
+        pytest.param(["openrouter/a:free", "openrouter/b:free"], True, id="advances_to_next_model"),
+    ],
+)
+def test_call_persistent_rate_limit_exhausts_retries(monkeypatch, models, expect_next_model):
+    monkeypatch.setattr(llm, "resolve_models", lambda: models)
+    calls = {"a": 0}
+
+    def fake_completion(model, messages, max_tokens=None):
+        if model == "openrouter/a:free":
+            calls["a"] += 1
+            raise _RateErr("rate limit exceeded")
+        return _Completion("ok")
+
+    monkeypatch.setattr(llm.litellm, "completion", fake_completion)
+
+    if expect_next_model:
+        assert llm.call("s", "u") == "ok"
+    else:
+        with pytest.raises(ExternalError):
+            llm.call("s", "u")
+
+    # count derived from the retry constant, not a hardcoded literal
+    assert calls["a"] == llm._RATE_LIMIT_RETRIES
+
+
+def test_call_backoff_doubles_and_caps(monkeypatch):
+    monkeypatch.setattr(llm, "resolve_models", lambda: ["openrouter/a:free"])
+    retries = 7  # enough attempts for the doubling sequence to actually hit the cap
+    monkeypatch.setattr(llm, "_RATE_LIMIT_RETRIES", retries)
+    sleeps = []
+    monkeypatch.setattr(llm.time, "sleep", lambda s: sleeps.append(s))
+    monkeypatch.setattr(llm.litellm, "completion", _raiser(_RateErr("rate limit exceeded")))
+
+    with pytest.raises(ExternalError):
+        llm.call("s", "u")
+
+    expected = []
+    backoff = llm._BACKOFF_START_S
+    for _ in range(retries - 1):  # one sleep per retried attempt, none after the last
+        expected.append(backoff)
+        backoff = min(backoff * 2, llm._BACKOFF_CAP_S)
+    assert sleeps == expected
+
+
+# ----- completion: empty / whitespace content -----
+
+
+@pytest.mark.parametrize("empty_content", ["", "   ", "\n\t "])
+def test_call_falls_through_on_empty_or_whitespace_content(monkeypatch, empty_content):
+    monkeypatch.setattr(llm, "resolve_models", lambda: ["openrouter/a:free", "openrouter/b:free"])
+
+    def fake_completion(model, messages, max_tokens=None):
+        if model == "openrouter/a:free":
+            return _Completion(empty_content)
+        return _Completion("second")
+
+    monkeypatch.setattr(llm.litellm, "completion", fake_completion)
+    assert llm.call("s", "u") == "second"
+
+
+def test_call_raises_when_all_models_return_empty(monkeypatch):
+    monkeypatch.setattr(llm, "resolve_models", lambda: ["openrouter/a:free", "openrouter/b:free"])
+    monkeypatch.setattr(
+        llm.litellm, "completion", lambda model, messages, max_tokens=None: _Completion("   ")
+    )
+    with pytest.raises(ExternalError, match="all models failed"):
+        llm.call("s", "u")
+
+
+# ----- _is_rate_limit / _is_auth -----
+
+
+@pytest.mark.parametrize(
+    "exc, expected",
+    [
+        pytest.param(_StatusErr("boom", status_code=429), True, id="status_code_429"),
+        pytest.param(ValueError("Rate limit exceeded, try later"), True, id="message_substring"),
+        pytest.param(ValueError("totally unrelated"), False, id="negative"),
+    ],
+)
+def test_is_rate_limit(exc, expected):
+    assert llm._is_rate_limit(exc) is expected
+
+
+@pytest.mark.parametrize(
+    "exc, expected",
+    [
+        pytest.param(_StatusErr("boom", status_code=401), True, id="status_code_401"),
+        pytest.param(
+            ValueError("No user or org id found in auth cookie"),
+            True,
+            id="no_user_or_org_substring",
+        ),
+        pytest.param(ValueError("Authentication failed"), True, id="auth_substring"),
+        pytest.param(ValueError("totally unrelated"), False, id="negative"),
+    ],
+)
+def test_is_auth(exc, expected):
+    assert llm._is_auth(exc) is expected
