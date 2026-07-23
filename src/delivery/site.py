@@ -199,13 +199,13 @@ def _upload_release_asset(mp3_path: str, subject: str, topic: str, repo: str) ->
             )
             if upload.returncode != 0:
                 logger.warning(
-                    "⚠️ site: gh release create+upload failed: %s / %s",
-                    create.stderr.strip(),
-                    upload.stderr.strip(),
+                    "⚠️ site: gh release create+upload failed: create exit=%s upload exit=%s",
+                    create.returncode,
+                    upload.returncode,
                 )
                 return None
     except Exception as e:
-        logger.warning("⚠️ site: gh release error: %s", e)
+        logger.warning("⚠️ site: gh release error: %s", type(e).__name__)
         return None
 
     return f"https://github.com/{repo}/releases/download/{tag}/{os.path.basename(mp3_path)}"

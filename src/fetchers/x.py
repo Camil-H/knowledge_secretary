@@ -54,10 +54,10 @@ def recent_tweets(handle: str, *, limit: int = _DEFAULT_LIMIT) -> list[dict]:
                 detail="session cookies rejected — renew TWITTER_AUTH_TOKEN / TWITTER_CT0",
                 cause=e,
             ) from e
-        logger.warning("⚠️ x %s degraded: %s", handle, (e.stderr or "").strip() or e)
+        logger.warning("⚠️ x %s degraded: %s (exit %s)", handle, type(e).__name__, e.returncode)
         return []
     except (subprocess.SubprocessError, OSError, json.JSONDecodeError) as e:
-        logger.warning("⚠️ x %s degraded: %s", handle, e)
+        logger.warning("⚠️ x %s degraded: %s", handle, type(e).__name__)
         return []
 
 

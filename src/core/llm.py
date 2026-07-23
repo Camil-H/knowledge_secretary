@@ -72,7 +72,11 @@ def _free_openrouter_models(rank: str, *, limit: int = _FREE_LIMIT) -> list[str]
     try:
         data = httpx.get(OPENROUTER_MODELS_URL, timeout=_HTTP_TIMEOUT_S).json()["data"]
     except (httpx.HTTPError, ValueError, KeyError) as e:
-        logger.warning("⚠️ openrouter model list degraded: %s", e)
+        logger.warning(
+            "⚠️ openrouter model list degraded: %s status=%s",
+            type(e).__name__,
+            getattr(e, "status_code", None),
+        )
         return []
 
     free = [
@@ -148,7 +152,12 @@ def call(system: str, user: str, *, max_tokens: int | None = None) -> str:
                     time.sleep(min(backoff, remaining))
                     backoff = min(backoff * 2, _BACKOFF_CAP_S)
                     continue
-                logger.warning("⚠️ llm model=%s unavailable, next candidate: %s", model, e)
+                logger.warning(
+                    "⚠️ llm model=%s unavailable, next candidate: %s status=%s",
+                    model,
+                    type(e).__name__,
+                    getattr(e, "status_code", None),
+                )
                 break
 
     raise ExternalError("openrouter", detail="all models failed", cause=last_err)
