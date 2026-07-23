@@ -80,6 +80,13 @@ def _no_sleep(monkeypatch):
     monkeypatch.setattr(llm.time, "sleep", lambda _s: None)
 
 
+@pytest.fixture(autouse=True)
+def _reset_model_cache():
+    llm._reset_model_cache()
+    yield
+    llm._reset_model_cache()
+
+
 # ----- model ranking -----
 
 
@@ -159,6 +166,42 @@ def test_resolve_models_skips_absent_preferred_ids_without_crashing(monkeypatch)
     _patch_models(monkeypatch)  # none of PREFERRED_CONTEXT's ids are present
     assert not any(m in llm.PREFERRED_CONTEXT for m in llm.resolve_models())
     assert llm.resolve_models() == ["openrouter/big-ctx", "openrouter/big-out"]
+
+
+# ----- model ranking cache -----
+
+
+def test_free_openrouter_models_memoizes_per_rank_mode(monkeypatch):
+    calls = {"n": 0}
+
+    def fake_get(*_a, **_k):
+        calls["n"] += 1
+        return _FakeResp(_MODELS)
+
+    monkeypatch.setattr(llm.httpx, "get", fake_get)
+
+    first = llm._free_openrouter_models(llm.RANK_CONTEXT)
+    assert llm._free_openrouter_models(llm.RANK_CONTEXT) == first
+    assert calls["n"] == 1  # second call for the same rank mode hits the cache
+
+    llm._free_openrouter_models(llm.RANK_OUTPUT)
+    assert calls["n"] == 2  # a different rank mode still fetches its own catalog
+
+
+def test_free_openrouter_models_does_not_cache_a_failed_fetch(monkeypatch):
+    calls = {"n": 0}
+
+    def fake_get(*_a, **_k):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise httpx.HTTPError("boom")
+        return _FakeResp(_MODELS)
+
+    monkeypatch.setattr(llm.httpx, "get", fake_get)
+
+    assert llm._free_openrouter_models(llm.RANK_CONTEXT) == []
+    assert llm._free_openrouter_models(llm.RANK_CONTEXT) != []
+    assert calls["n"] == 2  # the failed first fetch wasn't cached, so it retried
 
 
 # ----- model list degradation -----

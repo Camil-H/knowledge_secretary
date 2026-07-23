@@ -48,9 +48,23 @@ PREFERRED_OUTPUT = [
 
 # == Model resolution =========================================================
 
+# rank mode -> resolved live ranking, memoized for the process lifetime so the
+# catalog is fetched at most once per mode per run (see _reset_model_cache for tests).
+_MODEL_CACHE: dict[str, list[str]] = {}
+
+
+def _reset_model_cache() -> None:
+    """Clear the memoized live rankings (test-only escape hatch)."""
+    _MODEL_CACHE.clear()
+
 
 def _free_openrouter_models(rank: str, *, limit: int = _FREE_LIMIT) -> list[str]:
-    """Live-fetch zero-cost OpenRouter models, ranked for the use case ([] on failure)."""
+    """Live-fetch zero-cost OpenRouter models, ranked for the use case ([] on failure).
+
+    Memoized per rank mode; a failed fetch is not cached, so a later call can retry."""
+    if rank in _MODEL_CACHE:
+        return _MODEL_CACHE[rank]
+
     try:
         data = httpx.get(OPENROUTER_MODELS_URL, timeout=_HTTP_TIMEOUT_S).json()["data"]
     except (httpx.HTTPError, ValueError, KeyError) as e:
@@ -71,7 +85,9 @@ def _free_openrouter_models(rank: str, *, limit: int = _FREE_LIMIT) -> list[str]
         return m.get("context_length") or 0
 
     free.sort(key=_rank_key, reverse=True)
-    return [f"openrouter/{m['id']}" for m in free[:limit]]
+    result = [f"openrouter/{m['id']}" for m in free[:limit]]
+    _MODEL_CACHE[rank] = result
+    return result
 
 
 def resolve_models(podcast: bool | None = None) -> list[str]:
