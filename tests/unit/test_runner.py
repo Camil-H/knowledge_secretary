@@ -5,6 +5,7 @@ run_source_task() is driven through a faked ctx.gather, so gather()'s own logic 
 out of scope for those tests."""
 
 import logging
+import threading
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
@@ -168,6 +169,39 @@ def test_gather_unknown_kind_is_a_registry_keyerror_skipped_without_crash(monkey
     result = gather([_spec("mystery", kind="unknown")], state, since)
 
     assert result == []
+
+
+# ----- gather: concurrent fetch -----
+
+
+def _barrier_fetcher(barrier: threading.Barrier, items: list[Item]):
+    """Fetcher that returns only once a second fetch reaches the barrier concurrently;
+    run sequentially the first .wait() would time out and break the barrier."""
+
+    def _fetch(spec, since, state):
+        barrier.wait()
+        return items
+
+    return _fetch
+
+
+def test_gather_fetches_sources_concurrently_preserving_spec_order(monkeypatch):
+    since = datetime.now(UTC) - timedelta(hours=1)
+    a, b = _item("a:1"), _item("b:1")
+    barrier = threading.Barrier(2, timeout=5)
+    monkeypatch.setattr(
+        runner,
+        "sources",
+        _FakeRegistry({"a": _barrier_fetcher(barrier, [a]), "b": _barrier_fetcher(barrier, [b])}),
+    )
+    state = {"ids": {}, "kv": {}}
+    specs = [_spec("a_src", kind="a"), _spec("b_src", kind="b")]
+
+    result = gather(specs, state, since)
+
+    # both fetches had to be in flight together to clear the barrier, and output still
+    # follows spec order regardless of which fetch finished first
+    assert result == [a, b]
 
 
 # ----- run_source_task: since window -----

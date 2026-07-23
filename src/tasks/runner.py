@@ -3,6 +3,7 @@ gather-based tasks (newsletter, youtube). The podcast uses neither."""
 
 import logging
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 
 from src.core import state as state_mod
@@ -14,14 +15,26 @@ logger = logging.getLogger(__name__)
 
 LOOKBACK_HOURS = 48  # feed-scan window; dedup filters already-seen items on top
 _NOTICES_KEY = "_notices"  # transient: gather appends, run_source_task drains before state is saved
+_MAX_FETCH_WORKERS = 8  # cap on concurrent source fetches (sync, IO-bound)
 
 
 def gather(specs: list[dict], state: dict, since: datetime) -> list[Item]:
-    """NEW items (is_new) published >= since, enriched per spec; crashing sources skipped."""
+    """NEW items (is_new) published >= since, enriched per spec; crashing sources skipped.
+
+    Fetches run concurrently on a bounded pool; filtering, dedup and enrichment then run in
+    spec order on this thread, keeping state single-threaded and output order deterministic."""
     gathered: list[Item] = []
-    for spec in specs:
+
+    def _fetch(spec: dict) -> list[Item]:
+        return sources.get(spec["kind"])(spec, since, state)
+
+    workers = min(_MAX_FETCH_WORKERS, len(specs)) or 1
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = [pool.submit(_fetch, spec) for spec in specs]
+
+    for spec, future in zip(specs, futures, strict=True):
         try:
-            fetched = sources.get(spec["kind"])(spec, since, state)
+            fetched = future.result()
         except AuthError as e:
             logger.error("❌ gather: source %s auth failed — %s", spec.get("key"), e)
             notice = e.detail or "authentication failed"
