@@ -34,6 +34,7 @@ jobs:
           python-version: "3.12"
       - run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - run: uv sync
+      - run: uv run playwright install --with-deps chromium   # podcastfy fetches source URLs via a browser
       - run: uv run python -m src.run podcast
       - name: Commit history + state
         run: |
