@@ -8,6 +8,7 @@ import logging
 import os
 import string
 import subprocess
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -17,7 +18,7 @@ import markdown
 import nh3
 
 from src.core.models import Result
-from src.core.registry import deliverers
+from src.core.registry import Registry, deliverers
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,7 @@ logger = logging.getLogger(__name__)
 # per-task record whose keys vary by "kind" (markdown vs podcast).
 type HistoryEntry = dict[str, Any]
 type Payload = dict[str, Any]
+type BodyRenderer = Callable[[Payload], str]
 
 _LABELS = {"newsletter": "Newsletter", "youtube": "YouTube", "podcast": "Podcast"}
 _PAGE = (Path(__file__).parent / "template.html").read_text()
@@ -138,23 +140,35 @@ def _render_day(entry: HistoryEntry, *, is_latest: bool) -> str:
 
 def _task_html(task: str, payload: Payload) -> str:
     label = html.escape(_LABELS.get(task, task))
-    if payload.get("kind") == "podcast":
-        audio_url = _safe_audio_url(payload.get("audio_url"))
-        audio_html = (
-            f'<audio controls src="{html.escape(audio_url)}"></audio>'
-            if audio_url
-            else "<p>(audio unavailable)</p>"
-        )
-        body = f'<p class="topic">{html.escape(payload.get("topic", ""))}</p>{audio_html}'
-    else:
-        rendered = markdown.markdown(payload.get("markdown", ""), extensions=["extra"])
-        body = nh3.clean(rendered, url_schemes=_MARKDOWN_URL_SCHEMES)
+    body = _body_renderers.get(payload["kind"])(payload)
     notices = "".join(
         f'<p class="notice">⚠️ {html.escape(n)}</p>' for n in payload.get("notices", [])
     )
     return (
         f'<article class="task {task}"><h3 class="task-label">{label}</h3>{notices}{body}</article>'
     )
+
+
+# ----- body renderers (keyed by payload kind) -----
+
+_body_renderers: Registry[BodyRenderer] = Registry("body renderer")
+
+
+@_body_renderers.register("markdown")
+def _markdown_body(payload: Payload) -> str:
+    rendered = markdown.markdown(payload.get("markdown", ""), extensions=["extra"])
+    return nh3.clean(rendered, url_schemes=_MARKDOWN_URL_SCHEMES)
+
+
+@_body_renderers.register("podcast")
+def _podcast_body(payload: Payload) -> str:
+    audio_url = _safe_audio_url(payload.get("audio_url"))
+    audio_html = (
+        f'<audio controls src="{html.escape(audio_url)}"></audio>'
+        if audio_url
+        else "<p>(audio unavailable)</p>"
+    )
+    return f'<p class="topic">{html.escape(payload.get("topic", ""))}</p>{audio_html}'
 
 
 def _safe_audio_url(url: str | None) -> str | None:

@@ -160,6 +160,15 @@ def test_task_html_audio_url_scheme_is_validated(url, is_rendered):
         assert "(audio unavailable)" in html_out
 
 
+# ----- body renderers -----
+
+
+def test_task_html_resolves_a_newly_registered_kind():
+    site._body_renderers.register("banner")(lambda p: f'<div class="banner">{p["text"]}</div>')
+    html_out = site._task_html("newsletter", {"kind": "banner", "text": "hi"})
+    assert '<div class="banner">hi</div>' in html_out
+
+
 # ----- helpers -----
 
 
