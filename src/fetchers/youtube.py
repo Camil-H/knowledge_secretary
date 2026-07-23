@@ -68,6 +68,5 @@ def _fetch_transcript_text(video_id: str) -> str:
     return " ".join(_segment_text(s) for s in segments)
 
 
-def _segment_text(seg) -> str:
-    # youtube-transcript-api returns dicts (<=0.6) or snippet objects (>=1.0)
-    return seg["text"] if isinstance(seg, dict) else getattr(seg, "text", "")
+def _segment_text(seg: dict) -> str:
+    return seg["text"]

@@ -550,12 +550,5 @@ def test_transcript_degrades_to_empty_string_on_failure(monkeypatch):
 # ----- youtube._segment_text -----
 
 
-@pytest.mark.parametrize(
-    "segment,expected",
-    [
-        ({"text": "dict segment"}, "dict segment"),  # youtube-transcript-api <= 0.6
-        (type("Snippet", (), {"text": "object segment"})(), "object segment"),  # >= 1.0
-    ],
-)
-def test_segment_text_handles_both_api_shapes(segment, expected):
-    assert youtube._segment_text(segment) == expected
+def test_segment_text_extracts_text_field():
+    assert youtube._segment_text({"text": "dict segment"}) == "dict segment"
