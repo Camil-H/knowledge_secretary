@@ -14,6 +14,10 @@ QUEUE_KEY = "podcast_queue"  # kv list of topics still to do; seeded from TOPICS
 TOPICS = sources_loader.load(Path(__file__).parent, [])
 MAX_SOURCE_URLS = 10
 _OPENROUTER_KEY_LABEL = "OPENROUTER_API_KEY"  # transcript LLM: podcastfy -> LiteLLM -> OpenRouter
+# free Edge TTS (no API key). podcastfy's default is the paid openai voice, and it only reads
+# the override from a TOP-LEVEL conversation_config key or this explicit arg — never from a
+# nested text_to_speech.default_tts_model — so it must be passed to generate_podcast() directly.
+_TTS_MODEL = "edge"
 DISCOVER_PROMPT = (Path(__file__).parent / "source_discovery_prompt.md").read_text()
 CONVERSATION_CONFIG = {
     "conversation_style": ["technical", "analytical", "engaging"],
@@ -31,8 +35,6 @@ CONVERSATION_CONFIG = {
     "output_language": "English",
     "engagement_techniques": ["analogies", "worked examples", "rhetorical questions"],
     "creativity": 0.3,
-    # free Edge TTS (no key); podcastfy's own default is the paid openai voice
-    "text_to_speech": {"default_tts_model": "edge"},
 }
 
 
@@ -89,6 +91,7 @@ async def _generate_episode(ctx: Context, topic: str) -> str | None:
             conversation_config={**CONVERSATION_CONFIG, "user_instructions": instructions},
             llm_model_name=model,
             api_key_label=_OPENROUTER_KEY_LABEL,
+            tts_model=_TTS_MODEL,
             longform=True,
         )
     except Exception as exc:
