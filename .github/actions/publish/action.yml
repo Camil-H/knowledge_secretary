@@ -27,7 +27,7 @@ runs:
         fi
     - name: Publish site to camilharoune.com
       if: hashFiles('public/index.html') != ''
-      uses: peaceiris/actions-gh-pages@v4
+      uses: peaceiris/actions-gh-pages@84c30a85c19949d7eee79c4ff27748b70285e453   # v4.1.0
       with:
         personal_token: ${{ inputs.pages-token }}
         external_repository: Camil-H/camil-h.github.io
