@@ -32,11 +32,22 @@ def recent(categories: list[str], since: datetime) -> list[dict]:
                     "doi": doi,
                     "title": e.get("title", ""),
                     "abstract": e.get("abstract", ""),
-                    "published": datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=UTC),
+                    "published": _parse_date(date_str, since),
                     "category": e.get("category", ""),
                 }
             )
         return out
-    except (httpx.HTTPError, ValueError) as e:  # bioRxiv unreachable or unparseable response
+    except (httpx.HTTPError, ValueError) as e:  # bioRxiv unreachable or .json() unparseable
         logger.warning("⚠️ biorxiv degraded: %s", e)
         return []
+
+
+# == Helper Functions =========================================================
+
+
+def _parse_date(raw: str, fallback: datetime) -> datetime:
+    """Best-effort bioRxiv date ("2024-03-01") -> UTC; malformed rows fall back to `since`."""
+    try:
+        return datetime.strptime(raw, "%Y-%m-%d").replace(tzinfo=UTC)
+    except ValueError:
+        return fallback

@@ -380,6 +380,54 @@ def test_biorxiv_recent_degrades_on_http_or_json_error(monkeypatch, fake_get):
     assert out == []
 
 
+def test_biorxiv_recent_one_malformed_date_does_not_drop_the_batch(monkeypatch):
+    since = datetime(2024, 1, 1, tzinfo=UTC)
+    collection = [
+        {
+            "category": "Neuroscience",
+            "doi": "10.1/good1",
+            "title": "T1",
+            "abstract": "A1",
+            "date": "2024-03-01",
+        },
+        {
+            "category": "Neuroscience",
+            "doi": "10.1/bad",
+            "title": "malformed date",
+            "abstract": "A2",
+            "date": "not-a-date",
+        },
+        {
+            "category": "Neuroscience",
+            "doi": "10.1/good2",
+            "title": "T3",
+            "abstract": "A3",
+            "date": "2024-03-03",
+        },
+    ]
+    monkeypatch.setattr(biorxiv.httpx, "get", lambda *a, **k: _FakeResp({"collection": collection}))
+
+    out = biorxiv.recent(["Neuroscience"], since)
+
+    assert [e["doi"] for e in out] == ["10.1/good1", "10.1/bad", "10.1/good2"]
+    assert out[1]["published"] == since  # malformed date falls back rather than dropping the batch
+
+
+# ----- biorxiv._parse_date -----
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("2024-03-01", datetime(2024, 3, 1, tzinfo=UTC)),
+        ("not-a-date", datetime(2024, 1, 1, tzinfo=UTC)),  # falls back rather than raising
+    ],
+)
+def test_biorxiv_parse_date(raw, expected):
+    fallback = datetime(2024, 1, 1, tzinfo=UTC)
+    assert biorxiv._parse_date(raw, fallback) == expected
+
+
 # ----- url.article_text -----
 
 
