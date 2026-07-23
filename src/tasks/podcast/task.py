@@ -2,6 +2,7 @@
 two-host episode via podcastfy (free OpenRouter transcript, free Edge TTS)."""
 
 import asyncio
+import logging
 from pathlib import Path
 
 from src.core import llm, sources_loader
@@ -9,6 +10,8 @@ from src.core import state as state_mod
 from src.core.models import Context, Result
 from src.core.registry import tasks
 from src.tasks.podcast.utils import validate_urls
+
+logger = logging.getLogger(__name__)
 
 QUEUE_KEY = "podcast_queue"  # kv list of topics still to do; seeded from TOPICS
 TOPICS = sources_loader.load(Path(__file__).parent, [])
@@ -74,7 +77,10 @@ def _discover_urls(ctx: Context, topic: str) -> list[str]:
 async def _generate_episode(ctx: Context, topic: str) -> str | None:
     """Episode from reachable discovered URLs (or the bare topic); None on any failure."""
     urls = await validate_urls(_discover_urls(ctx, topic))
-    ctx.log(f"podcast: {len(urls)} reachable source url(s) for {topic!r}")
+    if urls:
+        ctx.log(f"podcast: {len(urls)} reachable source url(s) for {topic!r}")
+    else:
+        logger.warning("⚠️ podcast: no reachable source URLs for %r; using topic text", topic)
     instructions = (Path(__file__).parent / "prompt.md").read_text()
     model = (llm.resolve_models(podcast=True) or [llm.FALLBACK_MODEL])[0]
     try:
@@ -89,5 +95,5 @@ async def _generate_episode(ctx: Context, topic: str) -> str | None:
             longform=True,
         )
     except Exception as exc:
-        ctx.log(f"podcast: generate_podcast failed: {exc}")
+        logger.warning("⚠️ podcast: generate_podcast failed for %r: %s", topic, exc)
         return None

@@ -18,22 +18,21 @@ def fetch(url: str) -> dict:
     """
     try:
         parsed = feedparser.parse(url)
+        entries = [
+            {
+                "id": e.get("id") or e.get("link", ""),
+                "title": e.get("title", ""),
+                "link": e.get("link", ""),
+                "published": _published_utc(e),
+                "summary": e.get("summary", ""),
+                "raw": e,
+            }
+            for e in parsed.entries
+        ]
+        return {"title": parsed.feed.get("title", ""), "entries": entries}
     except Exception as e:
         logger.warning("⚠️ rss %s failed: %s", url, e)
         return {"title": "", "entries": []}
-
-    entries = [
-        {
-            "id": e.get("id") or e.get("link", ""),
-            "title": e.get("title", ""),
-            "link": e.get("link", ""),
-            "published": _published_utc(e),
-            "summary": e.get("summary", ""),
-            "raw": e,
-        }
-        for e in parsed.entries
-    ]
-    return {"title": parsed.feed.get("title", ""), "entries": entries}
 
 
 # == Helper Functions =========================================================

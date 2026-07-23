@@ -63,6 +63,7 @@ def call(system: str, user: str, *, max_tokens: int | None = None) -> str:
     messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
     last_err: Exception | None = None
     for model in models:
+        logger.info("🚀 llm model=%s", model)
         backoff = _BACKOFF_START_S
         for attempt in range(_RATE_LIMIT_RETRIES):
             try:
@@ -70,8 +71,9 @@ def call(system: str, user: str, *, max_tokens: int | None = None) -> str:
                 content = resp.choices[0].message.content
                 if content and content.strip():
                     return content
+                logger.warning("⚠️ llm model=%s returned empty, next candidate", model)
                 last_err = RuntimeError(f"{model} returned empty content")
-                break  # empty content: try the next model, don't retry this one
+                break
             except Exception as e:
                 last_err = e
                 if _is_rate_limit(e) and attempt < _RATE_LIMIT_RETRIES - 1:
@@ -79,7 +81,7 @@ def call(system: str, user: str, *, max_tokens: int | None = None) -> str:
                     time.sleep(backoff)
                     backoff = min(backoff * 2, _BACKOFF_CAP_S)
                     continue
-                logger.warning("⚠️ llm model=%s unavailable, next candidate", model)
+                logger.warning("⚠️ llm model=%s unavailable, next candidate: %s", model, e)
                 break
 
     raise RuntimeError(f"all models failed: {last_err}")

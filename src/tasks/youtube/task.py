@@ -32,6 +32,9 @@ def _produce(ctx: Context, items: list[Item]) -> str:
     grouped: dict[str, list[tuple[Item, list[str]]]] = {}
     for item in items:
         grouped.setdefault(item.section, []).append((item, _summarize(ctx, item)))
+    missing = sum(1 for it in items if not it.text)
+    if missing:
+        ctx.log(f"youtube: {missing}/{len(items)} videos had no transcript")
     return _render(_section_order(SOURCES), grouped)
 
 
@@ -46,8 +49,7 @@ def _section_order(specs: list[dict]) -> list[str]:
 
 def _summarize(ctx: Context, item: Item) -> list[str]:
     """The model's bullet lines for one video, or a note if there's no transcript."""
-    if not item.text:
-        ctx.log(f"youtube: no transcript for '{item.title}' ({item.url}); skipping summarization")
+    if not item.text:  # the transcript fetcher already logged why it's empty
         return _NO_TRANSCRIPT
     user = (
         f"Title: {item.title}\n"
