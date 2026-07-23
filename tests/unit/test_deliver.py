@@ -29,7 +29,7 @@ class _RecordingRun:
 
 
 def _todays_tag() -> str:
-    return "podcast-" + datetime.now(UTC).strftime("%Y-%m-%d")
+    return site.RELEASE_TAG_PREFIX + datetime.now(UTC).strftime("%Y-%m-%d")
 
 
 @pytest.fixture(autouse=True)

@@ -40,6 +40,8 @@ jobs:
         with:
           commit-prefix: podcast
           pages-token: ${{ secrets.PAGES_DEPLOY_TOKEN }}
+          pages-repository: ${{ vars.PAGES_REPOSITORY || 'Camil-H/camil-h.github.io' }}
+          pages-destination-dir: ${{ vars.PAGES_DESTINATION_DIR || 'knowledge_secretary' }}
 
   digest:
     if: github.event.schedule == '5 13 * * *' || contains(fromJSON('["newsletter","youtube","all"]'), github.event.inputs.task)
@@ -71,3 +73,5 @@ jobs:
         with:
           commit-prefix: digest
           pages-token: ${{ secrets.PAGES_DEPLOY_TOKEN }}
+          pages-repository: ${{ vars.PAGES_REPOSITORY || 'Camil-H/camil-h.github.io' }}
+          pages-destination-dir: ${{ vars.PAGES_DESTINATION_DIR || 'knowledge_secretary' }}

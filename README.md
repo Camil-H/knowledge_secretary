@@ -31,7 +31,7 @@ uv run python -m src.run [newsletter|youtube|podcast|all]
 
 ## Configuration
 
-There's no central config file — framework knobs live as constants next to the code that uses them: model ranking in `src/core/llm.py`, and the page title / history depth / output dirs in `src/delivery/site.py`. Per-task sources live in each task's `sources.yaml` (below). The only runtime inputs are secrets, set as GitHub Actions repository secrets:
+There's no central config file — framework knobs live as constants next to the code that uses them: model ranking in `src/core/llm.py`, and the history depth / output dirs in `src/delivery/site.py`. The page title/subtitle are also constants there, overridable via the `SITE_TITLE`/`SITE_SUBTITLE` env vars without touching code. Per-task sources live in each task's `sources.yaml` (below). The only runtime inputs are secrets, set as GitHub Actions repository secrets:
 
 | Secret | Purpose |
 | --- | --- |
@@ -54,9 +54,9 @@ This repo is a template: the committed data is one example (the owner's blogs/ch
 
 **2. Secrets.** Set the repository secrets in the table above.
 
-**3. Publishing target.** In `.github/workflows/daily.yml`, both the `podcast` and `digest` jobs publish the site — repoint `external_repository`, `destination_dir`, and `PAGES_DEPLOY_TOKEN` to your own Pages repo. `keep_files: true` assumes you publish into a subpath of a larger site; drop it if the Pages repo is dedicated to this project. Podcast MP3s are hosted as GitHub Release assets of your own fork (needs `permissions: contents: write`, already set) — no change needed. The local build dir is `OUT_DIR` in `src/delivery/site.py`.
+**3. Publishing target.** Set the repository variables `PAGES_REPOSITORY` (`owner/repo`) and `PAGES_DESTINATION_DIR` to your own Pages repo/subpath — both jobs in `.github/workflows/daily.yml` pass them through to `.github/actions/publish`, which falls back to the owner's (`Camil-H/camil-h.github.io`, `knowledge_secretary`) if unset. Also set `PAGES_DEPLOY_TOKEN` (below). `keep_files: true` in `.github/actions/publish/action.yml` assumes you publish into a subpath of a larger site; drop it if the Pages repo is dedicated to this project. Podcast MP3s are hosted as GitHub Release assets of your own fork (needs `permissions: contents: write`, already set) — no change needed. The local build dir is `OUT_DIR` in `src/delivery/site.py`.
 
-**4. Branding & editorial voice.** Site title/subtitle: `TITLE`/`SUBTITLE` in `src/delivery/site.py`. Per-task subject lines: `src/tasks/*/task.py`. Podcast name, tagline, and host roles: the `CONVERSATION_CONFIG` in `src/tasks/podcast/task.py`. The editorial framing (currently biotech/pharma) lives in the prompts — `src/tasks/newsletter/prompt.md`, `src/tasks/youtube/prompt.md`, `src/tasks/podcast/prompt.md`, and `src/tasks/podcast/source_discovery_prompt.md`. Update the `LICENSE` copyright line too.
+**4. Branding & editorial voice.** Site title/subtitle: the `SITE_TITLE`/`SITE_SUBTITLE` env vars (fall back to `TITLE`/`SUBTITLE` in `src/delivery/site.py` if unset). Per-task subject lines: `src/tasks/*/task.py`. Podcast name, tagline, and host roles: the `CONVERSATION_CONFIG` in `src/tasks/podcast/task.py`. The editorial framing (currently biotech/pharma) lives in the prompts — `src/tasks/newsletter/prompt.md`, `src/tasks/youtube/prompt.md`, `src/tasks/podcast/prompt.md`, and `src/tasks/podcast/source_discovery_prompt.md`. Update the `LICENSE` copyright line too.
 
 **5. Schedule.** Cron times are in `.github/workflows/daily.yml` (UTC). The job `if:` guards key off the **exact** cron strings, so if you change a time you must update its matching `github.event.schedule == '...'` condition.
 

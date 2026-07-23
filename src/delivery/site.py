@@ -35,11 +35,14 @@ _PAGE = (Path(__file__).parent / "template.html").read_text()
 _MARKDOWN_URL_SCHEMES = {"http", "https", "mailto"}
 _AUDIO_URL_SCHEMES = ("http", "https")
 
-TITLE = "Knowledge Secretary"
-SUBTITLE = "Daily newsletter, YouTube digest, and technical podcast"
+TITLE = os.environ.get("SITE_TITLE", "Knowledge Secretary")
+SUBTITLE = os.environ.get(
+    "SITE_SUBTITLE", "Daily newsletter, YouTube digest, and technical podcast"
+)
 HISTORY_DIR = "history"
 HISTORY_DAYS = 7
 OUT_DIR = "public"
+RELEASE_TAG_PREFIX = "podcast-"
 
 
 # == Site =====================================================================
@@ -188,7 +191,7 @@ def _upload_release_asset(mp3_path: str, subject: str, topic: str, repo: str) ->
         logger.warning("⚠️ site: no episode_repo configured, skipping podcast upload")
         return None
 
-    tag = "podcast-" + datetime.now(UTC).strftime("%Y-%m-%d")
+    tag = RELEASE_TAG_PREFIX + datetime.now(UTC).strftime("%Y-%m-%d")
     title = subject or topic or tag
     notes = topic or title
     try:

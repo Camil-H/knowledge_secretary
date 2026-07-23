@@ -8,6 +8,14 @@ inputs:
   pages-token:
     description: Personal access token for pushing the built site to the external Pages repo.
     required: true
+  pages-repository:
+    description: External Pages repo to publish to ("owner/repo").
+    required: false
+    default: Camil-H/camil-h.github.io
+  pages-destination-dir:
+    description: Subdirectory within the Pages repo to publish the site into.
+    required: false
+    default: knowledge_secretary
 
 runs:
   using: composite
@@ -25,13 +33,13 @@ runs:
           git pull --rebase --autostash
           git push
         fi
-    - name: Publish site to camilharoune.com
+    - name: Publish site to Pages repo
       if: hashFiles('public/index.html') != ''
       uses: peaceiris/actions-gh-pages@84c30a85c19949d7eee79c4ff27748b70285e453   # v4.1.0
       with:
         personal_token: ${{ inputs.pages-token }}
-        external_repository: Camil-H/camil-h.github.io
+        external_repository: ${{ inputs.pages-repository }}
         publish_branch: main
         publish_dir: ./public
-        destination_dir: knowledge_secretary
+        destination_dir: ${{ inputs.pages-destination-dir }}
         keep_files: true   # never clobber the rest of the personal site

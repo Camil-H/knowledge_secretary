@@ -7,6 +7,7 @@ import pytest
 
 import src.run as run
 from src.core import llm
+from src.delivery import site
 from src.tasks.newsletter import task as newsletter_task
 from tests.e2e.conftest import (
     _install_all_llm,
@@ -91,11 +92,12 @@ def test_podcast_e2e_uploads_release_asset_and_embeds_audio(monkeypatch, tmp_pat
     assert len(calls) == 1
     argv = calls[0]
     assert argv[:3] == ["gh", "release", "create"]
-    assert f"podcast-{_today()}" in argv
+    assert f"{site.RELEASE_TAG_PREFIX}{_today()}" in argv
     assert str(tmp_path / "ep.mp3") in argv
     assert "--repo" in argv and "org/repo" in argv
 
-    audio_url = f"https://github.com/org/repo/releases/download/podcast-{_today()}/ep.mp3"
+    tag = f"{site.RELEASE_TAG_PREFIX}{_today()}"
+    audio_url = f"https://github.com/org/repo/releases/download/{tag}/ep.mp3"
     payload = _read_history(_today())["tasks"]["podcast"]
     assert payload["kind"] == "podcast"
     assert payload["topic"] == "My Topic"
