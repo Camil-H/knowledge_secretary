@@ -16,4 +16,4 @@
 # regulatory
 - { key: fda_press,  kind: feed, section: "Regulatory", url: "https://www.fda.gov/about-fda/contact-fda/stay-informed/rss-feeds/press-releases/rss.xml", enrich: [article_text] }
 # X / Twitter
-- { key: x_biotech,  kind: twitter, section: "Social/X", handles: ["bradloncar", "JacobPlieth", "Sports_Bios", "bio_clouseau", "BioStocks", "Prof_Oak_", "paras_biotech", "andrewpannu", "BertrandBio"] }
+- { key: x_biotech,  kind: twitter, section: "X / Twitter", handles: ["bradloncar", "JacobPlieth", "Sports_Bios", "bio_clouseau", "BioStocks", "Prof_Oak_", "paras_biotech", "andrewpannu", "BertrandBio"] }

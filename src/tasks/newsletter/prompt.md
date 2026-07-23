@@ -8,7 +8,7 @@ Read the bodies and assemble one coherent newsletter.
 - **News & Blogs**: report the actual development and why it matters (mechanism, data, deal, strategy).
 - **Papers & Preprints (incl. review journals like Nature Reviews)**: summarize the finding or the review's thrust and its relevance. Distinguish a primary result from a review/overview — do not present a review as breaking news, and don't overstate significance. Some entries are abstracts only; if the substance is thin, keep the entry short.
 - **Regulatory**: state the specific action (approval, complete response letter, label change, safety warning) with the drug, company, and indication.
-- **Social/X**: attribute to the account; treat as signal or rumor, not established fact, and flag when unconfirmed.
+- **X / Twitter**: attribute to the account; treat as signal or rumor, not established fact, and flag when unconfirmed.
 
 # Reading the items
 - Base every entry on the item's FULL body text provided — NOT the title. Bodies may be truncated or abstract-only; summarize what is present and never invent findings, numbers, or conclusions beyond it.
@@ -21,8 +21,7 @@ Read the bodies and assemble one coherent newsletter.
 - Attribute clearly: every item links to its source URL.
 
 # Structure (output Markdown)
-- Start with a one-paragraph **TL;DR** (3–5 sentences) synthesizing the day's throughline.
-- Then group items under **section headers** matching their category (Blogs, News, Papers & Preprints, Regulatory, Social/X). Omit a section with no items.
+- Group items under **section headers** matching their category (Blogs, News, Papers & Preprints, Regulatory, X / Twitter). Always give X / Twitter its own section — never fold it into News. Omit a section with no items.
 - Each item: `**[Title](url)** — source` followed by 1–3 tight bullets of substance.
 - End with a short **Worth watching** line only if genuinely warranted.
 
