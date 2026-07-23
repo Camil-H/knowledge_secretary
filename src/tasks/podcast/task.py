@@ -13,6 +13,7 @@ from src.tasks.podcast.utils import validate_urls
 QUEUE_KEY = "podcast_queue"  # kv list of topics still to do; seeded from TOPICS
 TOPICS = sources_loader.load(Path(__file__).parent, [])
 MAX_SOURCE_URLS = 10
+_MAX_MODEL_ATTEMPTS = 4  # cap the transcript-LLM fallback cascade (each attempt re-fetches sources)
 _OPENROUTER_KEY_LABEL = "OPENROUTER_API_KEY"  # transcript LLM: podcastfy -> LiteLLM -> OpenRouter
 # Google Cloud TTS, keyed by GEMINI_API_KEY (a GCP Cloud-TTS key, not AI Studio). Passed as an
 # explicit arg because podcastfy ignores a nested text_to_speech override, else defaults to openai.
@@ -73,26 +74,33 @@ def _discover_urls(ctx: Context, topic: str) -> list[str]:
 
 
 async def _generate_episode(ctx: Context, topic: str) -> str | None:
-    """Episode from reachable discovered URLs (or the bare topic); None on any failure."""
+    """Episode from reachable discovered URLs (or the bare topic); None if every model fails.
+
+    podcastfy drives its own transcript LLM call with a single model and no fallback, so we
+    cascade through the resolved candidates here — free models are frequently saturated upstream."""
     urls = await validate_urls(_discover_urls(ctx, topic))
     if urls:
         ctx.logger.info(f"podcast: {len(urls)} reachable source url(s) for {topic!r}")
     else:
         ctx.logger.warning("⚠️ podcast: no reachable source URLs for %r; using topic text", topic)
     instructions = (Path(__file__).parent / "prompt.md").read_text()
-    model = (llm.resolve_models(podcast=True) or [llm.FALLBACK_MODEL])[0]
-    try:
-        from podcastfy.client import generate_podcast
+    from podcastfy.client import generate_podcast
 
-        return generate_podcast(
-            urls=urls or None,
-            text=None if urls else topic,
-            conversation_config={**CONVERSATION_CONFIG, "user_instructions": instructions},
-            llm_model_name=model,
-            api_key_label=_OPENROUTER_KEY_LABEL,
-            tts_model=_TTS_MODEL,
-            longform=True,
-        )
-    except Exception as exc:
-        ctx.logger.warning("⚠️ podcast: generate_podcast failed for %r: %s", topic, exc)
-        return None
+    models = llm.resolve_models(podcast=True) or [llm.FALLBACK_MODEL]
+    last_err: Exception | None = None
+    for model in models[:_MAX_MODEL_ATTEMPTS]:
+        try:
+            return generate_podcast(
+                urls=urls or None,
+                text=None if urls else topic,
+                conversation_config={**CONVERSATION_CONFIG, "user_instructions": instructions},
+                llm_model_name=model,
+                api_key_label=_OPENROUTER_KEY_LABEL,
+                tts_model=_TTS_MODEL,
+                longform=True,
+            )
+        except Exception as exc:  # tolerate any generation failure and try the next model
+            last_err = exc
+            ctx.logger.warning("⚠️ podcast: model=%s failed: %s", model, exc)
+    ctx.logger.warning("⚠️ podcast: all models failed for %r: %s", topic, last_err)
+    return None

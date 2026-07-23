@@ -173,6 +173,39 @@ def test_generate_episode_passes_urls_or_topic_text_based_on_reachability(
     assert captured["tts_model"] == podcast_task._TTS_MODEL == "gemini"
 
 
+def test_generate_episode_cascades_to_next_model_when_one_fails(monkeypatch):
+    attempts = []
+
+    def _capture(**kwargs):
+        attempts.append(kwargs["llm_model_name"])
+        if len(attempts) == 1:
+            raise RuntimeError("upstream rate limit")
+        return "/tmp/ep.mp3"
+
+    _stub_episode_collaborators(
+        monkeypatch,
+        validated_urls=["https://source.example.com"],
+        models=["openrouter/first", "openrouter/second"],
+        generate_podcast=_capture,
+    )
+    result = asyncio.run(_generate_episode(_discovery_ctx(), "PROTACs"))
+    assert result == "/tmp/ep.mp3"
+    assert attempts == ["openrouter/first", "openrouter/second"]
+
+
+def test_generate_episode_returns_none_when_all_models_fail(monkeypatch):
+    def _raise(**kwargs):
+        raise RuntimeError("upstream rate limit")
+
+    _stub_episode_collaborators(
+        monkeypatch,
+        validated_urls=["https://source.example.com"],
+        models=["openrouter/a", "openrouter/b", "openrouter/c"],
+        generate_podcast=_raise,
+    )
+    assert asyncio.run(_generate_episode(_discovery_ctx(), "PROTACs")) is None
+
+
 def test_generate_episode_falls_back_to_fallback_model_when_resolve_models_empty(monkeypatch):
     captured = {}
 
