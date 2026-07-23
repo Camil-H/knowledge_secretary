@@ -1,11 +1,14 @@
 """Newsletter source adapters + enrichers — thin mappers over src/fetchers.
 Kinds: feed/pubmed/biorxiv/twitter. Enricher: article_text."""
 
+import logging
 from datetime import UTC, datetime
 
 from src.core.models import Item
 from src.core.registry import enrichers, sources
 from src.fetchers import biorxiv, pubmed, rss, url, x
+
+logger = logging.getLogger(__name__)
 
 # == Source adapters ==========================================================
 
@@ -67,10 +70,13 @@ def biorxiv_source(spec: dict, since: datetime, state: dict) -> list[Item]:
 def twitter(spec: dict, since: datetime, state: dict) -> list[Item]:
     items = []
     for handle in spec.get("handles", []):
-        for tweet in x.recent_tweets(handle):
-            item = _tweet_item(tweet, spec, handle)
-            if item is not None:
-                items.append(item)
+        tweets = x.recent_tweets(handle)
+        kept = [it for it in (_tweet_item(t, spec, handle) for t in tweets) if it is not None]
+        if tweets and not kept:
+            logger.warning(
+                "⚠️ twitter @%s: all %d tweet(s) dropped (bad id/date?)", handle, len(tweets)
+            )
+        items.extend(kept)
     return items
 
 

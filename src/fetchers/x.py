@@ -39,5 +39,6 @@ def _extract(data) -> list[dict]:
         for key in _LIST_KEYS:
             if isinstance(data.get(key), list):
                 return data[key]
+        logger.warning("⚠️ x: unexpected JSON shape, top-level keys=%s", list(data)[:10])
         return []
     return data if isinstance(data, list) else []
