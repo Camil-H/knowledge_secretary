@@ -132,7 +132,7 @@ def _task_html(task: str, payload: dict) -> str:
         body = f'<p class="topic">{payload.get("topic", "")}</p>{audio_html}'
     else:
         body = markdown.markdown(payload.get("markdown", ""), extensions=["extra"])
-    return f'<article class="task {task}"><h3>{label}</h3>{body}</article>'
+    return f'<article class="task {task}"><h3 class="task-label">{label}</h3>{body}</article>'
 
 
 # ----- podcast release upload -----

@@ -6,46 +6,101 @@
 <meta name="robots" content="noindex, nofollow">
 <title>$title</title>
 <style>
-  :root { color-scheme: light; }
-  body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-    max-width: 780px;
-    margin: 0 auto;
-    padding: 2rem 1.25rem 4rem;
-    line-height: 1.55;
-    color: #1c1c1c;
-    background: #fbfbfa;
+  *, *::before, *::after { box-sizing: border-box; }
+  :root {
+    --bg: #FFF7F4;
+    --surface: #FFFFFF;
+    --text: #1a1a2e;
+    --text-secondary: #6b6580;
+    --text-tertiary: #9a93a8;
+    --accent: #f4d06f;
+    --border: rgba(0, 0, 0, 0.07);
+    --border-strong: rgba(0, 0, 0, 0.12);
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.06);
+    --radius: 14px;
+    color-scheme: light;
   }
-  h1 { margin-bottom: 0.2rem; }
-  .subtitle { color: #555; margin-top: 0; }
-  .updated { color: #888; font-size: 0.85rem; }
-  .day { margin: 2rem 0; }
-  .day h2 { margin: 0 0 0.75rem; font-size: 1.15rem; }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141420;
+      --surface: #1c1c30;
+      --text: #f0ebe8;
+      --text-secondary: #a09ab0;
+      --text-tertiary: #706a80;
+      --border: rgba(255, 255, 255, 0.07);
+      --border-strong: rgba(255, 255, 255, 0.12);
+      --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
+      --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.25);
+      color-scheme: dark;
+    }
+  }
+  body {
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 2.5rem 1.25rem 4rem;
+    line-height: 1.6;
+    color: var(--text);
+    background: var(--bg);
+    -webkit-font-smoothing: antialiased;
+  }
+  h1 { font-size: 1.9rem; font-weight: 700; letter-spacing: -0.025em; margin: 0 0 0.15rem; }
+  .subtitle { color: var(--text-secondary); margin: 0; }
+  .updated { color: var(--text-tertiary); font-size: 0.8rem; margin-top: 0.4rem; }
+  .day { margin: 2.25rem 0; }
+  .day > h2 { font-size: 1.05rem; font-weight: 600; color: var(--text-secondary); letter-spacing: -0.01em; margin: 0 0 0.9rem; }
   details.day summary {
     cursor: pointer;
+    font-size: 1.05rem;
     font-weight: 600;
-    font-size: 1.1rem;
-    padding: 0.25rem 0 0.6rem;
+    color: var(--text-secondary);
+    padding: 0.25rem 0 0.75rem;
     list-style: none;
   }
   details.day summary::-webkit-details-marker { display: none; }
-  details.day summary::before { content: "▸ "; }
-  details.day[open] summary::before { content: "▾ "; }
+  details.day summary::before { content: "\25B8  "; color: var(--text-tertiary); }
+  details.day[open] summary::before { content: "\25BE  "; }
   article.task {
-    margin: 0.85rem 0;
-    padding: 1rem 1.25rem;
-    background: #fff;
-    border: 1px solid #e3e2df;
-    border-left: 4px solid #ccc;
-    border-radius: 10px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+    padding: 1.4rem 1.6rem;
+    margin: 1rem 0;
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
   }
-  article.task.newsletter { border-left-color: #0a7; }
-  article.task.youtube { border-left-color: #d33; }
-  article.task.podcast { border-left-color: #06c; }
-  article.task h3 { margin-top: 0; margin-bottom: 0.5rem; }
-  audio { width: 100%; margin-top: 0.4rem; }
-  .topic { color: #444; font-style: italic; }
-  a { color: #0a5; }
+  article.task:hover { box-shadow: var(--shadow-md); border-color: var(--border-strong); }
+  .task-label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--text-tertiary);
+    margin: 0 0 0.85rem;
+  }
+  .task h1, .task h2, .task h3, .task h4 {
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    line-height: 1.3;
+    margin: 1.3rem 0 0.5rem;
+  }
+  .task h1, .task h2 { font-size: 1.1rem; }
+  .task h3, .task h4 { font-size: 1rem; }
+  .task-label + * { margin-top: 0; }
+  .task p { margin: 0.55rem 0; color: var(--text-secondary); }
+  .task ul, .task ol { margin: 0.4rem 0 0.9rem; padding-left: 1.4rem; color: var(--text-secondary); }
+  .task li { margin: 0.3rem 0; }
+  .task strong { color: var(--text); }
+  audio { width: 100%; margin-top: 0.5rem; }
+  .topic { color: var(--text-secondary); font-style: italic; }
+  a {
+    color: var(--text);
+    text-decoration: underline;
+    text-decoration-color: var(--accent);
+    text-underline-offset: 2px;
+  }
+  a:hover { text-decoration-color: var(--text); }
 </style>
 </head>
 <body>
