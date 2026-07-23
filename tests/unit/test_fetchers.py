@@ -33,12 +33,16 @@ def test_video_id_from_url(url, expected):
         ([{"id": 1}], 1),  # top-level array
         ({"tweets": [{"id": 1}, {"id": 2}]}, 2),  # wrapped under a known key
         ({"data": [{"id": 1}]}, 1),
-        ({"nope": 5}, 0),  # no recognized list
-        ("garbage", 0),  # non-JSON-object
     ],
 )
-def test_x_extract(data, expected_len):
+def test_x_extract_reads_known_shapes(data, expected_len):
     assert len(x._extract(data)) == expected_len
+
+
+@pytest.mark.parametrize("data", [{"nope": 5}, "garbage", 42])
+def test_x_extract_raises_on_unexpected(data):
+    with pytest.raises(x.UnexpectedXFormat):
+        x._extract(data)
 
 
 # ----- pubmed._parse_date -----

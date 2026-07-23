@@ -1,14 +1,11 @@
 """Newsletter source adapters + enrichers — thin mappers over src/fetchers.
 Kinds: feed/pubmed/biorxiv/twitter. Enricher: article_text."""
 
-import logging
 from datetime import UTC, datetime
 
 from src.core.models import Item
 from src.core.registry import enrichers, sources
 from src.fetchers import biorxiv, pubmed, rss, url, x
-
-logger = logging.getLogger(__name__)
 
 # == Source adapters ==========================================================
 
@@ -68,16 +65,11 @@ def biorxiv_source(spec: dict, since: datetime, state: dict) -> list[Item]:
 
 @sources.register("twitter")
 def twitter(spec: dict, since: datetime, state: dict) -> list[Item]:
-    items = []
-    for handle in spec.get("handles", []):
-        tweets = x.recent_tweets(handle)
-        kept = [it for it in (_tweet_item(t, spec, handle) for t in tweets) if it is not None]
-        if tweets and not kept:
-            logger.warning(
-                "⚠️ twitter @%s: all %d tweet(s) dropped (bad id/date?)", handle, len(tweets)
-            )
-        items.extend(kept)
-    return items
+    return [
+        _tweet_item(tweet, spec, handle)
+        for handle in spec.get("handles", [])
+        for tweet in x.recent_tweets(handle)
+    ]
 
 
 # == Enrichers ================================================================
@@ -95,16 +87,15 @@ def article_text(item: Item) -> Item:
 # == Helper Functions =========================================================
 
 
-def _tweet_item(tweet: dict, spec: dict, handle: str) -> Item | None:
+def _tweet_item(tweet: dict, spec: dict, handle: str) -> Item:
     tweet_id = str(tweet.get("id") or tweet.get("tweet_id") or "")
-    if not tweet_id:
-        return None
+    raw_date = (tweet.get("created_at") or tweet.get("date") or "").replace("Z", "+00:00")
+    if not tweet_id or not raw_date:
+        raise x.UnexpectedXFormat(f"@{handle} tweet missing id/date; keys={list(tweet)[:10]}")
     try:
-        published = datetime.fromisoformat(
-            (tweet.get("created_at") or tweet.get("date") or "").replace("Z", "+00:00")
-        ).astimezone(UTC)
-    except ValueError:
-        return None
+        published = datetime.fromisoformat(raw_date).astimezone(UTC)
+    except ValueError as e:
+        raise x.UnexpectedXFormat(f"@{handle} tweet has bad date {raw_date!r}") from e
     text = tweet.get("text", "")
     return Item(
         id="x:" + tweet_id,

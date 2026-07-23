@@ -11,6 +11,16 @@ _LIST_KEYS = ("tweets", "data", "results")
 _DEFAULT_LIMIT = 20
 
 
+# == Exceptions ===============================================================
+
+
+class UnexpectedXFormat(Exception):
+    """twitter-cli output didn't match the expected tweet schema."""
+
+
+# == Fetch ====================================================================
+
+
 def recent_tweets(handle: str, *, limit: int = _DEFAULT_LIMIT) -> list[dict]:
     """Recent tweets via `twitter user-posts <handle> --max N --json`; [] on failure.
 
@@ -25,6 +35,8 @@ def recent_tweets(handle: str, *, limit: int = _DEFAULT_LIMIT) -> list[dict]:
             check=True,
         )
         return _extract(json.loads(proc.stdout))
+    except UnexpectedXFormat:
+        raise  # format drift is loud, not a silent degrade
     except Exception as e:
         logger.warning("⚠️ x %s degraded (no items): %s", handle, e)
         return []
@@ -34,11 +46,12 @@ def recent_tweets(handle: str, *, limit: int = _DEFAULT_LIMIT) -> list[dict]:
 
 
 def _extract(data) -> list[dict]:
-    """Tolerate a top-level JSON array or an object wrapping the tweet list."""
+    """Return the tweet list from a top-level array or a known wrapper key."""
     if isinstance(data, dict):
         for key in _LIST_KEYS:
             if isinstance(data.get(key), list):
                 return data[key]
-        logger.warning("⚠️ x: unexpected JSON shape, top-level keys=%s", list(data)[:10])
-        return []
-    return data if isinstance(data, list) else []
+        raise UnexpectedXFormat(f"no tweet list in response; keys={list(data)[:10]}")
+    if isinstance(data, list):
+        return data
+    raise UnexpectedXFormat(f"expected a list or object, got {type(data).__name__}")
