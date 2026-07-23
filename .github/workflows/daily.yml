@@ -35,23 +35,11 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}   # podcast TTS (Google Cloud)
           GH_TOKEN: ${{ github.token }}   # gh release upload for podcast mp3s (this repo)
         run: uv run python -m src.run podcast
-      - name: Commit history + state
-        run: |
-          git config user.name  "digest-bot"
-          git config user.email "digest-bot@users.noreply.github.com"
-          git add history state 2>/dev/null || true
-          git commit -m "podcast run $(date -u +%F)" || true
-          git pull --rebase --autostash && git push || true
-      - name: Publish site to camilharoune.com
-        if: hashFiles('public/index.html') != ''
-        uses: peaceiris/actions-gh-pages@v4
+      - name: Commit history + state and publish site
+        uses: ./.github/actions/publish
         with:
-          personal_token: ${{ secrets.PAGES_DEPLOY_TOKEN }}
-          external_repository: Camil-H/camil-h.github.io
-          publish_branch: main
-          publish_dir: ./public
-          destination_dir: knowledge_secretary
-          keep_files: true   # never clobber the rest of the personal site
+          commit-prefix: podcast
+          pages-token: ${{ secrets.PAGES_DEPLOY_TOKEN }}
 
   digest:
     if: github.event.schedule == '5 13 * * *' || contains(fromJSON('["newsletter","youtube","all"]'), github.event.inputs.task)
@@ -73,25 +61,13 @@ jobs:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           TWITTER_AUTH_TOKEN: ${{ secrets.TWITTER_AUTH_TOKEN }}   # X source; optional, degrades to empty
           TWITTER_CT0: ${{ secrets.TWITTER_CT0 }}
-        run: uv run python -m src.run newsletter || true
+        run: uv run python -m src.run newsletter || echo "::warning::newsletter task failed; continuing so youtube still runs"
       - name: Run youtube digest
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-        run: uv run python -m src.run youtube || true
-      - name: Commit history + state
-        run: |
-          git config user.name  "digest-bot"
-          git config user.email "digest-bot@users.noreply.github.com"
-          git add history state 2>/dev/null || true
-          git commit -m "digest run $(date -u +%F)" || true
-          git pull --rebase --autostash && git push || true
-      - name: Publish site to camilharoune.com
-        if: hashFiles('public/index.html') != ''
-        uses: peaceiris/actions-gh-pages@v4
+        run: uv run python -m src.run youtube || echo "::warning::youtube task failed; continuing to publish"
+      - name: Commit history + state and publish site
+        uses: ./.github/actions/publish
         with:
-          personal_token: ${{ secrets.PAGES_DEPLOY_TOKEN }}
-          external_repository: Camil-H/camil-h.github.io
-          publish_branch: main
-          publish_dir: ./public
-          destination_dir: knowledge_secretary
-          keep_files: true
+          commit-prefix: digest
+          pages-token: ${{ secrets.PAGES_DEPLOY_TOKEN }}

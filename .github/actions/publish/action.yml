@@ -1,0 +1,37 @@
+name: Publish digest
+description: Commit the history/state snapshot and publish the built site to the personal Pages repo.
+
+inputs:
+  commit-prefix:
+    description: Label for the snapshot commit message ("<prefix> run <date>").
+    required: true
+  pages-token:
+    description: Personal access token for pushing the built site to the external Pages repo.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Commit history + state
+      shell: bash
+      run: |
+        git config user.name  "digest-bot"
+        git config user.email "digest-bot@users.noreply.github.com"
+        git add history state
+        if git diff --cached --quiet; then
+          echo "nothing to commit; skipping push"
+        else
+          git commit -m "${{ inputs.commit-prefix }} run $(date -u +%F)"
+          git pull --rebase --autostash
+          git push
+        fi
+    - name: Publish site to camilharoune.com
+      if: hashFiles('public/index.html') != ''
+      uses: peaceiris/actions-gh-pages@v4
+      with:
+        personal_token: ${{ inputs.pages-token }}
+        external_repository: Camil-H/camil-h.github.io
+        publish_branch: main
+        publish_dir: ./public
+        destination_dir: knowledge_secretary
+        keep_files: true   # never clobber the rest of the personal site
