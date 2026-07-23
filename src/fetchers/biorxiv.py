@@ -37,6 +37,6 @@ def recent(categories: list[str], since: datetime) -> list[dict]:
                 }
             )
         return out
-    except Exception as e:
-        logger.warning("⚠️ biorxiv failed: %s", e)
+    except (httpx.HTTPError, ValueError) as e:  # bioRxiv unreachable or unparseable response
+        logger.warning("⚠️ biorxiv degraded: %s", e)
         return []

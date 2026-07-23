@@ -41,8 +41,8 @@ def transcript(video_id: str) -> str:
     """Best-effort transcript text (any language); empty string on failure."""
     try:
         return _fetch_transcript_text(video_id)
-    except Exception as e:
-        logger.warning("⚠️ youtube transcript %s failed: %s", video_id, e)
+    except Exception as e:  # transcript API raises assorted errors / blocks
+        logger.warning("⚠️ youtube transcript %s degraded: %s", video_id, e)
         return ""
 
 

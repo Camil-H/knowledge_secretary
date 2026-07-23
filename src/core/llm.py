@@ -6,6 +6,8 @@ import time
 import httpx
 import litellm
 
+from src.core.errors import AuthError, ExternalError
+
 logger = logging.getLogger(__name__)
 
 litellm.drop_params = True  # tolerate provider-specific unsupported params
@@ -28,8 +30,8 @@ def _free_openrouter_models(rank: str, *, limit: int = _FREE_LIMIT) -> list[str]
     """Live-fetch zero-cost OpenRouter models, ranked for the use case ([] on failure)."""
     try:
         data = httpx.get(OPENROUTER_MODELS_URL, timeout=_HTTP_TIMEOUT_S).json()["data"]
-    except Exception as e:
-        logger.warning("⚠️ openrouter model list unavailable, using fallback: %s", e)
+    except (httpx.HTTPError, ValueError, KeyError) as e:
+        logger.warning("⚠️ openrouter model list degraded: %s", e)
         return []
 
     free = [
@@ -58,7 +60,8 @@ def resolve_models(podcast: bool | None = None) -> list[str]:
 
 def call(system: str, user: str, *, max_tokens: int | None = None) -> str:
     """First non-empty completion across the resolved models: 429 retries the same
-    model with backoff, other errors fall through, all-fail raises RuntimeError."""
+    model with backoff, an auth failure raises immediately, other errors fall
+    through, all-fail raises ExternalError."""
     models = resolve_models() or [FALLBACK_MODEL]
     messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
     last_err: Exception | None = None
@@ -76,6 +79,8 @@ def call(system: str, user: str, *, max_tokens: int | None = None) -> str:
                 break
             except Exception as e:
                 last_err = e
+                if _is_auth(e):
+                    raise AuthError("openrouter", cause=e) from e
                 if _is_rate_limit(e) and attempt < _RATE_LIMIT_RETRIES - 1:
                     logger.warning("⚠️ llm model=%s rate-limited; backoff %ss", model, backoff)
                     time.sleep(backoff)
@@ -84,7 +89,7 @@ def call(system: str, user: str, *, max_tokens: int | None = None) -> str:
                 logger.warning("⚠️ llm model=%s unavailable, next candidate: %s", model, e)
                 break
 
-    raise RuntimeError(f"all models failed: {last_err}")
+    raise ExternalError("openrouter", detail="all models failed", cause=last_err)
 
 
 # == Helper Functions =========================================================
@@ -97,3 +102,13 @@ def _is_rate_limit(e: Exception) -> bool:
     if getattr(e, "status_code", None) == 429:
         return True
     return "rate limit" in str(e).lower()
+
+
+def _is_auth(e: Exception) -> bool:
+    """True for credential / 401 errors (across litellm and raw provider errors)."""
+    if isinstance(e, getattr(litellm, "AuthenticationError", ())):
+        return True
+    if getattr(e, "status_code", None) == 401:
+        return True
+    msg = str(e).lower()
+    return "no user or org" in msg or "auth" in msg

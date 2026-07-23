@@ -4,6 +4,7 @@ sleep are all patched, so no real API calls, keys, or waits."""
 import pytest
 
 import src.core.llm as llm
+from src.core.errors import AuthError, ExternalError
 
 # ----- test doubles -----
 
@@ -127,5 +128,19 @@ def test_call_raises_when_all_candidates_fail(monkeypatch):
         raise ValueError("nope")
 
     monkeypatch.setattr(llm.litellm, "completion", fake_completion)
-    with pytest.raises(RuntimeError, match="all models failed"):
+    with pytest.raises(ExternalError, match="all models failed"):
         llm.call("s", "u")
+
+
+def test_call_raises_auth_error_immediately(monkeypatch):
+    monkeypatch.setattr(llm, "resolve_models", lambda: ["openrouter/a:free", "openrouter/b:free"])
+    tried = []
+
+    def fake_completion(model, messages, max_tokens=None):
+        tried.append(model)
+        raise ValueError("No user or org id found in auth cookie")
+
+    monkeypatch.setattr(llm.litellm, "completion", fake_completion)
+    with pytest.raises(AuthError):
+        llm.call("s", "u")
+    assert tried == ["openrouter/a:free"]  # auth fails loudly on the first model, no fallback

@@ -1,4 +1,4 @@
-"""PubMed recent-article search via NCBI E-utilities. Degrades to []."""
+"""PubMed recent-article search via NCBI E-utilities. Degrades to [] on failure."""
 
 import logging
 from datetime import UTC, datetime
@@ -62,8 +62,8 @@ def search_recent(
                 }
             )
         return out
-    except Exception as e:
-        logger.warning("⚠️ pubmed failed: %s", e)
+    except (httpx.HTTPError, ValueError) as e:  # NCBI unreachable or unparseable response
+        logger.warning("⚠️ pubmed degraded: %s", e)
         return []
 
 

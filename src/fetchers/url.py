@@ -12,6 +12,6 @@ def article_text(url: str) -> str | None:
     try:
         downloaded = trafilatura.fetch_url(url)
         return trafilatura.extract(downloaded) if downloaded else None
-    except Exception as e:
-        logger.warning("⚠️ url %s failed: %s", url, e)
+    except Exception as e:  # trafilatura raises assorted errors on fetch/extract
+        logger.warning("⚠️ url %s degraded: %s", url, e)
         return None

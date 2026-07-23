@@ -21,7 +21,7 @@ def fetch(url: str) -> dict:
         status = getattr(parsed, "status", 0) or 0
         if status >= 400 or (getattr(parsed, "bozo", 0) and not parsed.entries):
             exc = getattr(parsed, "bozo_exception", "")
-            logger.warning("⚠️ rss %s unavailable: status=%s %s", url, status, exc)
+            logger.warning("⚠️ rss %s degraded: status=%s %s", url, status, exc)
         entries = [
             {
                 "id": e.get("id") or e.get("link", ""),
@@ -34,8 +34,8 @@ def fetch(url: str) -> dict:
             for e in parsed.entries
         ]
         return {"title": parsed.feed.get("title", ""), "entries": entries}
-    except Exception as e:
-        logger.warning("⚠️ rss %s failed: %s", url, e)
+    except Exception as e:  # feedparser surfaces malformed-feed errors as assorted exceptions
+        logger.warning("⚠️ rss %s degraded: %s", url, e)
         return {"title": "", "entries": []}
 
 

@@ -4,6 +4,8 @@ import json
 import logging
 import subprocess
 
+from src.core.errors import ExternalError
+
 logger = logging.getLogger(__name__)
 
 _CLI = "twitter"
@@ -14,7 +16,7 @@ _DEFAULT_LIMIT = 20
 # == Exceptions ===============================================================
 
 
-class UnexpectedXFormat(Exception):
+class UnexpectedXFormat(ExternalError):
     """twitter-cli output didn't match the expected tweet schema."""
 
 
@@ -37,8 +39,8 @@ def recent_tweets(handle: str, *, limit: int = _DEFAULT_LIMIT) -> list[dict]:
         return _extract(json.loads(proc.stdout))
     except UnexpectedXFormat:
         raise  # format drift is loud, not a silent degrade
-    except Exception as e:
-        logger.warning("⚠️ x %s degraded (no items): %s", handle, e)
+    except (subprocess.SubprocessError, OSError, json.JSONDecodeError) as e:
+        logger.warning("⚠️ x %s degraded: %s", handle, e)
         return []
 
 
