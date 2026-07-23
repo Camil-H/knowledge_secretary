@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   podcast:
-    if: github.event.schedule == '0 12 * * *' || contains(fromJSON('["podcast","all"]'), github.event.inputs.task)
+    if: github.event.schedule == '0 6 * * *' || contains(fromJSON('["podcast","all"]'), github.event.inputs.task)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # v4.4.0
@@ -44,7 +44,7 @@ jobs:
           pages-destination-dir: ${{ vars.PAGES_DESTINATION_DIR || 'knowledge_secretary' }}
 
   digest:
-    if: github.event.schedule == '5 13 * * *' || contains(fromJSON('["newsletter","youtube","all"]'), github.event.inputs.task)
+    if: github.event.schedule == '30 6 * * *' || contains(fromJSON('["newsletter","youtube","all"]'), github.event.inputs.task)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # v4.4.0
