@@ -12,6 +12,7 @@ class ExternalError(Exception):
     def __init__(self, source: str, *, cause: Exception | None = None, detail: str = "") -> None:
         self.source = source
         self.cause = cause
+        self.detail = detail
         message = detail or (str(cause) if cause else "")
         super().__init__(f"{source}: {message}" if message else source)
 

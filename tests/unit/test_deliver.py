@@ -91,6 +91,26 @@ def test_site_empty_result_is_noop():
     assert not os.path.exists(os.path.join(site.OUT_DIR, "index.html"))
 
 
+def test_site_renders_notice_banner():
+    site.site(
+        Result(markdown="# Hi", notices=["x_biotech: creds expired"], meta={"task": "newsletter"})
+    )
+    html = _index_html()
+    assert 'class="notice"' in html
+    assert "x_biotech: creds expired" in html
+
+
+def test_site_notices_only_result_still_records():
+    # X auth failing with no other new content must still surface, not be dropped as "empty"
+    site.site(
+        Result(markdown="", notices=["x_biotech: creds expired"], meta={"task": "newsletter"})
+    )
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
+    entry = site._load_entry(site.HISTORY_DIR, today)
+    assert entry["tasks"]["newsletter"]["notices"] == ["x_biotech: creds expired"]
+    assert "x_biotech: creds expired" in _index_html()
+
+
 # ----- helpers -----
 
 

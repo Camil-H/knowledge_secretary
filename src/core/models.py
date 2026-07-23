@@ -27,6 +27,8 @@ class Result:
     markdown: str = ""
     artifacts: list[str] = field(default_factory=list)
     meta: dict = field(default_factory=dict)
+    # user-facing degradation notices rendered on the page (e.g. a source's creds expired)
+    notices: list[str] = field(default_factory=list)
     # marked seen only after successful delivery, so a failed send doesn't burn the run
     consumed: list[str] = field(default_factory=list)
 

@@ -8,6 +8,7 @@ import logging
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
+from src.core.errors import AuthError
 from src.core.models import Context, Item
 from src.tasks import runner
 from src.tasks.runner import LOOKBACK_HOURS, gather, run_source_task
@@ -135,6 +136,30 @@ def test_gather_source_crash_is_logged_and_skipped_other_specs_still_contribute(
     assert "bad_source" in caplog.text
 
 
+def test_gather_auth_error_records_notice_and_continues(monkeypatch, caplog):
+    since = datetime.now(UTC) - timedelta(hours=1)
+    good_item = _item("good:1")
+    monkeypatch.setattr(
+        runner,
+        "sources",
+        _FakeRegistry(
+            {
+                "bad": _raiser(AuthError("x", detail="creds expired")),
+                "good": _fetcher([good_item]),
+            }
+        ),
+    )
+    state = {"ids": {}, "kv": {}}
+    specs = [_spec("x_src", kind="bad"), _spec("good_src", kind="good")]
+
+    with caplog.at_level(logging.ERROR, logger="src.tasks.runner"):
+        result = gather(specs, state, since)
+
+    assert result == [good_item]  # auth failure of one source doesn't sink the others
+    assert state["_notices"] == ["x_src: creds expired"]
+    assert any("auth failed" in r.message for r in caplog.records)
+
+
 def test_gather_unknown_kind_is_a_registry_keyerror_skipped_without_crash(monkeypatch):
     since = datetime.now(UTC) - timedelta(hours=1)
     monkeypatch.setattr(runner, "sources", _FakeRegistry())  # nothing registered
@@ -204,3 +229,20 @@ def test_run_source_task_consumes_all_gathered_ids_even_when_produce_returns_emp
 
     assert result.markdown == ""
     assert set(result.consumed) == {"a:1", "a:2"}
+
+
+def test_run_source_task_drains_notices_from_state_into_result():
+    # gather records source notices under a transient state key; the task must move them
+    # onto the Result (for delivery) and clear them so they never persist to seen.json.
+    state = {"ids": {}, "kv": {}, "_notices": ["x_src: creds expired"]}
+    ctx = Context(
+        state=state,
+        gather=lambda specs, since: [],
+        call=lambda *a, **k: "",
+        logger=logging.getLogger("test"),
+    )
+
+    result = run_source_task(ctx, [_spec("k")], lambda ctx, items: "", "Subject")
+
+    assert result.notices == ["x_src: creds expired"]
+    assert "_notices" not in state

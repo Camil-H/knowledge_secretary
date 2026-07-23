@@ -34,13 +34,14 @@ OUT_DIR = "public"
 def site(result: Result) -> None:
     """Store today's result under HISTORY_DIR keyed by task, prune, re-render."""
     task = result.meta.get("task", "")
-    if not result.markdown and not result.artifacts:
+    if not result.markdown and not result.artifacts and not result.notices:
         logger.info("site: nothing to add for task %s", task)
         return
 
     today = datetime.now(UTC).strftime("%Y-%m-%d")
     entry = _load_entry(HISTORY_DIR, today)
 
+    payload: dict
     if result.artifacts:
         episode_repo = os.environ.get("GITHUB_REPOSITORY", "")
         audio_url = _upload_release_asset(
@@ -55,6 +56,8 @@ def site(result: Result) -> None:
     else:
         payload = {"kind": "markdown", "subject": result.subject, "markdown": result.markdown}
 
+    if result.notices:
+        payload["notices"] = result.notices
     entry["tasks"][task] = payload
     _save_entry(HISTORY_DIR, today, entry)
     _prune(HISTORY_DIR, HISTORY_DAYS)
@@ -132,7 +135,10 @@ def _task_html(task: str, payload: dict) -> str:
         body = f'<p class="topic">{payload.get("topic", "")}</p>{audio_html}'
     else:
         body = markdown.markdown(payload.get("markdown", ""), extensions=["extra"])
-    return f'<article class="task {task}"><h3 class="task-label">{label}</h3>{body}</article>'
+    notices = "".join(f'<p class="notice">⚠️ {n}</p>' for n in payload.get("notices", []))
+    return (
+        f'<article class="task {task}"><h3 class="task-label">{label}</h3>{notices}{body}</article>'
+    )
 
 
 # ----- podcast release upload -----

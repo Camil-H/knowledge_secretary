@@ -9,6 +9,7 @@ from datetime import UTC, datetime, timedelta
 import httpx
 import pytest
 
+from src.core.errors import AuthError
 from src.fetchers import biorxiv, pubmed, rss, x, youtube
 from src.fetchers import url as url_fetcher
 
@@ -101,6 +102,25 @@ def test_recent_tweets_composes_argv_and_parses_stdout(monkeypatch):
 )
 def test_recent_tweets_degrades_on_subprocess_or_json_error(monkeypatch, caplog, fake_run):
     monkeypatch.setattr(x.subprocess, "run", fake_run)
+    with caplog.at_level(logging.WARNING):
+        out = x.recent_tweets("someuser")
+    assert out == []
+    assert any("degraded" in r.message for r in caplog.records)
+
+
+def test_recent_tweets_raises_auth_error_on_expired_cookies(monkeypatch):
+    err = subprocess.CalledProcessError(
+        1, "twitter", stderr="Error: 401 Unauthorized — session expired"
+    )
+    monkeypatch.setattr(x.subprocess, "run", _raiser(err))
+    with pytest.raises(AuthError) as ei:
+        x.recent_tweets("someuser")
+    assert "renew" in str(ei.value).lower()  # message tells the operator what to do
+
+
+def test_recent_tweets_degrades_on_non_auth_called_process_error(monkeypatch, caplog):
+    err = subprocess.CalledProcessError(1, "twitter", stderr="temporary network failure")
+    monkeypatch.setattr(x.subprocess, "run", _raiser(err))
     with caplog.at_level(logging.WARNING):
         out = x.recent_tweets("someuser")
     assert out == []
