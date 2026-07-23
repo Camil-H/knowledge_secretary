@@ -93,6 +93,30 @@ def test_recent_tweets_composes_argv_and_parses_stdout(monkeypatch):
     assert out == [{"id": 1}, {"id": 2}]
 
 
+def test_recent_tweets_strips_leading_at(monkeypatch):
+    captured = {}
+
+    def fake_run(argv, **kwargs):
+        captured["argv"] = argv
+        return type("Proc", (), {"stdout": json.dumps({"tweets": []})})()
+
+    monkeypatch.setattr(x.subprocess, "run", fake_run)
+    x.recent_tweets("@someuser")
+    assert captured["argv"][2] == "someuser"
+
+
+@pytest.mark.parametrize("handle", ["--json", "-rf", "; rm -rf /", "way-too-long-for-a-handle"])
+def test_recent_tweets_rejects_flag_shaped_or_invalid_handle(monkeypatch, caplog, handle):
+    def _must_not_run(*_a, **_k):
+        raise AssertionError("subprocess must not run for an invalid handle")
+
+    monkeypatch.setattr(x.subprocess, "run", _must_not_run)
+    with caplog.at_level(logging.WARNING):
+        out = x.recent_tweets(handle)
+    assert out == []
+    assert any("degraded" in r.message for r in caplog.records)
+
+
 @pytest.mark.parametrize(
     "fake_run",
     [

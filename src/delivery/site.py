@@ -172,19 +172,22 @@ def _upload_release_asset(mp3_path: str, subject: str, topic: str, repo: str) ->
     title = subject or topic or tag
     notes = topic or title
     try:
+        # flags before "--", positionals (tag, mp3_path) after: a positional that starts
+        # with "-" can't be parsed as a flag. --title/--notes use "=" so a value starting
+        # with "-" (e.g. an LLM-generated subject) is bound to its own flag, not read as
+        # a separate option.
         create = subprocess.run(
             [
                 "gh",
                 "release",
                 "create",
-                tag,
-                mp3_path,
                 "--repo",
                 repo,
-                "--title",
-                title,
-                "--notes",
-                notes,
+                f"--title={title}",
+                f"--notes={notes}",
+                "--",
+                tag,
+                mp3_path,
             ],
             capture_output=True,
             text=True,
@@ -193,7 +196,7 @@ def _upload_release_asset(mp3_path: str, subject: str, topic: str, repo: str) ->
             # most likely today's tag already exists (same-day rerun) -> replace asset.
             # NOTE: also catches genuine auth/repo errors, which then fail the upload below.
             upload = subprocess.run(
-                ["gh", "release", "upload", tag, mp3_path, "--repo", repo, "--clobber"],
+                ["gh", "release", "upload", "--repo", repo, "--clobber", "--", tag, mp3_path],
                 capture_output=True,
                 text=True,
             )

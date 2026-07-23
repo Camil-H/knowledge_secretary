@@ -22,6 +22,9 @@ _AUTH_MARKERS = (
     "invalid api key",
 )
 _AUTH_STATUS_RE = re.compile(r"\b(401|403)\b")
+# X handles are 1-15 word chars; anchoring the match rules out flag-shaped input
+# (e.g. "--json", "-rf") reaching argv as the positional handle.
+_HANDLE_RE = re.compile(r"[A-Za-z0-9_]{1,15}")
 
 
 # == Exceptions ===============================================================
@@ -35,10 +38,15 @@ class UnexpectedXFormat(ExternalError):
 
 
 def recent_tweets(handle: str, *, limit: int = _DEFAULT_LIMIT) -> list[dict]:
-    """Recent tweets via `twitter user-posts <handle> --max N --json`; [] on failure."""
+    """Recent tweets via `twitter user-posts <handle> --max N --json`; [] on failure
+    (including a malformed handle, so one bad config entry doesn't sink the source)."""
+    normalized = handle.removeprefix("@")
+    if not _HANDLE_RE.fullmatch(normalized):
+        logger.warning("⚠️ x %s degraded: invalid handle format", handle)
+        return []
     try:
         proc = subprocess.run(
-            [_CLI, "user-posts", handle, "--max", str(limit), "--json"],
+            [_CLI, "user-posts", normalized, "--max", str(limit), "--json"],
             capture_output=True,
             text=True,
             timeout=60,

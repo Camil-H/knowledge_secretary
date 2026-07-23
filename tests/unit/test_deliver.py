@@ -221,11 +221,12 @@ def test_upload_release_asset_happy_path_returns_url_and_composes_create_argv(mo
     tag = _todays_tag()
     assert url == f"https://github.com/org/repo/releases/download/{tag}/ep.mp3"
     argv = run.calls[0]
-    assert argv[:4] == ["gh", "release", "create", tag]
-    assert "ep.mp3" in argv
+    assert argv[:3] == ["gh", "release", "create"]
     assert argv[argv.index("--repo") + 1] == "org/repo"
-    assert argv[argv.index("--title") + 1] == "Subject"
-    assert argv[argv.index("--notes") + 1] == "Topic"
+    assert "--title=Subject" in argv
+    assert "--notes=Topic" in argv
+    # positionals (tag, file) come after a "--" so they can never be parsed as flags
+    assert argv[-3:] == ["--", tag, "ep.mp3"]
 
 
 def test_upload_release_asset_same_day_rerun_recovers_via_clobber_upload(monkeypatch):
@@ -237,8 +238,23 @@ def test_upload_release_asset_same_day_rerun_recovers_via_clobber_upload(monkeyp
     tag = _todays_tag()
     assert url == f"https://github.com/org/repo/releases/download/{tag}/ep.mp3"
     upload_argv = run.calls[1]
-    assert upload_argv[:4] == ["gh", "release", "upload", tag]
+    assert upload_argv[:3] == ["gh", "release", "upload"]
     assert "--clobber" in upload_argv
+    assert upload_argv[-3:] == ["--", tag, "ep.mp3"]
+
+
+def test_upload_release_asset_neutralizes_flag_shaped_subject_and_path(monkeypatch):
+    # A subject/topic (or mp3 path) that looks like a CLI flag must not be parsed as one.
+    run = _RecordingRun(_Resp(0))
+    monkeypatch.setattr(site.subprocess, "run", run)
+
+    site._upload_release_asset("--rf", "--json", "-rf", "org/repo")
+
+    argv = run.calls[0]
+    assert "--title=--json" in argv
+    assert "--notes=-rf" in argv
+    tag = _todays_tag()
+    assert argv[-3:] == ["--", tag, "--rf"]  # positional mp3 path, shielded by "--"
 
 
 def test_upload_release_asset_subprocess_exception_returns_none(monkeypatch):
