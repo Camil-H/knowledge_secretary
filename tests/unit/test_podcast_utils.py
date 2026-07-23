@@ -37,7 +37,7 @@ class _FakeAsyncClient:
         return _respond(self._get_result)
 
 
-def test_validate_urls_drops_unreachable(monkeypatch):
+def test_reachable_urls_drops_unreachable(monkeypatch):
     class _FakeClient:
         async def __aenter__(self):
             return self
@@ -53,11 +53,11 @@ def test_validate_urls_drops_unreachable(monkeypatch):
 
     monkeypatch.setattr(utils, "is_safe_url", lambda _u: True)
     monkeypatch.setattr(utils.httpx, "AsyncClient", lambda *a, **k: _FakeClient())
-    urls = asyncio.run(utils.validate_urls(["https://ok.com", "https://bad.com"]))
+    urls = asyncio.run(utils.reachable_urls(["https://ok.com", "https://bad.com"]))
     assert urls == ["https://ok.com"]
 
 
-def test_validate_urls_drops_unsafe_url(monkeypatch):
+def test_reachable_urls_drops_unsafe_url(monkeypatch):
     class _FakeClient:
         async def __aenter__(self):
             return self
@@ -72,10 +72,10 @@ def test_validate_urls_drops_unsafe_url(monkeypatch):
 
     monkeypatch.setattr(utils, "is_safe_url", lambda _u: False)
     monkeypatch.setattr(utils.httpx, "AsyncClient", lambda *a, **k: _FakeClient())
-    assert asyncio.run(utils.validate_urls(["http://169.254.169.254"])) == []
+    assert asyncio.run(utils.reachable_urls(["http://169.254.169.254"])) == []
 
 
-def test_validate_urls_follows_safe_redirect(monkeypatch):
+def test_reachable_urls_follows_safe_redirect(monkeypatch):
     class _FakeClient:
         async def __aenter__(self):
             return self
@@ -93,10 +93,10 @@ def test_validate_urls_follows_safe_redirect(monkeypatch):
 
     monkeypatch.setattr(utils, "is_safe_url", lambda _u: True)
     monkeypatch.setattr(utils.httpx, "AsyncClient", lambda *a, **k: _FakeClient())
-    assert asyncio.run(utils.validate_urls(["https://start.com"])) == ["https://start.com"]
+    assert asyncio.run(utils.reachable_urls(["https://start.com"])) == ["https://start.com"]
 
 
-def test_validate_urls_rejects_redirect_to_unsafe_host(monkeypatch):
+def test_reachable_urls_rejects_redirect_to_unsafe_host(monkeypatch):
     class _FakeClient:
         async def __aenter__(self):
             return self
@@ -112,15 +112,15 @@ def test_validate_urls_rejects_redirect_to_unsafe_host(monkeypatch):
 
     monkeypatch.setattr(utils, "is_safe_url", lambda u: "169.254" not in u)
     monkeypatch.setattr(utils.httpx, "AsyncClient", lambda *a, **k: _FakeClient())
-    assert asyncio.run(utils.validate_urls(["https://start.com"])) == []
+    assert asyncio.run(utils.reachable_urls(["https://start.com"])) == []
 
 
-def test_validate_urls_empty_list_skips_client_construction(monkeypatch):
+def test_reachable_urls_empty_list_skips_client_construction(monkeypatch):
     def _fail(*_args, **_kwargs):
         raise AssertionError("AsyncClient must not be constructed for an empty URL list")
 
     monkeypatch.setattr(utils.httpx, "AsyncClient", _fail)
-    assert asyncio.run(utils.validate_urls([])) == []
+    assert asyncio.run(utils.reachable_urls([])) == []
 
 
 @pytest.mark.parametrize(

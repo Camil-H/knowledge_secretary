@@ -150,7 +150,7 @@ def _install_youtube_fakes(monkeypatch, *, bullet: str = "- key point"):
 def _install_podcast_fakes(monkeypatch, tmp_path, *, topic: str = "My Topic"):
     """Fakes the podcast boundary; returns the list `gh` invocations are recorded into."""
     monkeypatch.setattr(podcast_task, "TOPICS", [topic])
-    monkeypatch.setattr(podcast_task, "validate_urls", _async_return(["https://a.com"]))
+    monkeypatch.setattr(podcast_task, "reachable_urls", _async_return(["https://a.com"]))
     monkeypatch.setattr(llm, "resolve_models", lambda podcast=None: ["m/model"])
     monkeypatch.setattr(
         llm, "call", lambda system, user, max_tokens=None: "https://a.com\nhttps://b.org"

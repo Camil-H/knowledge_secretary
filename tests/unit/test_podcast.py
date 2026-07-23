@@ -1,6 +1,6 @@
 """Podcast queue pop/removal + URL discovery + episode generation. podcastfy and
 the LLM are stubbed via monkeypatch — _generate_episode is stubbed wholesale for
-the queue cases, and its own collaborators (validate_urls, llm.resolve_models,
+the queue cases, and its own collaborators (reachable_urls, llm.resolve_models,
 podcastfy.client.generate_podcast) are stubbed individually when it is under
 test; ctx.call is faked for discovery."""
 
@@ -117,7 +117,7 @@ def _discovery_ctx():
 def _stub_episode_collaborators(
     monkeypatch, *, validated_urls, models, generate_podcast, article_text=None
 ):
-    """Stub _generate_episode's collaborators: validate_urls (reachability),
+    """Stub _generate_episode's collaborators: reachable_urls (reachability),
     article_text (per-URL source extraction, defaulting to canned text),
     llm.resolve_models (model choice), and podcastfy.client.generate_podcast
     (via sys.modules, since it's imported locally inside the function)."""
@@ -125,7 +125,7 @@ def _stub_episode_collaborators(
     async def _validate(urls):
         return validated_urls
 
-    monkeypatch.setattr(podcast_task, "validate_urls", _validate)
+    monkeypatch.setattr(podcast_task, "reachable_urls", _validate)
     monkeypatch.setattr(podcast_task, "article_text", article_text or (lambda url: _SOURCE_TEXT))
     monkeypatch.setattr(podcast_task.llm, "resolve_models", lambda podcast=None: models)
 

@@ -12,7 +12,7 @@ _MAX_REDIRECTS = 5
 _REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
 
 
-async def validate_urls(urls: list[str]) -> list[str]:
+async def reachable_urls(urls: list[str]) -> list[str]:
     """Keep only the URLs that respond < 400, checked concurrently."""
     if not urls:
         return []

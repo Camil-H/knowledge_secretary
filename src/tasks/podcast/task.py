@@ -9,7 +9,7 @@ from src.core import state as state_mod
 from src.core.models import Context, Result
 from src.core.registry import tasks
 from src.fetchers.url import article_text
-from src.tasks.podcast.utils import validate_urls
+from src.tasks.podcast.utils import reachable_urls
 
 QUEUE_KEY = "podcast_queue"  # kv list of topics still to do; seeded from TOPICS
 TOPICS: list[str] = sources_loader.load(Path(__file__).parent, []) or []
@@ -80,7 +80,7 @@ async def _generate_episode(ctx: Context, topic: str) -> str | None:
 
     podcastfy drives its own transcript LLM call with a single model and no fallback, so we
     cascade through the resolved candidates here — free models are frequently saturated upstream."""
-    urls = await validate_urls(_discover_urls(ctx, topic))
+    urls = await reachable_urls(_discover_urls(ctx, topic))
     if urls:
         ctx.logger.info(f"podcast: {len(urls)} reachable source url(s) for {topic!r}")
     else:
