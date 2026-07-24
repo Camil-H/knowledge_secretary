@@ -9,10 +9,12 @@
 - { key: statnews,     kind: feed, section: "News", url: "https://www.statnews.com/feed/" }
 - { key: biopharmadive,kind: feed, section: "News", url: "https://www.biopharmadive.com/feeds/news/", enrich: [article_text] }
 # papers / preprints / journals
-- { key: pubmed_dd,  kind: pubmed,  section: "Papers & Preprints", queries: ["drug discovery", "small molecule inhibitor"] }   # TODO: refine with your MeSH terms
-- { key: biorxiv_dd, kind: biorxiv, section: "Papers & Preprints", categories: ["biochemistry", "pharmacology and toxicology"] }
+- { key: pubmed_dd,  kind: pubmed,  section: "Papers & Preprints", queries: ["drug discovery", "clinical trial"] }
+- { key: biorxiv_dd, kind: biorxiv, section: "Papers & Preprints", categories: ["clinical trials", "physiology"] }
+- { key: npjamd,        kind: feed, section: "Papers & Preprints", url: "https://www.nature.com/npjamd.rss" }    # Nature NPJ Aging
+- { key: npjdrugdiscov,        kind: feed, section: "Papers & Preprints", url: "https://www.nature.com/npjdrugdiscov.rss" }    # Nature NPJ Drug Discovery
 - { key: nrd,        kind: feed, section: "Papers & Preprints", url: "https://www.nature.com/nrd.rss" }    # Nature Reviews Drug Discovery
-- { key: nrdp,       kind: feed, section: "Papers & Preprints", url: "https://www.nature.com/nrdp.rss" }   # Nature Reviews Disease Primers
+- { key: nm,       kind: feed, section: "Papers & Preprints", url: "https://www.nature.com/nm.rss" }   # Nature Medicine
 # regulatory
 - { key: fda_press,  kind: feed, section: "Regulatory", url: "https://www.fda.gov/about-fda/contact-fda/stay-informed/rss-feeds/press-releases/rss.xml", enrich: [article_text] }
 # X / Twitter
