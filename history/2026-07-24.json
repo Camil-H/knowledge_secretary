@@ -7,10 +7,10 @@
       "subject": "Knowledge Secretary \u2014 2026-07-24"
     },
     "podcast": {
-      "audio_url": "https://github.com/Camil-H/knowledge_secretary/releases/download/podcast-2026-07-24/podcast_7d2551c30b9f4fd7ac133f5ec2679e2a.mp3",
+      "audio_url": "https://github.com/Camil-H/knowledge_secretary/releases/download/podcast-2026-07-24/podcast_b96c8615ddc542fe8aab178bcd592faa.mp3",
       "kind": "podcast",
-      "subject": "Podcast \u2014 Covalent inhibitors: reversible vs irreversible warheads, selectivity, and the KRAS G12C story",
-      "topic": "Covalent inhibitors: reversible vs irreversible warheads, selectivity, and the KRAS G12C story"
+      "subject": "Podcast \u2014 mRNA therapeutics beyond vaccines: LNP delivery, self-amplifying RNA, and manufacturing constraints",
+      "topic": "mRNA therapeutics beyond vaccines: LNP delivery, self-amplifying RNA, and manufacturing constraints"
     },
     "youtube": {
       "kind": "markdown",
