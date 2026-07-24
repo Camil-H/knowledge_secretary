@@ -21,6 +21,11 @@ jobs:
   podcast:
     if: github.event.schedule == '0 6 * * *' || contains(fromJSON('["podcast","all"]'), github.event.inputs.task)
     runs-on: ubuntu-latest
+    # serialize with digest: an "all" dispatch runs both jobs in one run, and parallel
+    # commits of state/ + history/ from the same base rebase-conflict on push.
+    concurrency:
+      group: digest-state-commit
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # v4.4.0
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86   # v5.4.2
@@ -46,6 +51,9 @@ jobs:
   digest:
     if: github.event.schedule == '30 6 * * *' || contains(fromJSON('["newsletter","youtube","all"]'), github.event.inputs.task)
     runs-on: ubuntu-latest
+    concurrency:
+      group: digest-state-commit
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # v4.4.0
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86   # v5.4.2
