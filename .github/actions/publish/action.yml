@@ -28,11 +28,24 @@ runs:
         git add history state
         if git diff --cached --quiet; then
           echo "nothing to commit; skipping push"
-        else
-          git commit -m "${{ inputs.commit-prefix }} run $(date -u +%F)"
-          git pull --rebase --autostash
-          git push
+          exit 0
         fi
+        git commit -m "${{ inputs.commit-prefix }} run $(date -u +%F)"
+        for attempt in 1 2 3 4 5; do
+          git fetch origin main
+          if ! git rebase origin/main; then
+            # another run touched the same day's history/state; union rather than fail
+            uv run python -m src.delivery.reconcile || { git rebase --abort; echo "::error::reconcile failed"; exit 1; }
+            GIT_EDITOR=true git rebase --continue || { echo "::error::rebase --continue failed"; exit 1; }
+          fi
+          if git push; then
+            echo "published on attempt $attempt"
+            exit 0
+          fi
+          echo "push rejected (attempt $attempt); another run pushed first — retrying"
+        done
+        echo "::error::failed to publish state after 5 attempts"
+        exit 1
     - name: Publish site to Pages repo
       if: hashFiles('public/index.html') != ''
       uses: peaceiris/actions-gh-pages@84c30a85c19949d7eee79c4ff27748b70285e453   # v4.1.0
