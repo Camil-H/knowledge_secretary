@@ -1,0 +1,11 @@
+{
+  "date": "2026-07-26",
+  "tasks": {
+    "podcast": {
+      "audio_url": "https://github.com/Camil-H/knowledge_secretary/releases/download/podcast-2026-07-26/podcast_c609e823864a4c93bf2c01079371ce28.mp3",
+      "kind": "podcast",
+      "subject": "Podcast \u2014 Antibody-drug conjugates: linker chemistry, payload classes, and the therapeutic index problem",
+      "topic": "Antibody-drug conjugates: linker chemistry, payload classes, and the therapeutic index problem"
+    }
+  }
+}
