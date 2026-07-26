@@ -11,7 +11,7 @@ from src.core.registry import tasks
 from src.fetchers.url import article_text
 from src.tasks.podcast.utils import reachable_urls
 
-QUEUE_KEY = "podcast_queue"  # kv list of topics still to do; seeded from TOPICS
+DONE_KEY = "podcast_done"  # kv list of already-aired topics; pending = TOPICS not yet in it
 TOPICS: list[str] = sources_loader.load(Path(__file__).parent, []) or []
 MAX_SOURCE_URLS = 10
 _MAX_MODEL_ATTEMPTS = 4
@@ -45,20 +45,25 @@ CONVERSATION_CONFIG = {
 
 @tasks.register("podcast")
 def run(ctx: Context) -> Result:
-    """Pop the next queued topic, generate its episode, drop it from the queue on success."""
-    queue = state_mod.get_kv(ctx.state, QUEUE_KEY, list(TOPICS))
-    if not queue:
-        ctx.logger.info("podcast: topic queue empty — nothing to generate")
-        return Result(subject="Podcast — (queue empty)", markdown="")
+    """Generate the next unaired topic from sources.yaml; mark it aired on success.
 
-    topic = queue[0]
-    ctx.logger.info(f"podcast: topic={topic!r} ({len(queue)} left)")
+    sources.yaml (TOPICS) is the source of truth for content and order; state only records
+    which topics have aired, so adding, removing, or reordering topics there takes effect
+    immediately rather than drifting from a separately-persisted queue."""
+    done = set(state_mod.get_kv(ctx.state, DONE_KEY, []))
+    pending = [t for t in TOPICS if t not in done]
+    if not pending:
+        ctx.logger.info("podcast: all topics aired — nothing to generate")
+        return Result(subject="Podcast — (all topics aired)", markdown="")
+
+    topic = pending[0]
+    ctx.logger.info(f"podcast: topic={topic!r} ({len(pending)} pending)")
     subject = f"Podcast — {topic}"
     audio_path = asyncio.run(_generate_episode(ctx, topic))
     if audio_path is None:
         return Result(subject=subject, markdown="", artifacts=[], meta={"topic": topic})
 
-    state_mod.set_kv(ctx.state, QUEUE_KEY, queue[1:])  # remove the generated topic
+    state_mod.set_kv(ctx.state, DONE_KEY, sorted(done | {topic}))  # mark aired only on success
     return Result(subject=subject, markdown="", artifacts=[audio_path], meta={"topic": topic})
 
 

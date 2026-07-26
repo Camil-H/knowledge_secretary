@@ -108,7 +108,7 @@ def test_podcast_e2e_uploads_release_asset_and_embeds_audio(monkeypatch, tmp_pat
     assert "My Topic" in html
 
     state = _read_state()
-    assert state["kv"]["podcast_queue"] == []
+    assert state["kv"]["podcast_done"] == ["My Topic"]
     assert state["ids"] == {}
 
 
@@ -139,7 +139,7 @@ def test_all_e2e_runs_every_task_into_one_day(monkeypatch, tmp_path, argv):
     state = _read_state()
     assert state["ids"].get("rss:e1") == _today()
     assert state["ids"].get("yt:vid123") == _today()
-    assert state["kv"]["podcast_queue"] == []
+    assert state["kv"]["podcast_done"] == ["My Topic"]
 
 
 def test_all_e2e_one_failing_task_does_not_sink_the_others(monkeypatch, tmp_path):
@@ -163,4 +163,4 @@ def test_all_e2e_one_failing_task_does_not_sink_the_others(monkeypatch, tmp_path
     state = _read_state()
     assert "rss:e1" not in state["ids"]  # failed task's items never consumed
     assert state["ids"].get("yt:vid123") == _today()
-    assert state["kv"]["podcast_queue"] == []  # podcast still ran to completion
+    assert state["kv"]["podcast_done"] == ["My Topic"]  # podcast still ran to completion

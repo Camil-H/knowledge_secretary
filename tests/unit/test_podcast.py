@@ -13,8 +13,8 @@ from src.core import llm
 from src.core.models import Context
 from src.tasks.podcast import task as podcast_task
 from src.tasks.podcast.task import (
+    DONE_KEY,
     MAX_SOURCE_URLS,
-    QUEUE_KEY,
     _discover_urls,
     _generate_episode,
     run,
@@ -38,8 +38,8 @@ def _ctx(state, call=None):
     )
 
 
-def _state(queue=None):
-    kv = {} if queue is None else {QUEUE_KEY: list(queue)}
+def _state(done=None):
+    kv = {} if done is None else {DONE_KEY: list(done)}
     return {"ids": {}, "kv": kv}
 
 
@@ -53,24 +53,24 @@ def _stub_generate(monkeypatch, result):
 # ----- run: queue behavior -----
 
 
-def test_run_pops_first_topic_and_removes_it_on_success(monkeypatch):
+def test_run_airs_first_pending_topic_and_marks_it_done(monkeypatch):
     _stub_generate(monkeypatch, "/tmp/ep.mp3")
-    state = _state()  # unseeded -> queue seeded from TOPICS
+    state = _state()  # nothing aired -> pending is all of TOPICS, in order
     result = run(_ctx(state))
     assert result.meta["topic"] == "PROTACs"
     assert result.artifacts == ["/tmp/ep.mp3"]
-    assert state["kv"][QUEUE_KEY] == ["ADCs", "mRNA"]  # generated topic removed
+    assert state["kv"][DONE_KEY] == ["PROTACs"]  # marked aired
 
 
-def test_run_uses_the_persisted_queue(monkeypatch):
+def test_run_skips_already_aired_topics(monkeypatch):
     _stub_generate(monkeypatch, "/tmp/ep.mp3")
-    state = _state(["mRNA"])
+    state = _state(["PROTACs", "ADCs"])  # first two aired -> next pending is mRNA
     result = run(_ctx(state))
     assert result.meta["topic"] == "mRNA"
-    assert state["kv"][QUEUE_KEY] == []
+    assert set(state["kv"][DONE_KEY]) == {"PROTACs", "ADCs", "mRNA"}
 
 
-def test_run_empty_queue_is_noop(monkeypatch):
+def test_run_all_topics_aired_is_noop(monkeypatch):
     calls = {"n": 0}
 
     async def _gen(ctx, topic):
@@ -78,17 +78,17 @@ def test_run_empty_queue_is_noop(monkeypatch):
         return "/tmp/ep.mp3"
 
     monkeypatch.setattr(podcast_task, "_generate_episode", _gen)
-    result = run(_ctx(_state([])))
+    result = run(_ctx(_state(_TOPICS)))  # every topic already aired
     assert result.markdown == "" and not result.artifacts
     assert calls["n"] == 0
 
 
-def test_run_generation_failure_keeps_topic(monkeypatch):
+def test_run_generation_failure_does_not_mark_done(monkeypatch):
     _stub_generate(monkeypatch, None)
     state = _state()
     result = run(_ctx(state))
     assert result.artifacts == []
-    assert QUEUE_KEY not in state["kv"]  # queue not advanced -> topic retried next run
+    assert DONE_KEY not in state["kv"]  # not aired -> stays pending, retried next run
 
 
 # ----- discovery -----
