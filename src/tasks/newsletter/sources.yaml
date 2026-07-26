@@ -11,7 +11,8 @@
 - { key: fiercebiotech, kind: feed, section: "News", url: "https://www.fiercebiotech.com/rss/xml", enrich: [article_text] }
 # papers / preprints / journals
 - { key: pubmed_dd,  kind: pubmed,  section: "Papers & Preprints", queries: ["drug discovery", "clinical trial"] }
-- { key: biorxiv_dd, kind: biorxiv, section: "Papers & Preprints", categories: ["clinical trials", "physiology"] }
+- { key: biorxiv_dd, kind: biorxiv, section: "Papers & Preprints", categories: ["physiology"] }
+- { key: medrxiv_clin, kind: medrxiv, section: "Papers & Preprints", categories: ["cardiovascular medicine", "dentistry and oral medicine", "dermatology", "endocrinology", "epidemiology", "gastroenterology", "health economics", "health informatics", "nephrology", "neurology", "nutrition", "oncology", "otolaryngology", "psychiatry and clinical psychology", "respiratory medicine", "rheumatology", "surgery", "toxicology","urology"] }
 - { key: npjamd,        kind: feed, section: "Papers & Preprints", url: "https://www.nature.com/npjamd.rss" }    # Nature NPJ Aging
 - { key: npjdrugdiscov,        kind: feed, section: "Papers & Preprints", url: "https://www.nature.com/npjdrugdiscov.rss" }    # Nature NPJ Drug Discovery
 - { key: nrd,        kind: feed, section: "Papers & Preprints", url: "https://www.nature.com/nrd.rss" }    # Nature Reviews Drug Discovery
