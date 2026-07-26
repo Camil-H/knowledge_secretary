@@ -8,9 +8,7 @@ from typing import Any
 from .models import Item, State
 
 DEFAULT_PATH = "state/seen.json"
-RETENTION_DAYS = (
-    7  # dedup ids only need to outlive the 48h gather lookback; matches the site window
-)
+RETENTION_DAYS = 7
 
 
 def load(path: str = DEFAULT_PATH) -> State:

@@ -12,27 +12,20 @@ from src.core.registry import tasks
 from src.fetchers.url import article_text
 from src.tasks.podcast.utils import reachable_urls
 
-DONE_KEY = "podcast_done"  # kv list of already-aired topics; pending = TOPICS not yet in it
+DONE_KEY = "podcast_done"
 TOPICS: list[str] = sources_loader.load(Path(__file__).parent, []) or []
 MAX_SOURCE_URLS = 10
 _MAX_MODEL_ATTEMPTS = 4
 _SOURCE_SEPARATOR = "\n\n"
-# Transcript: prefer Gemini 3.1 Flash (AI Studio key, free tier), fall back to OpenRouter's free
-# models. podcastfy reads each model's key from the env var named by api_key_label.
 _TRANSCRIPT_MODEL = "gemini/gemini-3.1-flash"
 _GOOGLE_AI_STUDIO_KEY_LABEL = "GOOGLE_AI_STUDIO_KEY"
 _OPENROUTER_KEY_LABEL = "OPENROUTER_API_KEY"
-# Google Cloud TTS, keyed by GEMINI_API_KEY. Passed as an explicit arg because podcastfy ignores a
-# nested text_to_speech override, else defaults to openai.
 _TTS_MODEL = "gemini"
 DISCOVER_PROMPT = (Path(__file__).parent / "source_discovery_prompt.md").read_text()
 CONVERSATION_CONFIG = {
     "conversation_style": ["technical", "narrative", "engaging", "story-driven"],
     "roles_person1": "curious host who keeps one narrative thread going with sharp questions",
     "roles_person2": "expert who explains via cause-and-effect and vivid examples, not lists",
-    # Story beats, deliberately with no "Introduction"/"Conclusion"/"Takeaways" beat: longform
-    # generates each chunk against this structure, so a conclusion beat makes every section end
-    # with a wrap-up and a goodbye.
     "dialogue_structure": [
         "The hook and why it matters",
         "How it actually works",
@@ -43,9 +36,7 @@ CONVERSATION_CONFIG = {
     "podcast_tagline": "A daily podcast",
     "output_language": "English",
     "engagement_techniques": ["analogies", "worked examples", "storytelling", "callbacks"],
-    "creativity": 0.7,  # 0.3 flattened the dialogue into a fact list; higher tracks the narrative
-    # Chirp 3 HD voices (GA, more natural) instead of the default Journey pair, read by the gemini
-    # Cloud-TTS provider from text_to_speech.<provider>.default_voices.
+    "creativity": 0.7,
     "text_to_speech": {
         "gemini": {
             "default_voices": {
@@ -98,17 +89,12 @@ def _discover_urls(ctx: Context, topic: str) -> list[str]:
 
 
 async def _generate_episode(ctx: Context, topic: str) -> str | None:
-    """Episode from reachable discovered URLs (or the bare topic); None if every model fails.
-
-    podcastfy drives its own transcript LLM call with a single model and no fallback, so we
-    cascade through the resolved candidates here — free models are frequently saturated upstream."""
+    """Episode from the reachable source URLs (or the bare topic); None if every transcript model fails."""
     urls = await reachable_urls(_discover_urls(ctx, topic))
     if urls:
         ctx.logger.info(f"podcast: {len(urls)} reachable source url(s) for {topic!r}")
     else:
         ctx.logger.warning("⚠️ podcast: no reachable source URLs for %r; using topic text", topic)
-    # Extract source text once so a model retry re-runs only the transcript LLM call, not
-    # podcastfy's per-attempt headless-browser crawl of every URL.
     source_text = await _extract_sources(urls) if urls else ""
     if urls and not source_text:
         ctx.logger.warning("⚠️ podcast: no text extracted from source URLs; podcastfy will re-crawl")
@@ -130,7 +116,7 @@ async def _generate_episode(ctx: Context, topic: str) -> str | None:
                 tts_model=_TTS_MODEL,
                 longform=True,
             )
-        except Exception as exc:  # tolerate any generation failure and try the next model
+        except Exception as exc:
             last_err = exc
             ctx.logger.warning("⚠️ podcast: model=%s failed: %s", model, exc)
     ctx.logger.warning("⚠️ podcast: all transcript models failed for %r: %s", topic, last_err)
@@ -138,8 +124,7 @@ async def _generate_episode(ctx: Context, topic: str) -> str | None:
 
 
 def _transcript_candidates() -> list[tuple[str, str]]:
-    """(model, api-key env var) to try in order: Gemini 3.1 Flash first when its AI Studio key is
-    set, then the free OpenRouter cascade. podcastfy runs one model with no fallback of its own."""
+    """(model, key-env) pairs to try: Gemini when its key is set, then the OpenRouter fallback."""
     candidates: list[tuple[str, str]] = []
     if os.environ.get(_GOOGLE_AI_STUDIO_KEY_LABEL):
         candidates.append((_TRANSCRIPT_MODEL, _GOOGLE_AI_STUDIO_KEY_LABEL))
