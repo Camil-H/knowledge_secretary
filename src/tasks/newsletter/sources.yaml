@@ -8,6 +8,7 @@
 - { key: endpoints,    kind: feed, section: "News", url: "https://endpts.com/feed/" }
 - { key: statnews,     kind: feed, section: "News", url: "https://www.statnews.com/feed/" }
 - { key: biopharmadive,kind: feed, section: "News", url: "https://www.biopharmadive.com/feeds/news/", enrich: [article_text] }
+- { key: fiercebiotech, kind: feed, section: "News", url: "https://www.fiercebiotech.com/rss/xml", enrich: [article_text] }
 # papers / preprints / journals
 - { key: pubmed_dd,  kind: pubmed,  section: "Papers & Preprints", queries: ["drug discovery", "clinical trial"] }
 - { key: biorxiv_dd, kind: biorxiv, section: "Papers & Preprints", categories: ["clinical trials", "physiology"] }
@@ -15,7 +16,12 @@
 - { key: npjdrugdiscov,        kind: feed, section: "Papers & Preprints", url: "https://www.nature.com/npjdrugdiscov.rss" }    # Nature NPJ Drug Discovery
 - { key: nrd,        kind: feed, section: "Papers & Preprints", url: "https://www.nature.com/nrd.rss" }    # Nature Reviews Drug Discovery
 - { key: nm,       kind: feed, section: "Papers & Preprints", url: "https://www.nature.com/nm.rss" }   # Nature Medicine
+# clinical journals / trial results (paywalled -> abstract in RSS, no enrich)
+- { key: nejm,   kind: feed, section: "Clinical & Trials", url: "https://www.nejm.org/action/showFeed?jc=nejm&type=etoc&feed=rss" }
+- { key: lancet, kind: feed, section: "Clinical & Trials", url: "https://www.thelancet.com/rssfeed/lancet_current.xml" }
+- { key: jama,   kind: feed, section: "Clinical & Trials", url: "https://jamanetwork.com/rss/site_3/latestIssue_67.xml" }
 # regulatory
 - { key: fda_press,  kind: feed, section: "Regulatory", url: "https://www.fda.gov/about-fda/contact-fda/stay-informed/rss-feeds/press-releases/rss.xml", enrich: [article_text] }
+- { key: fda_drugs,  kind: feed, section: "Regulatory", url: "https://www.fda.gov/about-fda/contact-fda/stay-informed/rss-feeds/drugs/rss.xml", enrich: [article_text] }
 # X / Twitter
 - { key: x_biotech,  kind: twitter, section: "X / Twitter", handles: ["bradloncar", "JacobPlieth", "Sports_Bios", "bio_clouseau", "BioStocks", "Prof_Oak_", "paras_biotech", "andrewpannu", "BertrandBio"] }
