@@ -47,6 +47,19 @@ def test_prune_keeps_id_dated_exactly_on_cutoff():
     assert "boundary" in state["ids"]
 
 
+def test_prune_default_retention_is_seven_days():
+    today = datetime.now(UTC).date()
+    state = {
+        "ids": {
+            "kept": (today - timedelta(days=6)).isoformat(),
+            "dropped": (today - timedelta(days=8)).isoformat(),
+        },
+        "kv": {},
+    }
+    state_mod.prune(state)  # default RETENTION_DAYS
+    assert "kept" in state["ids"] and "dropped" not in state["ids"]
+
+
 def test_kv_roundtrip():
     state = {"ids": {}, "kv": {}}
     assert state_mod.get_kv(state, "x", 7) == 7

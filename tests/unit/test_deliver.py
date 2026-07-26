@@ -1,6 +1,7 @@
 import glob
+import json
 import os
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -11,9 +12,10 @@ from src.delivery import site
 class _Resp:
     """Stand-in for a `subprocess.CompletedProcess`."""
 
-    def __init__(self, returncode: int, stderr: str = ""):
+    def __init__(self, returncode: int, stderr: str = "", stdout: str = ""):
         self.returncode = returncode
         self.stderr = stderr
+        self.stdout = stdout
 
 
 class _RecordingRun:
@@ -272,3 +274,50 @@ def test_upload_release_asset_subprocess_exception_returns_none(monkeypatch):
 
     monkeypatch.setattr(site.subprocess, "run", _raise)
     assert site._upload_release_asset("ep.mp3", "S", "T", "org/repo") is None
+
+
+# ----- release pruning -----
+
+
+def _tag(days_ago: int) -> str:
+    return (
+        site.RELEASE_TAG_PREFIX + (datetime.now(UTC).date() - timedelta(days=days_ago)).isoformat()
+    )
+
+
+def test_prune_old_releases_deletes_only_old_podcast_tags(monkeypatch):
+    old, recent = _tag(30), _tag(2)
+    listing = json.dumps([{"tagName": old}, {"tagName": recent}, {"tagName": "v1.0.0"}])
+    calls = []
+
+    def _run(argv, **kwargs):
+        calls.append(argv)
+        return _Resp(0, stdout=listing) if argv[:3] == ["gh", "release", "list"] else _Resp(0)
+
+    monkeypatch.setattr(site.subprocess, "run", _run)
+    site._prune_old_releases("org/repo", 7)
+
+    deletes = [a for a in calls if a[:3] == ["gh", "release", "delete"]]
+    assert len(deletes) == 1  # only the 30-day-old podcast release
+    assert old in deletes[0] and "--cleanup-tag" in deletes[0]
+    assert not any(recent in a or "v1.0.0" in a for a in deletes)  # recent + non-podcast untouched
+
+
+def test_prune_old_releases_noop_without_repo(monkeypatch):
+    def _fail(*a, **k):
+        raise AssertionError("must not shell out without a repo")
+
+    monkeypatch.setattr(site.subprocess, "run", _fail)
+    site._prune_old_releases("", 7)  # no exception == pass
+
+
+def test_prune_old_releases_degrades_on_list_failure(monkeypatch):
+    calls = []
+
+    def _run(argv, **kwargs):
+        calls.append(argv)
+        return _Resp(1)  # gh release list fails
+
+    monkeypatch.setattr(site.subprocess, "run", _run)
+    site._prune_old_releases("org/repo", 7)
+    assert not any(a[:3] == ["gh", "release", "delete"] for a in calls)

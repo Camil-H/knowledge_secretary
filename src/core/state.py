@@ -8,6 +8,9 @@ from typing import Any
 from .models import Item, State
 
 DEFAULT_PATH = "state/seen.json"
+RETENTION_DAYS = (
+    7  # dedup ids only need to outlive the 48h gather lookback; matches the site window
+)
 
 
 def load(path: str = DEFAULT_PATH) -> State:
@@ -38,7 +41,7 @@ def set_kv(state: State, key: str, value: Any) -> None:
     state["kv"][key] = value
 
 
-def prune(state: State, days: int = 60) -> None:
+def prune(state: State, days: int = RETENTION_DAYS) -> None:
     # ISO dates sort lexicographically == chronologically.
     cutoff = (datetime.now(UTC).date() - timedelta(days=days)).isoformat()
     state["ids"] = {k: v for k, v in state["ids"].items() if v >= cutoff}

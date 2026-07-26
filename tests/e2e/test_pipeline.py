@@ -89,12 +89,13 @@ def test_podcast_e2e_uploads_release_asset_and_embeds_audio(monkeypatch, tmp_pat
     code = run.main(["prog", "podcast"])
 
     assert code == 0
-    assert len(calls) == 1
-    argv = calls[0]
-    assert argv[:3] == ["gh", "release", "create"]
-    assert f"{site.RELEASE_TAG_PREFIX}{_today()}" in argv
-    assert str(tmp_path / "ep.mp3") in argv
-    assert "--repo" in argv and "org/repo" in argv
+    assert len(calls) == 2  # release create, then the old-release prune's list
+    create = calls[0]
+    assert create[:3] == ["gh", "release", "create"]
+    assert f"{site.RELEASE_TAG_PREFIX}{_today()}" in create
+    assert str(tmp_path / "ep.mp3") in create
+    assert "--repo" in create and "org/repo" in create
+    assert calls[1][:3] == ["gh", "release", "list"]
 
     tag = f"{site.RELEASE_TAG_PREFIX}{_today()}"
     audio_url = f"https://github.com/org/repo/releases/download/{tag}/ep.mp3"

@@ -62,7 +62,7 @@ class _CompletedOK:
     """Stand-in for subprocess.CompletedProcess on the happy path."""
 
     returncode = 0
-    stdout = ""
+    stdout = "[]"  # empty release list for the prune step; ignored by create/upload
     stderr = ""
 
 

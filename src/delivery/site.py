@@ -9,7 +9,7 @@ import os
 import string
 import subprocess
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -65,6 +65,7 @@ def site(result: Result) -> None:
         audio_url = _upload_release_asset(
             result.artifacts[0], result.subject, result.meta.get("topic", ""), episode_repo
         )
+        _prune_old_releases(episode_repo, HISTORY_DAYS)
         payload = {
             "kind": "podcast",
             "subject": result.subject,
@@ -233,3 +234,34 @@ def _upload_release_asset(mp3_path: str, subject: str, topic: str, repo: str) ->
         return None
 
     return f"https://github.com/{repo}/releases/download/{tag}/{os.path.basename(mp3_path)}"
+
+
+def _prune_old_releases(repo: str, keep_days: int) -> None:
+    """Delete podcast releases + tags older than keep_days so GH releases track the site's
+    HISTORY_DAYS window — the audio is only linked while its day is still displayed."""
+    if not repo:
+        return
+    cutoff = (datetime.now(UTC).date() - timedelta(days=keep_days)).isoformat()
+    try:
+        listed = subprocess.run(
+            ["gh", "release", "list", "--repo", repo, "--limit", "1000", "--json", "tagName"],
+            capture_output=True,
+            text=True,
+        )
+    except OSError as e:
+        logger.warning("⚠️ site: gh release list failed: %s", type(e).__name__)
+        return
+    if listed.returncode != 0:
+        logger.warning("⚠️ site: gh release list failed: exit=%s", listed.returncode)
+        return
+    try:
+        tags = [r.get("tagName", "") for r in json.loads(listed.stdout)]
+    except ValueError:
+        return
+    for tag in tags:
+        if tag.startswith(RELEASE_TAG_PREFIX) and tag[len(RELEASE_TAG_PREFIX) :] < cutoff:
+            subprocess.run(
+                ["gh", "release", "delete", "--repo", repo, "--yes", "--cleanup-tag", "--", tag],
+                capture_output=True,
+                text=True,
+            )
