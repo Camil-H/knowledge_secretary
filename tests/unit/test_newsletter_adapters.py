@@ -12,6 +12,7 @@ from src.tasks.newsletter.adapters import (
     article_text,
     biorxiv_source,
     feed,
+    medrxiv_source,
     pubmed_source,
     twitter,
 )
@@ -76,25 +77,40 @@ def test_pubmed_source_maps_and_forwards_queries_since(monkeypatch):
     assert (item.source, item.section, item.title, item.text) == ("src1", "News", "Ti", "Ti")
 
 
-# ----- biorxiv_source -----
+# ----- biorxiv_source / medrxiv_source -----
 
 
 def test_biorxiv_source_maps_doi_url_and_abstract(monkeypatch):
     seen = {}
 
-    def _recent(categories, since):
-        seen["categories"], seen["since"] = categories, since
+    def _recent(server, categories, since):
+        seen["server"], seen["categories"], seen["since"] = server, categories, since
         return [{"doi": "10.1/abc", "title": "Ti", "abstract": "Abs", "published": _SINCE}]
 
-    monkeypatch.setattr(adapters.biorxiv, "recent", _recent)
+    monkeypatch.setattr(adapters.openrxiv, "recent", _recent)
 
     out = biorxiv_source(_spec(categories=["cs.AI"]), _SINCE, {})
 
-    assert seen == {"categories": ["cs.AI"], "since": _SINCE}
+    assert seen == {"server": "biorxiv", "categories": ["cs.AI"], "since": _SINCE}
     item = out[0]
     assert item.id == "biorxiv:10.1/abc"
     assert item.url == "https://doi.org/10.1/abc"
     assert item.text == "Abs"  # abstract becomes text
+
+
+def test_medrxiv_source_routes_to_the_medrxiv_server_and_namespaces_ids(monkeypatch):
+    seen = {}
+
+    def _recent(server, categories, since):
+        seen["server"] = server
+        return [{"doi": "10.2/xyz", "title": "T", "abstract": "A", "published": _SINCE}]
+
+    monkeypatch.setattr(adapters.openrxiv, "recent", _recent)
+
+    out = medrxiv_source(_spec(categories=["oncology"]), _SINCE, {})
+
+    assert seen["server"] == "medrxiv"
+    assert out[0].id == "medrxiv:10.2/xyz"
 
 
 # ----- twitter -----

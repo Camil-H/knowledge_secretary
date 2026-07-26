@@ -1,11 +1,11 @@
 """Newsletter source adapters + enrichers — thin mappers over src/fetchers.
-Kinds: feed/pubmed/biorxiv/twitter. Enricher: article_text."""
+Kinds: feed/pubmed/biorxiv/medrxiv/twitter. Enricher: article_text."""
 
 from datetime import UTC, datetime
 
 from src.core.models import Item, SourceSpec, State
 from src.core.registry import enrichers, sources
-from src.fetchers import biorxiv, pubmed, rss, url, x
+from src.fetchers import openrxiv, pubmed, rss, url, x
 
 # == Source adapters ==========================================================
 
@@ -49,18 +49,12 @@ def pubmed_source(spec: SourceSpec, since: datetime, state: State) -> list[Item]
 
 @sources.register("biorxiv")
 def biorxiv_source(spec: SourceSpec, since: datetime, state: State) -> list[Item]:
-    return [
-        Item(
-            id="biorxiv:" + r["doi"],
-            source=spec["key"],
-            section=spec["section"],
-            title=r["title"],
-            url="https://doi.org/" + r["doi"],
-            published=r["published"],
-            text=r["abstract"],
-        )
-        for r in biorxiv.recent(spec["categories"], since)
-    ]
+    return _preprint_items("biorxiv", spec, since)
+
+
+@sources.register("medrxiv")
+def medrxiv_source(spec: SourceSpec, since: datetime, state: State) -> list[Item]:
+    return _preprint_items("medrxiv", spec, since)
 
 
 @sources.register("twitter")
@@ -85,6 +79,22 @@ def article_text(item: Item) -> Item:
 
 
 # == Helper Functions =========================================================
+
+
+def _preprint_items(server: str, spec: SourceSpec, since: datetime) -> list[Item]:
+    """openRxiv (biorxiv/medrxiv) records -> Items, id-namespaced by server for dedup."""
+    return [
+        Item(
+            id=f"{server}:{r['doi']}",
+            source=spec["key"],
+            section=spec["section"],
+            title=r["title"],
+            url="https://doi.org/" + r["doi"],
+            published=r["published"],
+            text=r["abstract"],
+        )
+        for r in openrxiv.recent(server, spec["categories"], since)
+    ]
 
 
 def _tweet_item(tweet: dict, spec: SourceSpec, handle: str) -> Item:

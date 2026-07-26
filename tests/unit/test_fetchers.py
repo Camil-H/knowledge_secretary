@@ -10,7 +10,7 @@ import httpx
 import pytest
 
 from src.core.errors import AuthError
-from src.fetchers import biorxiv, pubmed, rss, x, youtube
+from src.fetchers import openrxiv, pubmed, rss, x, youtube
 from src.fetchers import url as url_fetcher
 
 # ----- test doubles -----
@@ -354,10 +354,10 @@ def test_pubmed_search_recent_degrades_on_http_or_json_error(monkeypatch, fake_g
     assert out == []
 
 
-# ----- biorxiv.recent -----
+# ----- openrxiv.recent -----
 
 
-def test_biorxiv_recent_filters_case_insensitively_and_skips_incomplete(monkeypatch):
+def test_openrxiv_recent_filters_case_insensitively_and_skips_incomplete(monkeypatch):
     collection = [
         {
             "category": "Neuroscience",
@@ -390,9 +390,11 @@ def test_biorxiv_recent_filters_case_insensitively_and_skips_incomplete(monkeypa
             "date": "2024-03-04",
         },  # filtered out
     ]
-    monkeypatch.setattr(biorxiv.httpx, "get", lambda *a, **k: _FakeResp({"collection": collection}))
+    monkeypatch.setattr(
+        openrxiv.httpx, "get", lambda *a, **k: _FakeResp({"collection": collection})
+    )
 
-    out = biorxiv.recent(["Neuroscience"], datetime(2024, 1, 1, tzinfo=UTC))
+    out = openrxiv.recent("biorxiv", ["Neuroscience"], datetime(2024, 1, 1, tzinfo=UTC))
 
     assert [e["doi"] for e in out] == ["10.1/aaa", "10.1/bbb"]
     assert out[0] == {
@@ -412,13 +414,13 @@ def test_biorxiv_recent_filters_case_insensitively_and_skips_incomplete(monkeypa
         lambda *a, **k: _BadJsonResp(),
     ],
 )
-def test_biorxiv_recent_degrades_on_http_or_json_error(monkeypatch, fake_get):
-    monkeypatch.setattr(biorxiv.httpx, "get", fake_get)
-    out = biorxiv.recent(["neuroscience"], datetime(2024, 1, 1, tzinfo=UTC))
+def test_openrxiv_recent_degrades_on_http_or_json_error(monkeypatch, fake_get):
+    monkeypatch.setattr(openrxiv.httpx, "get", fake_get)
+    out = openrxiv.recent("biorxiv", ["neuroscience"], datetime(2024, 1, 1, tzinfo=UTC))
     assert out == []
 
 
-def test_biorxiv_recent_one_malformed_date_does_not_drop_the_batch(monkeypatch):
+def test_openrxiv_recent_one_malformed_date_does_not_drop_the_batch(monkeypatch):
     since = datetime(2024, 1, 1, tzinfo=UTC)
     collection = [
         {
@@ -443,15 +445,17 @@ def test_biorxiv_recent_one_malformed_date_does_not_drop_the_batch(monkeypatch):
             "date": "2024-03-03",
         },
     ]
-    monkeypatch.setattr(biorxiv.httpx, "get", lambda *a, **k: _FakeResp({"collection": collection}))
+    monkeypatch.setattr(
+        openrxiv.httpx, "get", lambda *a, **k: _FakeResp({"collection": collection})
+    )
 
-    out = biorxiv.recent(["Neuroscience"], since)
+    out = openrxiv.recent("biorxiv", ["Neuroscience"], since)
 
     assert [e["doi"] for e in out] == ["10.1/good1", "10.1/bad", "10.1/good2"]
     assert out[1]["published"] == since  # malformed date falls back rather than dropping the batch
 
 
-# ----- biorxiv._parse_date -----
+# ----- openrxiv._parse_date -----
 
 
 @pytest.mark.parametrize(
@@ -461,9 +465,9 @@ def test_biorxiv_recent_one_malformed_date_does_not_drop_the_batch(monkeypatch):
         ("not-a-date", datetime(2024, 1, 1, tzinfo=UTC)),  # falls back rather than raising
     ],
 )
-def test_biorxiv_parse_date(raw, expected):
+def test_openrxiv_parse_date(raw, expected):
     fallback = datetime(2024, 1, 1, tzinfo=UTC)
-    assert biorxiv._parse_date(raw, fallback) == expected
+    assert openrxiv._parse_date(raw, fallback) == expected
 
 
 # ----- url.article_text -----

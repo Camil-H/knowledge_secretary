@@ -1,0 +1,72 @@
+"""openRxiv (bioRxiv + medRxiv) recent-preprint fetching via the details API. Degrades to []."""
+
+import logging
+from datetime import UTC, datetime
+
+import httpx
+
+logger = logging.getLogger(__name__)
+
+# One host serves both servers via the {server} path segment. The details endpoint filters by
+# date only (no category filter) and pages 30 at a time, ordered oldest-first, so we walk the
+# whole window with an offset cursor and filter categories client-side.
+_API = "https://api.biorxiv.org/details/{server}/{frm}/{to}/{cursor}/json"
+_HTTP_TIMEOUT_S = 30
+_MAX_PAGES = 20  # ~600 preprints; caps a busy window so one source can't stall the run
+
+
+def recent(server: str, categories: list[str], since: datetime) -> list[dict]:
+    """Recent `server` ("biorxiv"|"medrxiv") preprints in `categories` (case-insensitive).
+
+    Each: {doi, title, abstract, published (tz-aware UTC), category}. A failed page returns
+    whatever was collected so far rather than dropping the batch.
+    """
+    today = datetime.now(UTC)
+    wanted = {c.lower() for c in categories}
+    out: list[dict] = []
+    cursor = 0
+    for _ in range(_MAX_PAGES):
+        url = _API.format(
+            server=server, frm=f"{since:%Y-%m-%d}", to=f"{today:%Y-%m-%d}", cursor=cursor
+        )
+        try:
+            payload = httpx.get(url, timeout=_HTTP_TIMEOUT_S).json()
+        except (httpx.HTTPError, ValueError) as e:  # unreachable or unparseable
+            logger.warning("⚠️ %s degraded: %s", server, e)
+            break
+        batch = payload.get("collection") or []
+        out.extend(_record(e, since) for e in batch if _matches(e, wanted))
+        cursor += len(batch)
+        total = int((payload.get("messages") or [{}])[0].get("total") or 0)
+        if not batch or cursor >= total:
+            break
+    else:
+        logger.warning("⚠️ %s: hit page cap %d; window may be truncated", server, _MAX_PAGES)
+    return out
+
+
+# == Helper Functions =========================================================
+
+
+def _matches(entry: dict, wanted: set[str]) -> bool:
+    return entry.get("category", "").lower() in wanted and bool(
+        entry.get("doi") and entry.get("date")
+    )
+
+
+def _record(entry: dict, since: datetime) -> dict:
+    return {
+        "doi": entry["doi"],
+        "title": entry.get("title", ""),
+        "abstract": entry.get("abstract", ""),
+        "published": _parse_date(entry["date"], since),
+        "category": entry.get("category", ""),
+    }
+
+
+def _parse_date(raw: str, fallback: datetime) -> datetime:
+    """Best-effort openRxiv date ("2024-03-01") -> UTC; malformed rows fall back to `fallback`."""
+    try:
+        return datetime.strptime(raw, "%Y-%m-%d").replace(tzinfo=UTC)
+    except ValueError:
+        return fallback
