@@ -1,7 +1,51 @@
 # Podcast topics. Worked through as a queue, one per run (each used once).
-- "PROTACs and targeted protein degradation: mechanism, ternary complex formation, and the hook effect"
-- "Covalent inhibitors: reversible vs irreversible warheads, selectivity, and the KRAS G12C story"
-- "Medal Fields - Hong Wang: For her work in harmonic analysis and geometric measure theory, including applications of multiscale and decoupling techniques to the local smoothing conjecture for the planar wave equation, and major advances in Fourier restriction, Falconer distance sets, Furstenberg sets in the plane, and the Kakeya problem in three dimensions."
-- "Medal Fields - Yu Deng: For his work in partial differential equations, including the rigorous derivation of the Boltzmann equation from hard-sphere dynamics for rarefied gases, the derivation of wave kinetic equations from nonlinear dispersive systems, and probabilistic approaches to nonlinear Schrodinger dynamics."
-- "Medal Fields - John Pardon: For his achievements in symplectic geometry including new approaches to virtual fundamental cycles, Fukaya categories of certain manifolds and counting holomorphic curves, and for his contributions to other areas of geometry and topology, including group actions on 3-manifolds and knot theory."
-- "Medal Fields - Jacob Tsimerman: For his contribution in the recasting of o-minimality as a fundamental method of arithmetic and complex algebraic geometry, and his role in the proof of many central conjectures including Griffiths' conjecture on the algebraicity of images of the period maps, and the Andre-Oort conjecture for Siegel modular varieties."
+# Tier-1 economic sectors — a technical "how civilization works" curriculum, one mini-series per sector.
+
+# --- Food & Agriculture ---
+- "The plant engine: photosynthesis, yield physiology, and the genetic re-engineering of the world's crops"
+- "Feeding the soil: soil chemistry, the N-P-K balance, phosphorus geology, and the nutrient-runoff planetary boundary"
+- "Agricultural water: irrigation engineering, evapotranspiration, salinization, and the efficiency of farming's 70% of freshwater use"
+- "Animal protein: feed conversion, ruminant methane, and the industrialization of meat, dairy, and fish"
+- "From farmgate to fork: post-harvest storage, the cold chain, and the global grain-trade machine"
+
+# --- Energy & Electricity ---
+- "The heat-engine backbone: Rankine cycles, steam turbines, combined-cycle gas plants, and nuclear fission as a very expensive boiler"
+- "Getting hydrocarbons out of the earth: petroleum geology, fracking, deepwater rigs, the LNG chain, and energy return on investment"
+- "The largest machine ever built: grid frequency, inertia, reactive power, transmission limits, and the anatomy of a blackout"
+- "Harvesting the weather: photovoltaic physics, wind turbine aerodynamics, the duck curve, and the unsolved storage problem"
+- "The five-minute auction that runs civilization: merit-order dispatch, locational marginal pricing, capacity markets, and the coming demand shock"
+
+# --- Water & Sanitation ---
+- "The multi-barrier gauntlet: coagulation, filtration, and the disinfection chemistry that makes water drinkable"
+- "Pipes, pressure, and lead: distribution hydraulics, corrosion control, and how water systems fail"
+- "The activated sludge machine: sewage collection, biological nutrient removal, and turning waste into biogas"
+- "Manufacturing water: reverse osmosis, desalination energy, and potable reuse"
+- "Running dry: hydrology, groundwater mining, aquifer depletion, virtual water, and the law of water allocation"
+
+# --- Mining, Metals & Materials ---
+- "Ore to cathode: grade decline, comminution energy, froth flotation, and how a mountain becomes 99.99% pure copper"
+- "The furnace economy: blast furnace chemistry, cement kilns, and why steel and concrete are the hardest 15% of global CO2"
+- "Congealed electricity: bauxite, the Bayer process, Hall-Heroult cells, and why aluminum smelters chase cheap power around the planet"
+- "The separation problem: rare-earth solvent extraction, lithium brines, byproduct metals, and why refining — not mining — is the geopolitical chokepoint"
+- "What mining leaves behind: tailings dam engineering, acid mine drainage geochemistry, and managing the largest waste stream on Earth"
+
+# --- Chemicals ---
+- "Cracking the barrel: steam crackers, the seven building-block molecules, and how polymer chemistry turns oil and gas into everything you touch"
+- "The nitrogen economy: Haber-Bosch thermodynamics, ammonia plant engineering, the fertilizer chain, and feeding half of humanity from natural gas"
+- "Why chemical plants explode: runaway reactions, relief-system design, and the process-safety engineering written in blood at Bhopal, Texas City, and Beirut"
+- "Where chemicals get made and why: Verbund integration, feedstock economics, and the geography of production from Ludwigshafen to Jurong Island to the US Gulf Coast"
+- "Making molecules pure enough to swallow: API synthesis, chirality, batch vs continuous manufacturing, and the fragile global pharmaceutical supply chain"
+
+# --- Manufacturing & Industrial Production ---
+- "The tyranny of tolerances: precision machining, metrology, and how humanity learned to make two parts exactly alike"
+- "Takt time and the physics of flow: the Toyota Production System, line balancing, and the queueing theory hiding inside every factory"
+- "The mathematics of defects: statistical process control, Six Sigma, FMEA, and how factories make a million parts without making a million mistakes"
+- "Lights-out manufacturing: industrial robots, PLCs, machine vision, and why humans still beat machines at final assembly"
+- "Why the factory is in Shenzhen: process knowledge, supplier clusters, learning curves, and the supply-chain engineering behind a $100 gadget"
+
+# --- Construction & the Built Environment ---
+- "Concrete: hydration chemistry, reinforcement and prestressing, rebar-corrosion decay, and the carbon problem of civilization's default material"
+- "Why buildings stand up — and fall down: load paths, buckling, progressive collapse, and the forensics of structural failure"
+- "Engineering the underground: soil mechanics, foundations, tunnel boring machines, and why the ground is the riskiest part of every project"
+- "The infrastructure cost disease: why a mile of subway costs $250 million in Madrid and $2.5 billion in New York"
+- "How the world houses itself: timber frames vs concrete slabs, zoning math, developer pro formas, and the self-built city"
