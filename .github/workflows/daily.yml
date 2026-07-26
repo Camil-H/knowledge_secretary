@@ -36,9 +36,10 @@ jobs:
       - run: uv run playwright install --with-deps chromium   # podcastfy fetches source URLs via a browser
       - name: Generate podcast episode
         env:
-          # one AI Studio key drives both the Gemini 3.1 Flash transcript and podcastfy's Cloud TTS
+          # two distinct Google keys: podcastfy's Cloud TTS needs a GCP key; the transcript LLM
+          # (Gemini API) needs an AI Studio key.
           GOOGLE_AI_STUDIO_KEY: ${{ secrets.GOOGLE_AI_STUDIO_KEY }}   # transcript (Gemini 3.1 Flash)
-          GEMINI_API_KEY: ${{ secrets.GOOGLE_AI_STUDIO_KEY }}   # podcastfy TTS reads GEMINI_API_KEY
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}   # podcastfy Cloud TTS (GCP key)
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}   # transcript fallback
           GH_TOKEN: ${{ github.token }}   # gh release upload for podcast mp3s (this repo)
         run: uv run python -m src.run podcast
