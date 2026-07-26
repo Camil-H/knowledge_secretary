@@ -56,8 +56,7 @@ def run(ctx: Context) -> Result:
     """Generate the next unaired topic from sources.yaml; mark it aired on success.
 
     sources.yaml (TOPICS) is the source of truth for content and order; state only records
-    which topics have aired, so adding, removing, or reordering topics there takes effect
-    immediately rather than drifting from a separately-persisted queue."""
+    which topics have aired."""
     done = set(state_mod.get_kv(ctx.state, DONE_KEY, []))
     pending = [t for t in TOPICS if t not in done]
     if not pending:
@@ -89,7 +88,7 @@ def _discover_urls(ctx: Context, topic: str) -> list[str]:
 
 
 async def _generate_episode(ctx: Context, topic: str) -> str | None:
-    """Episode from the reachable source URLs (or the bare topic); None if every transcript model fails."""
+    """Episode from the reachable URLs (or the bare topic); None if every transcript model fails."""
     urls = await reachable_urls(_discover_urls(ctx, topic))
     if urls:
         ctx.logger.info(f"podcast: {len(urls)} reachable source url(s) for {topic!r}")

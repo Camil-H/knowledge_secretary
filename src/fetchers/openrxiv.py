@@ -7,9 +7,6 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-# One host serves both servers via the {server} path segment. The details endpoint filters by
-# date only (no category filter) and pages 30 at a time, ordered oldest-first, so we walk the
-# whole window with an offset cursor and filter categories client-side.
 _API = "https://api.biorxiv.org/details/{server}/{frm}/{to}/{cursor}/json"
 _HTTP_TIMEOUT_S = 30
 _MAX_PAGES = 20  # ~600 preprints; caps a busy window so one source can't stall the run

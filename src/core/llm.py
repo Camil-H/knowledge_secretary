@@ -28,7 +28,6 @@ _BACKOFF_CAP_S = 30
 # wall-clock cap for the whole cascade so a many-item run can't burn minutes on backoff sleep
 _DEADLINE_S = float(os.environ.get("LLM_DEADLINE_S", "120"))
 FALLBACK_MODEL = "openrouter/google/gemma-4-31b-it:free"
-# unambiguous auth-failure phrasing only — a bare "auth" substring also matches "author" etc.
 _AUTH_PHRASES = ("no user or org", "invalid api key", "unauthorized")
 # ids passing the zero-price filter that aren't general text writers (music / guardrail / router)
 _EXCLUDE_IDS = ("lyria", "content-safety", "openrouter/free")

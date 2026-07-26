@@ -39,9 +39,7 @@ def yt_channel(spec: SourceSpec, since: datetime, state: State) -> list[Item]:
 @enrichers.register("transcript")
 def transcript(item: Item) -> Item:
     """Prefer the video's transcript (any language); degrade to the RSS description
-    already in item.text when the transcript is unavailable — YouTube blocks the CI
-    runner's datacenter IP, so an empty transcript is the common case, not the error
-    case, and must not clobber the description we already have. The chosen source is
+    already in item.text when the transcript is unavailable. The chosen source is
     recorded in item.meta['text_source'] so downstream can flag lower-confidence items."""
     video_id = (
         item.id[len("yt:") :] if item.id.startswith("yt:") else yt.video_id_from_url(item.url)
