@@ -1,7 +1,8 @@
-"""Podcast task: pop the next topic from the sources.yaml queue and generate a
-two-host episode via podcastfy (OpenRouter transcript LLM, Gemini/Google-Cloud TTS)."""
+"""Podcast task: generate a two-host episode for the next unaired topic via podcastfy
+(Gemini 3.1 Flash transcript with an OpenRouter fallback; Google Cloud TTS for audio)."""
 
 import asyncio
+import os
 from pathlib import Path
 
 from src.core import llm, sources_loader
@@ -16,9 +17,13 @@ TOPICS: list[str] = sources_loader.load(Path(__file__).parent, []) or []
 MAX_SOURCE_URLS = 10
 _MAX_MODEL_ATTEMPTS = 4
 _SOURCE_SEPARATOR = "\n\n"
-_OPENROUTER_KEY_LABEL = "OPENROUTER_API_KEY"  # transcript LLM: podcastfy -> LiteLLM -> OpenRouter
-# Google Cloud TTS, keyed by GEMINI_API_KEY (a GCP Cloud-TTS key, not AI Studio). Passed as an
-# explicit arg because podcastfy ignores a nested text_to_speech override, else defaults to openai.
+# Transcript: prefer Gemini 3.1 Flash (AI Studio key, free tier), fall back to OpenRouter's free
+# models. podcastfy reads each model's key from the env var named by api_key_label.
+_TRANSCRIPT_MODEL = "gemini/gemini-3.1-flash"
+_GOOGLE_AI_STUDIO_KEY_LABEL = "GOOGLE_AI_STUDIO_KEY"
+_OPENROUTER_KEY_LABEL = "OPENROUTER_API_KEY"
+# Google Cloud TTS, keyed by GEMINI_API_KEY. Passed as an explicit arg because podcastfy ignores a
+# nested text_to_speech override, else defaults to openai.
 _TTS_MODEL = "gemini"
 DISCOVER_PROMPT = (Path(__file__).parent / "source_discovery_prompt.md").read_text()
 CONVERSATION_CONFIG = {
@@ -44,8 +49,8 @@ CONVERSATION_CONFIG = {
     "text_to_speech": {
         "gemini": {
             "default_voices": {
-                "question": "en-US-Chirp3-HD-Puck",
-                "answer": "en-US-Chirp3-HD-Aoede",
+                "question": "en-US-Chirp3-HD-Iapetus",
+                "answer": "en-US-Chirp3-HD-Laomedeia",
             },
         },
     },
@@ -113,24 +118,34 @@ async def _generate_episode(ctx: Context, topic: str) -> str | None:
     instructions = (Path(__file__).parent / "prompt.md").read_text()
     from podcastfy.client import generate_podcast
 
-    models = llm.resolve_models(podcast=True) or [llm.FALLBACK_MODEL]
     last_err: Exception | None = None
-    for model in models[:_MAX_MODEL_ATTEMPTS]:
+    for model, key_label in _transcript_candidates():
         try:
             return generate_podcast(
                 urls=pf_urls,
                 text=pf_text,
                 conversation_config={**CONVERSATION_CONFIG, "user_instructions": instructions},
                 llm_model_name=model,
-                api_key_label=_OPENROUTER_KEY_LABEL,
+                api_key_label=key_label,
                 tts_model=_TTS_MODEL,
                 longform=True,
             )
         except Exception as exc:  # tolerate any generation failure and try the next model
             last_err = exc
             ctx.logger.warning("⚠️ podcast: model=%s failed: %s", model, exc)
-    ctx.logger.warning("⚠️ podcast: all models failed for %r: %s", topic, last_err)
+    ctx.logger.warning("⚠️ podcast: all transcript models failed for %r: %s", topic, last_err)
     return None
+
+
+def _transcript_candidates() -> list[tuple[str, str]]:
+    """(model, api-key env var) to try in order: Gemini 3.1 Flash first when its AI Studio key is
+    set, then the free OpenRouter cascade. podcastfy runs one model with no fallback of its own."""
+    candidates: list[tuple[str, str]] = []
+    if os.environ.get(_GOOGLE_AI_STUDIO_KEY_LABEL):
+        candidates.append((_TRANSCRIPT_MODEL, _GOOGLE_AI_STUDIO_KEY_LABEL))
+    free = llm.resolve_models(podcast=True) or [llm.FALLBACK_MODEL]
+    candidates += [(m, _OPENROUTER_KEY_LABEL) for m in free]
+    return candidates[:_MAX_MODEL_ATTEMPTS]
 
 
 async def _extract_sources(urls: list[str]) -> str:

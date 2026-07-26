@@ -128,6 +128,9 @@ def _stub_episode_collaborators(
     monkeypatch.setattr(podcast_task, "reachable_urls", _validate)
     monkeypatch.setattr(podcast_task, "article_text", article_text or (lambda url: _SOURCE_TEXT))
     monkeypatch.setattr(podcast_task.llm, "resolve_models", lambda podcast=None: models)
+    monkeypatch.delenv(
+        "GOOGLE_AI_STUDIO_KEY", raising=False
+    )  # default: exercise the OpenRouter path
 
     import podcastfy.client
 
@@ -227,6 +230,27 @@ def test_generate_episode_cascades_to_next_model_when_one_fails(monkeypatch):
     result = asyncio.run(_generate_episode(_discovery_ctx(), "PROTACs"))
     assert result == "/tmp/ep.mp3"
     assert attempts == ["openrouter/first", "openrouter/second"]
+
+
+def test_generate_episode_prefers_gemini_when_ai_studio_key_set(monkeypatch):
+    captured = {}
+
+    def _capture(**kwargs):
+        captured.update(kwargs)
+        return "/tmp/ep.mp3"
+
+    _stub_episode_collaborators(
+        monkeypatch,
+        validated_urls=["https://source.example.com"],
+        models=["openrouter/free-fallback"],
+        generate_podcast=_capture,
+    )
+    monkeypatch.setenv("GOOGLE_AI_STUDIO_KEY", "ai-studio-key")  # re-add after the stub's delenv
+
+    asyncio.run(_generate_episode(_discovery_ctx(), "PROTACs"))
+
+    assert captured["llm_model_name"] == podcast_task._TRANSCRIPT_MODEL
+    assert captured["api_key_label"] == "GOOGLE_AI_STUDIO_KEY"
 
 
 def test_generate_episode_returns_none_when_all_models_fail(monkeypatch):
