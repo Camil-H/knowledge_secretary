@@ -22,21 +22,33 @@ _OPENROUTER_KEY_LABEL = "OPENROUTER_API_KEY"  # transcript LLM: podcastfy -> Lit
 _TTS_MODEL = "gemini"
 DISCOVER_PROMPT = (Path(__file__).parent / "source_discovery_prompt.md").read_text()
 CONVERSATION_CONFIG = {
-    "conversation_style": ["technical", "analytical", "engaging"],
-    "roles_person1": "curious host who drives the narrative with sharp questions",
-    "roles_person2": "domain expert who explains with depth and precision",
+    "conversation_style": ["technical", "narrative", "engaging", "story-driven"],
+    "roles_person1": "curious host who keeps one narrative thread going with sharp questions",
+    "roles_person2": "expert who explains via cause-and-effect and vivid examples, not lists",
+    # Story beats, deliberately with no "Introduction"/"Conclusion"/"Takeaways" beat: longform
+    # generates each chunk against this structure, so a conclusion beat makes every section end
+    # with a wrap-up and a goodbye.
     "dialogue_structure": [
-        "Introduction",
-        "Fundamentals",
-        "Mechanisms and Tradeoffs",
-        "Edge Cases and Open Questions",
-        "Key Takeaways",
+        "The hook and why it matters",
+        "How it actually works",
+        "Tradeoffs, failure modes, and edge cases",
+        "Where it's heading",
     ],
     "podcast_name": "Daily Podcast",
     "podcast_tagline": "A daily podcast",
     "output_language": "English",
-    "engagement_techniques": ["analogies", "worked examples", "rhetorical questions"],
-    "creativity": 0.3,
+    "engagement_techniques": ["analogies", "worked examples", "storytelling", "callbacks"],
+    "creativity": 0.7,  # 0.3 flattened the dialogue into a fact list; higher tracks the narrative
+    # Chirp 3 HD voices (GA, more natural) instead of the default Journey pair, read by the gemini
+    # Cloud-TTS provider from text_to_speech.<provider>.default_voices.
+    "text_to_speech": {
+        "gemini": {
+            "default_voices": {
+                "question": "en-US-Chirp3-HD-Puck",
+                "answer": "en-US-Chirp3-HD-Aoede",
+            },
+        },
+    },
 }
 
 
