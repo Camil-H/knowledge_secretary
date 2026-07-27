@@ -50,7 +50,9 @@ def _read_history(date: str) -> dict:
         return json.load(f)
 
 
-def _read_index() -> str:
+def _render_index() -> str:
+    """Render the page as the publish action does, once the run's history is committed."""
+    site.render()
     with open(os.path.join(site.OUT_DIR, "index.html")) as f:
         return f.read()
 

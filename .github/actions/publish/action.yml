@@ -1,5 +1,5 @@
 name: Publish digest
-description: Commit the history/state snapshot and publish the built site to the personal Pages repo.
+description: Commit the history/state snapshot, render the site from it, and publish to the personal Pages repo.
 
 inputs:
   commit-prefix:
@@ -27,7 +27,10 @@ runs:
         git config user.email "digest-bot@users.noreply.github.com"
         git add history state
         if git diff --cached --quiet; then
-          echo "nothing to commit; skipping push"
+          # nothing of ours to push, but the render still needs the other job's history
+          echo "nothing to commit; fast-forwarding history for the render"
+          git fetch origin main
+          git merge --ff-only origin/main
           exit 0
         fi
         git commit -m "${{ inputs.commit-prefix }} run $(date -u +%F)"
@@ -46,8 +49,12 @@ runs:
         done
         echo "::error::failed to publish state after 5 attempts"
         exit 1
+
+    - name: Render site from the committed history
+      shell: bash
+      run: uv run python -m src.delivery.site
+
     - name: Publish site to Pages repo
-      if: hashFiles('public/index.html') != ''
       uses: peaceiris/actions-gh-pages@84c30a85c19949d7eee79c4ff27748b70285e453   # v4.1.0
       with:
         personal_token: ${{ inputs.pages-token }}

@@ -1,5 +1,6 @@
 """Deliverer `site`: append each task's daily output to JSON history (committed,
-pruned to N days) and re-render the last N days into one static HTML page."""
+pruned to N days). Rendering the last N days into one static HTML page is a separate
+entry point (`python -m src.delivery.site`), run at publish time — see `render`."""
 
 import glob
 import html
@@ -50,7 +51,9 @@ RELEASE_TAG_PREFIX = "podcast-"
 
 @deliverers.register("site")
 def site(result: Result) -> None:
-    """Store today's result under HISTORY_DIR keyed by task, prune, re-render."""
+    """Store today's result under HISTORY_DIR keyed by task, then prune.
+
+    Recording only — the page is rendered later, by `render`, from the committed history."""
     task = result.meta.get("task", "")
     if not result.markdown and not result.artifacts and not result.notices:
         logger.info("site: nothing to add for task %s", task)
@@ -80,8 +83,36 @@ def site(result: Result) -> None:
     entry["tasks"][task] = payload
     _save_entry(HISTORY_DIR, today, entry)
     _prune(HISTORY_DIR, HISTORY_DAYS)
-    _render()
     logger.info("✅ site: recorded task %s for %s", task, today)
+
+
+# == Render ===================================================================
+
+
+def render() -> None:
+    """Render the newest HISTORY_DAYS days of history into OUT_DIR/index.html.
+
+    Reads the history dir rather than the Result just delivered, so the page is a pure
+    function of what is committed. That is what lets the two daily jobs publish in any
+    order: whichever renders last picks up the other's cards instead of dropping them.
+    """
+    entries = []
+    for path in glob.glob(os.path.join(HISTORY_DIR, "*.json")):
+        with open(path) as f:
+            entries.append(json.load(f))
+    entries.sort(key=lambda e: e["date"], reverse=True)
+    entries = entries[:HISTORY_DAYS]
+
+    days_html = "\n".join(_render_day(entry, is_latest=(i == 0)) for i, entry in enumerate(entries))
+    page = string.Template(_PAGE).substitute(
+        title=TITLE, subtitle=SUBTITLE, updated=datetime.now(UTC).isoformat(), days=days_html
+    )
+
+    os.makedirs(OUT_DIR, exist_ok=True)
+    out_path = os.path.join(OUT_DIR, "index.html")
+    with open(out_path, "w") as f:
+        f.write(page)
+    logger.info("✅ site: rendered %d day(s) to %s", len(entries), out_path)
 
 
 # == Helper Functions =========================================================
@@ -111,24 +142,6 @@ def _prune(history_dir: str, days: int) -> None:
 
 
 # ----- rendering -----
-
-
-def _render() -> None:
-    entries = []
-    for path in glob.glob(os.path.join(HISTORY_DIR, "*.json")):
-        with open(path) as f:
-            entries.append(json.load(f))
-    entries.sort(key=lambda e: e["date"], reverse=True)
-    entries = entries[:HISTORY_DAYS]
-
-    days_html = "\n".join(_render_day(entry, is_latest=(i == 0)) for i, entry in enumerate(entries))
-    page = string.Template(_PAGE).substitute(
-        title=TITLE, subtitle=SUBTITLE, updated=datetime.now(UTC).isoformat(), days=days_html
-    )
-
-    os.makedirs(OUT_DIR, exist_ok=True)
-    with open(os.path.join(OUT_DIR, "index.html"), "w") as f:
-        f.write(page)
 
 
 def _render_day(entry: HistoryEntry, *, is_latest: bool) -> str:
@@ -265,3 +278,19 @@ def _prune_old_releases(repo: str, keep_days: int) -> None:
                 capture_output=True,
                 text=True,
             )
+
+
+# == Entry point ==============================================================
+
+
+def main() -> int:
+    """Render the page from the committed history. Invoked from the publish composite
+    action once the state commit is reconciled and pushed, so the deployed page reflects
+    what landed on the branch — not just the tasks this job happened to run."""
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+    render()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

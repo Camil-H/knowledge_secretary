@@ -45,12 +45,22 @@ def _index_html():
         return f.read()
 
 
+def _rendered(result: Result) -> str:
+    """Record a result then render, i.e. what a task run plus the publish step do."""
+    site.site(result)
+    site.render()
+    return _index_html()
+
+
+def _todays_tasks() -> dict:
+    return site._load_entry(site.HISTORY_DIR, datetime.now(UTC).strftime("%Y-%m-%d"))["tasks"]
+
+
 # ----- site: markdown tasks -----
 
 
 def test_site_stores_newsletter_and_renders_today_expanded():
-    site.site(Result(subject="Digest", markdown="# Hello", meta={"task": "newsletter"}))
-    html = _index_html()
+    html = _rendered(Result(subject="Digest", markdown="# Hello", meta={"task": "newsletter"}))
     assert "<h1>Hello</h1>" in html
     assert '<section class="day today">' in html
     assert "<details" not in html  # only one day so far
@@ -58,59 +68,105 @@ def test_site_stores_newsletter_and_renders_today_expanded():
 
 def test_site_second_task_upserts_same_day():
     site.site(Result(markdown="# News", meta={"task": "newsletter"}))
-    site.site(Result(markdown="# Vids", meta={"task": "youtube"}))
-    html = _index_html()
+    html = _rendered(Result(markdown="# Vids", meta={"task": "youtube"}))
     assert '<article class="task newsletter">' in html
     assert '<article class="task youtube">' in html
     assert "<h1>News</h1>" in html and "<h1>Vids</h1>" in html
 
 
+def test_site_does_not_render_at_record_time():
+    # The page is rendered by the publish step, from the reconciled history: a task run that
+    # rendered its own page would deploy one missing the other job's cards.
+    site.site(Result(markdown="# News", meta={"task": "newsletter"}))
+    assert "newsletter" in _todays_tasks()
+    assert not os.path.exists(os.path.join(site.OUT_DIR, "index.html"))
+
+
 def test_site_podcast_uploads_and_renders_audio(monkeypatch):
     monkeypatch.setattr(site, "_upload_release_asset", lambda *a, **k: "https://fake/ep.mp3")
-    site.site(
+    html = _rendered(
         Result(subject="Ep 1", artifacts=["ep.mp3"], meta={"task": "podcast", "topic": "PROTACs"})
     )
-    html = _index_html()
     assert '<audio controls src="https://fake/ep.mp3">' in html
     assert "PROTACs" in html
 
 
 def test_site_podcast_degrades_to_none_url_when_upload_fails(monkeypatch):
     monkeypatch.setattr(site, "_upload_release_asset", lambda *a, **k: None)
-    site.site(
+    html = _rendered(
         Result(subject="Ep 1", artifacts=["ep.mp3"], meta={"task": "podcast", "topic": "PROTACs"})
     )
-    today = datetime.now(UTC).strftime("%Y-%m-%d")
-    entry = site._load_entry(site.HISTORY_DIR, today)
-    assert entry["tasks"]["podcast"]["audio_url"] is None
-    html = _index_html()
+    assert _todays_tasks()["podcast"]["audio_url"] is None
     assert "(audio unavailable)" in html
 
 
 def test_site_empty_result_is_noop():
     site.site(Result(meta={"task": "newsletter"}))
     assert not glob.glob(os.path.join(site.HISTORY_DIR, "*.json"))
-    assert not os.path.exists(os.path.join(site.OUT_DIR, "index.html"))
 
 
 def test_site_renders_notice_banner():
-    site.site(
+    html = _rendered(
         Result(markdown="# Hi", notices=["x_biotech: creds expired"], meta={"task": "newsletter"})
     )
-    html = _index_html()
     assert 'class="notice"' in html
     assert "x_biotech: creds expired" in html
 
 
 def test_site_notices_only_result_still_records():
     # X auth failing with no other new content must still surface, not be dropped as "empty"
-    site.site(
+    html = _rendered(
         Result(markdown="", notices=["x_biotech: creds expired"], meta={"task": "newsletter"})
     )
+    assert _todays_tasks()["newsletter"]["notices"] == ["x_biotech: creds expired"]
+    assert "x_biotech: creds expired" in html
+
+
+# ----- render -----
+
+
+def _write_day(date: str, markdown: str) -> None:
+    site._save_entry(
+        site.HISTORY_DIR,
+        date,
+        {"date": date, "tasks": {"newsletter": {"kind": "markdown", "markdown": markdown}}},
+    )
+
+
+def test_render_orders_days_desc_newest_first():
+    for date, subject in [("2026-07-19", "Old"), ("2026-07-20", "Mid"), ("2026-07-21", "New")]:
+        _write_day(date, subject)
+    site.render()
+    html = _index_html()
+    assert html.index('<section class="day today">') < html.index("<details")
+    assert html.index("2026-07-21") < html.index("2026-07-20") < html.index("2026-07-19")
+
+
+def test_render_includes_a_day_this_process_never_delivered():
+    # Stands in for the other daily job's card, landing in history via the rebase reconcile:
+    # render reads the history dir, so it can never publish a page that drops it.
     today = datetime.now(UTC).strftime("%Y-%m-%d")
+    site.site(Result(markdown="# Mine", meta={"task": "youtube"}))
     entry = site._load_entry(site.HISTORY_DIR, today)
-    assert entry["tasks"]["newsletter"]["notices"] == ["x_biotech: creds expired"]
-    assert "x_biotech: creds expired" in _index_html()
+    entry["tasks"]["podcast"] = {"kind": "podcast", "topic": "Theirs", "audio_url": None}
+    site._save_entry(site.HISTORY_DIR, today, entry)
+
+    site.render()
+
+    html = _index_html()
+    assert '<article class="task youtube">' in html
+    assert '<article class="task podcast">' in html
+    assert "Theirs" in html
+
+
+def test_render_keeps_only_the_newest_history_days(monkeypatch):
+    monkeypatch.setattr(site, "HISTORY_DAYS", 2)
+    for date in ["2026-07-19", "2026-07-20", "2026-07-21"]:
+        _write_day(date, f"Day {date}")
+    site.render()
+    html = _index_html()
+    assert "2026-07-19" not in html
+    assert "2026-07-20" in html and "2026-07-21" in html
 
 
 # ----- site: render-boundary XSS hardening -----
@@ -181,19 +237,6 @@ def test_prune_keeps_only_n_most_recent(tmp_path):
     site._prune(str(history_dir), 2)
     remaining = sorted(os.path.basename(p) for p in glob.glob(str(history_dir / "*.json")))
     assert remaining == ["2026-07-17.json", "2026-07-18.json"]
-
-
-def test_render_orders_days_desc_newest_first():
-    for date, subject in [("2026-07-19", "Old"), ("2026-07-20", "Mid"), ("2026-07-21", "New")]:
-        site._save_entry(
-            site.HISTORY_DIR,
-            date,
-            {"date": date, "tasks": {"newsletter": {"kind": "markdown", "markdown": subject}}},
-        )
-    site._render()
-    html = _index_html()
-    assert html.index('<section class="day today">') < html.index("<details")
-    assert html.index("2026-07-21") < html.index("2026-07-20") < html.index("2026-07-19")
 
 
 def test_load_entry_missing_file_returns_empty_shape(tmp_path):

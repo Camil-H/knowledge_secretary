@@ -16,8 +16,8 @@ from tests.e2e.conftest import (
     _install_youtube_fakes,
     _raise,
     _read_history,
-    _read_index,
     _read_state,
+    _render_index,
     _today,
 )
 
@@ -44,7 +44,7 @@ def test_newsletter_e2e_writes_history_renders_html_and_consumes(monkeypatch):
     assert "Knowledge Secretary" in payload["subject"]
     assert payload["markdown"] == "# Daily News\n\nBody"
 
-    html = _read_index()
+    html = _render_index()
     assert "<h1>Daily News</h1>" in html
     assert '<article class="task newsletter">' in html
     assert '<section class="day today">' in html
@@ -72,7 +72,7 @@ def test_youtube_e2e_summarizes_and_renders_grouped(monkeypatch):
     assert "ChanName" in payload["markdown"]
     assert "- key point" in payload["markdown"]
 
-    html = _read_index()
+    html = _render_index()
     assert '<article class="task youtube">' in html
     assert "key point" in html
 
@@ -104,7 +104,7 @@ def test_podcast_e2e_uploads_release_asset_and_embeds_audio(monkeypatch, tmp_pat
     assert payload["topic"] == "My Topic"
     assert payload["audio_url"] == audio_url
 
-    html = _read_index()
+    html = _render_index()
     assert f'<audio controls src="{audio_url}"></audio>' in html
     assert "My Topic" in html
 
@@ -131,7 +131,7 @@ def test_all_e2e_runs_every_task_into_one_day(monkeypatch, tmp_path, argv):
     tasks_today = _read_history(_today())["tasks"]
     assert set(tasks_today) == {"newsletter", "youtube", "podcast"}
 
-    html = _read_index()
+    html = _render_index()
     newsletter_pos = html.index('<article class="task newsletter">')
     youtube_pos = html.index('<article class="task youtube">')
     podcast_pos = html.index('<article class="task podcast">')

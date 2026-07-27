@@ -18,13 +18,14 @@ The three products are independent daily tasks that share one shape: **gather �
 
 What each product *reads* is source data you control — one `sources.yaml` per task. How each product *writes* is driven by a plain-Markdown prompt per task. So adapting the digest to a different field is editing config and prose, not code: swap the sources, rewrite the prompts, rename the sections.
 
-Every run renders to a single static page — the last 7 days, newest first, older days collapsed — published to GitHub Pages, and records what it has already seen so nothing repeats. Items are marked seen only after a successful publish, so a failed run never drops content.
+Each task records its output to `history/` and records what it has already seen so nothing repeats. Publishing is a second phase: it renders the last 7 days of that history — newest first, older days collapsed — into a single static page on GitHub Pages. Splitting the two is what lets the podcast job and the newsletter+YouTube job publish in either order without overwriting each other's cards. Items are marked seen only after a successful publish, so a failed run never drops content.
 
 ## Run
 
 ```sh
 uv sync
 uv run python -m src.run [newsletter|youtube|podcast|all]
+uv run python -m src.delivery.site   # render history/ -> public/index.html
 ```
 
 `.github/workflows/daily.yml` runs the tasks on a daily schedule; `.github/workflows/ci.yml` runs ruff, ty, and pytest.
@@ -36,6 +37,7 @@ There's no central config file — framework knobs live as constants next to the
 | Secret | Purpose |
 | --- | --- |
 | `OPENROUTER_API_KEY` | all LLM calls — newsletter, YouTube, podcast source-discovery, and the podcast transcript (via podcastfy/LiteLLM) — using free `:free` models. A one-time $10 OpenRouter top-up raises the free cap to 1,000 req/day (20 RPM). Required. |
+| `GOOGLE_AI_STUDIO_KEY` | podcast transcript, tried before OpenRouter: Gemini 3.1 Flash via **Google AI Studio**. Optional — absent or rejected, the transcript falls back to the OpenRouter `:free` models. A GCP key without the Generative Language API enabled is rejected with `API_KEY_SERVICE_BLOCKED`, costing one wasted attempt per run; this is a different key from `GEMINI_API_KEY`. |
 | `GEMINI_API_KEY` | podcast text-to-speech (Google Cloud Text-to-Speech). Must be a **GCP API key with the Cloud Text-to-Speech API enabled**, not a Google AI Studio key. Required for the podcast unless you switch `_TTS_MODEL` to `edge`. |
 | `PAGES_DEPLOY_TOKEN` | PAT with write access to the Pages repo (`Camil-H/camil-h.github.io`) so the workflow can publish the site cross-repo. Required. |
 | `TWITTER_AUTH_TOKEN`, `TWITTER_CT0` | X/Twitter session tokens for the `twitter-cli` X source (optional; degrades to nothing if absent). |
