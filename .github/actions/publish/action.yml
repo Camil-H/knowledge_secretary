@@ -56,3 +56,4 @@ runs:
         publish_dir: ./public
         destination_dir: ${{ inputs.pages-destination-dir }}
         keep_files: true   # never clobber the rest of the personal site
+        enable_jekyll: true
