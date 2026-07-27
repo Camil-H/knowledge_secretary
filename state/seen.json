@@ -258,5 +258,9 @@
     "yt:lqOsxjV0UEI": "2026-07-23",
     "yt:tL9Lw250spc": "2026-07-26"
   },
-  "kv": {}
+  "kv": {
+    "podcast_done": [
+      "Fields Medal 2026: Hong Wang: For her work in harmonic analysis and geometric measure theory, including applications of multiscale and decoupling techniques to the local smoothing conjecture for the planar wave equation, and major advances in Fourier restriction, Falconer distance sets, Furstenberg sets in the plane, and the Kakeya problem in three dimensions."
+    ]
+  }
 }
