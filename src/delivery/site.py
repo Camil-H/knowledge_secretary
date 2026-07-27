@@ -112,7 +112,11 @@ def render() -> None:
     out_path = os.path.join(OUT_DIR, "index.html")
     with open(out_path, "w") as f:
         f.write(page)
-    logger.info("✅ site: rendered %d day(s) to %s", len(entries), out_path)
+    # name the newest day's cards: the deployed page is what the run is judged on, and a
+    # card missing here is the symptom worth seeing without diffing the published HTML
+    logger.info(
+        "✅ site: rendered %d day(s) to %s%s", len(entries), out_path, _latest_cards_note(entries)
+    )
 
 
 # == Helper Functions =========================================================
@@ -144,10 +148,22 @@ def _prune(history_dir: str, days: int) -> None:
 # ----- rendering -----
 
 
+def _day_cards(entry: HistoryEntry) -> list[str]:
+    """The tasks this day renders a card for, in display order. Single source of truth for
+    both the HTML and the log line, so what is reported can't drift from what is rendered."""
+    return [task for task in _LABELS if task in entry.get("tasks", {})]
+
+
+def _latest_cards_note(entries: list[HistoryEntry]) -> str:
+    """' — <date>: <cards>' for the newest rendered day; empty when there is no history."""
+    if not entries:
+        return ""
+    latest = entries[0]
+    return f" — {latest['date']}: {', '.join(_day_cards(latest)) or 'no cards'}"
+
+
 def _render_day(entry: HistoryEntry, *, is_latest: bool) -> str:
-    tasks_html = "".join(
-        _task_html(task, entry["tasks"][task]) for task in _LABELS if task in entry["tasks"]
-    )
+    tasks_html = "".join(_task_html(task, entry["tasks"][task]) for task in _day_cards(entry))
     date = html.escape(entry["date"])
     heading = f'<time class="js-date" datetime="{date}">{date}</time>'
     if is_latest:

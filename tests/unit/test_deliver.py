@@ -1,5 +1,6 @@
 import glob
 import json
+import logging
 import os
 from datetime import UTC, datetime, timedelta
 
@@ -167,6 +168,68 @@ def test_render_keeps_only_the_newest_history_days(monkeypatch):
     html = _index_html()
     assert "2026-07-19" not in html
     assert "2026-07-20" in html and "2026-07-21" in html
+
+
+# ----- render: what the log reports -----
+
+
+def test_render_logs_the_newest_days_cards(caplog):
+    _write_day("2026-07-26", "Older")
+    site._save_entry(
+        site.HISTORY_DIR,
+        "2026-07-27",
+        {
+            "date": "2026-07-27",
+            "tasks": {
+                "podcast": {"kind": "podcast", "topic": "t", "audio_url": None},
+                "newsletter": {"kind": "markdown", "markdown": "# N"},
+            },
+        },
+    )
+
+    with caplog.at_level(logging.INFO, logger="src.delivery.site"):
+        site.render()
+
+    # display order, not history key order, and only the newest day is named
+    assert "rendered 2 day(s)" in caplog.text
+    assert "2026-07-27: newsletter, podcast" in caplog.text
+    assert "2026-07-26" not in caplog.text
+
+
+def test_render_log_names_a_day_that_rendered_no_cards(caplog):
+    site._save_entry(site.HISTORY_DIR, "2026-07-27", {"date": "2026-07-27", "tasks": {}})
+
+    with caplog.at_level(logging.INFO, logger="src.delivery.site"):
+        site.render()
+
+    assert "2026-07-27: no cards" in caplog.text
+
+
+def test_render_log_omits_the_day_note_without_history(caplog):
+    with caplog.at_level(logging.INFO, logger="src.delivery.site"):
+        site.render()
+
+    assert "rendered 0 day(s)" in caplog.text
+    assert "—" not in caplog.text
+
+
+def test_day_cards_reports_exactly_what_render_day_emits():
+    # the log is only trustworthy if it can't drift from the HTML: an unlabelled task key
+    # renders no card, so it must not be reported as one either
+    entry = {
+        "date": "2026-07-27",
+        "tasks": {
+            "podcast": {"kind": "podcast", "topic": "t", "audio_url": None},
+            "newsletter": {"kind": "markdown", "markdown": "# N"},
+            "mystery": {"kind": "markdown", "markdown": "# ?"},
+        },
+    }
+    cards = site._day_cards(entry)
+    html_out = site._render_day(entry, is_latest=True)
+
+    assert cards == ["newsletter", "podcast"]
+    assert html_out.count("<article") == len(cards)
+    assert "mystery" not in html_out
 
 
 # ----- site: render-boundary XSS hardening -----
