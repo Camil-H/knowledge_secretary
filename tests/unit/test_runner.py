@@ -5,9 +5,12 @@ run_source_task() is driven through a faked ctx.gather, so gather()'s own logic 
 out of scope for those tests."""
 
 import logging
+import re
 import threading
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+
+import pytest
 
 from src.core.errors import AuthError
 from src.core.models import Context, Item
@@ -81,6 +84,66 @@ def test_gather_drops_new_item_published_before_since(monkeypatch):
     result = gather([_spec("k")], state, since)
 
     assert result == [fresh]
+
+
+# ----- gather: per-source log breakdown -----
+
+
+@pytest.mark.parametrize(
+    "fetched_ids, seen_ids, stale_ids, expected",
+    [
+        ([], [], [], "0 new of 0 fetched (0 seen, 0 outside window)"),
+        (["a", "b"], [], [], "2 new of 2 fetched (0 seen, 0 outside window)"),
+        (["a", "b"], ["a", "b"], [], "0 new of 2 fetched (2 seen, 0 outside window)"),
+        (["a", "b"], [], ["a", "b"], "0 new of 2 fetched (0 seen, 2 outside window)"),
+        (["a", "b", "c"], ["a"], ["b"], "1 new of 3 fetched (1 seen, 1 outside window)"),
+        # an item both seen and stale is counted once, so the parts always sum to fetched
+        (["a"], ["a"], ["a"], "0 new of 1 fetched (1 seen, 0 outside window)"),
+    ],
+    ids=["empty-source", "all-new", "all-seen", "all-stale", "mixed", "seen-and-stale"],
+)
+def test_gather_logs_why_a_source_yielded_what_it_did(
+    monkeypatch, caplog, fetched_ids, seen_ids, stale_ids, expected
+):
+    since = datetime.now(UTC) - timedelta(hours=1)
+    items = [
+        _item(
+            item_id,
+            published=(since - timedelta(hours=1))
+            if item_id in stale_ids
+            else (since + timedelta(hours=1)),
+        )
+        for item_id in fetched_ids
+    ]
+    monkeypatch.setattr(runner, "sources", _FakeRegistry({"rss": _fetcher(items)}))
+    state = {"ids": dict.fromkeys(seen_ids, "2026-01-01"), "kv": {}}
+
+    with caplog.at_level(logging.INFO, logger="src.tasks.runner"):
+        gather([_spec("src_key")], state, since)
+
+    assert f"gather: src_key → {expected}" in caplog.text
+
+
+def test_gather_log_parts_sum_to_fetched(monkeypatch, caplog):
+    # the breakdown is only diagnostic if every fetched item lands in exactly one bucket
+    since = datetime.now(UTC) - timedelta(hours=1)
+    items = [
+        _item("new:1", published=since + timedelta(hours=1)),
+        _item("seen:1", published=since + timedelta(hours=1)),
+        _item("stale:1", published=since - timedelta(hours=1)),
+        _item("stale:2", published=since - timedelta(hours=1)),
+    ]
+    monkeypatch.setattr(runner, "sources", _FakeRegistry({"rss": _fetcher(items)}))
+    state = {"ids": {"seen:1": "2026-01-01"}, "kv": {}}
+
+    with caplog.at_level(logging.INFO, logger="src.tasks.runner"):
+        gather([_spec("k")], state, since)
+
+    match = re.search(r"(\d+) new of (\d+) fetched \((\d+) seen, (\d+) outside", caplog.text)
+    assert match, f"log line did not match the expected shape: {caplog.text}"
+    kept, fetched, seen, stale = (int(n) for n in match.groups())
+    assert fetched == len(items)
+    assert kept + seen + stale == fetched
 
 
 # ----- gather: enrichment -----

@@ -43,15 +43,28 @@ def gather(specs: list[SourceSpec], state: State, since: datetime) -> list[Item]
         except Exception:
             logger.exception("❌ gather: source %s crashed", spec.get("key"))
             continue
-        kept = 0
+        kept, seen, stale = 0, 0, 0
         for item in fetched:
-            if not state_mod.is_new(state, item) or item.published < since:
+            if not state_mod.is_new(state, item):
+                seen += 1
+                continue
+            if item.published < since:
+                stale += 1
                 continue
             for name in spec.get("enrich", []):
                 item = enrichers.get(name)(item)
             gathered.append(item)
             kept += 1
-        logger.info("gather: %s → %d new item(s)", spec.get("key"), kept)
+        # the breakdown is what separates a source that returned nothing (fetched=0, i.e.
+        # look at the fetcher) from one whose items were all already published or too old
+        logger.info(
+            "gather: %s → %d new of %d fetched (%d seen, %d outside window)",
+            spec.get("key"),
+            kept,
+            len(fetched),
+            seen,
+            stale,
+        )
     return gathered
 
 
