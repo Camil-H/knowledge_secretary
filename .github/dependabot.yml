@@ -1,0 +1,26 @@
+version: 2
+
+updates:
+  # "/" covers .github/workflows plus a root action.yml, so the composite action under
+  # .github/actions needs its own entry or its pins go unwatched.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: github-actions
+    directory: /.github/actions/publish
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      actions:
+        patterns: ["*"]
