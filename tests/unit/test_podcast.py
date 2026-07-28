@@ -1,23 +1,15 @@
 """Podcast queue pop/removal + grounded research + episode generation. _generate_episode is
 stubbed wholesale for the queue cases; under test, its collaborators (content_generator.research,
-llm.resolve_models, podcastfy.client.generate_podcast) are stubbed individually."""
+transcript.generate, podcastfy.client.generate_podcast) are stubbed individually."""
 
 import logging
 
 import pytest
 
-from src.core import llm
 from src.core.models import Context
 from src.tasks.podcast import task as podcast_task
-from src.tasks.podcast.task import (
-    DONE_KEY,
-    MAX_SOURCE_CHARS,
-    _episode_text,
-    _generate_episode,
-    _is_tts_failure,
-    _research,
-    run,
-)
+from src.tasks.podcast.task import DONE_KEY, _generate_episode, _research, run
+from src.tasks.podcast.transcript import TranscriptError
 
 _TOPICS = ["PROTACs", "ADCs", "mRNA"]
 _OVERVIEW = "grounded overview of the topic"
@@ -141,95 +133,81 @@ def test_research_degrades_to_empty_string(monkeypatch, key_set, raises):
     assert _research(_ctx(_state()), "PROTACs") == ""
 
 
-# ----- episode text -----
-
-
-def test_episode_text_leads_with_topic_and_caps_the_research_body():
-    body = "x" * (MAX_SOURCE_CHARS + 500)
-    text = _episode_text("PROTACs", body)
-    assert text.startswith("PROTACs")
-    assert len(text) < len("PROTACs") + len(body)  # research body truncated
-
-
-@pytest.mark.parametrize(
-    "message, expected",
-    [
-        ("Failed to generate audio: 400 input.text is longer than the limit", True),
-        ("Error converting text to speech: boom", True),
-        ("litellm.APIError: OpenrouterException - ResourceExhausted", False),
-        ("403 Gemini API has not been used in project", False),
-    ],
-    ids=["byte_limit", "tts_wrapper", "llm_rate_limit", "llm_auth"],
-)
-def test_is_tts_failure_distinguishes_audio_from_transcript_failures(message, expected):
-    assert _is_tts_failure(RuntimeError(message)) is expected
-
-
 # ----- _generate_episode -----
+
+_TRANSCRIPT = "<Person1>Hello there.</Person1>\n<Person2>Glad to be here.</Person2>"
 
 
 def _stub_episode_collaborators(
-    monkeypatch, *, models, generate_podcast, overview=_OVERVIEW, raises=None
+    monkeypatch, *, generate_podcast, overview=_OVERVIEW, raises=None, transcript_raises=None
 ):
-    """Stub content_generator.research, llm.resolve_models, and generate_podcast (patched on the
+    """Stub content_generator.research, transcript.generate, and generate_podcast (patched on the
     podcastfy module, since it is imported locally inside the function)."""
-    monkeypatch.setenv(_KEY, "k")  # research needs it, so Gemini also leads the cascade
+    monkeypatch.setenv(_KEY, "k")  # research needs it
     _stub_research(monkeypatch, result=overview, raises=raises)
-    monkeypatch.setattr(podcast_task.llm, "resolve_models", lambda podcast=None: models)
+
+    def _generate(topic, research, *, call):
+        if transcript_raises is not None:
+            raise transcript_raises
+        return _TRANSCRIPT
+
+    monkeypatch.setattr(podcast_task.transcript, "generate", _generate)
 
     import podcastfy.client
 
     monkeypatch.setattr(podcastfy.client, "generate_podcast", generate_podcast)
 
 
-def test_generate_episode_returns_none_when_generate_podcast_raises(monkeypatch):
-    def _raise(**kwargs):
-        raise RuntimeError("boom")
-
-    _stub_episode_collaborators(
-        monkeypatch, models=["openrouter/some-model"], generate_podcast=_raise
-    )
-    assert _generate_episode(_ctx(_state()), "PROTACs") is None
-
-
-def test_generate_episode_passes_topic_anchored_research_and_no_urls(monkeypatch):
-    """podcastfy gets the research text only — a URL list here would have it crawl the web
-    itself, outside the grounded search."""
-    captured = {}
-
+def _capturing_podcast(captured, result="/tmp/ep.mp3"):
     def _capture(**kwargs):
         captured.update(kwargs)
-        return "/tmp/ep.mp3"
+        return result
 
-    _stub_episode_collaborators(
-        monkeypatch, models=["openrouter/some-model"], generate_podcast=_capture
-    )
-    result = _generate_episode(_ctx(_state()), "PROTACs")
-    assert result == "/tmp/ep.mp3"
-    assert captured["urls"] is None
-    assert captured["text"].startswith("PROTACs")
-    assert _OVERVIEW in captured["text"]
-    assert captured["tts_model"] == podcast_task._TTS_MODEL == "gemini"
+    return _capture
 
 
-def test_generate_episode_caps_podcastfy_per_part_output_tokens(monkeypatch):
-    """podcastfy instructs every longform part to fill max_output_tokens, so its 8192 default
-    is the length lever — leaving it alone is what produced a 3h17 episode."""
+def test_generate_episode_returns_the_synthesized_audio_path(monkeypatch):
+    _stub_episode_collaborators(monkeypatch, generate_podcast=_capturing_podcast({}))
+    assert _generate_episode(_ctx(_state()), "PROTACs") == "/tmp/ep.mp3"
+
+
+def test_generate_episode_hands_podcastfy_the_transcript_file_only(monkeypatch):
+    """podcastfy is the audio layer now: a text=/urls= payload would have it regenerate the
+    transcript (and crawl the web) instead of just synthesizing ours."""
     captured = {}
-
-    def _capture(**kwargs):
-        captured.update(kwargs)
-        return "/tmp/ep.mp3"
-
-    _stub_episode_collaborators(
-        monkeypatch, models=["openrouter/some-model"], generate_podcast=_capture
-    )
+    _stub_episode_collaborators(monkeypatch, generate_podcast=_capturing_podcast(captured))
     _generate_episode(_ctx(_state()), "PROTACs")
 
-    generator = captured["config"].get("content_generator")
-    assert generator["max_output_tokens"] == podcast_task._MAX_OUTPUT_TOKENS
-    assert generator["longform_prompt_template"]  # untouched keys survive the override
-    assert captured["conversation_config"]["max_num_chunks"] == podcast_task._MAX_NUM_CHUNKS
+    with open(captured["transcript_file"]) as handle:
+        assert handle.read() == _TRANSCRIPT
+    assert captured["tts_model"] == podcast_task._TTS_MODEL == "gemini"
+    speech = captured["conversation_config"]["text_to_speech"]
+    assert speech["ending_message"] == ""
+    assert speech["gemini"]["default_voices"] == {
+        "question": "en-US-Chirp3-HD-Iapetus",
+        "answer": "en-US-Chirp3-HD-Laomedeia",
+    }
+    assert not {"text", "urls", "longform", "llm_model_name"} & set(captured)
+
+
+def test_generate_episode_passes_the_context_call_to_the_transcript_layer(monkeypatch):
+    """The transcript rides ctx.call, so its model cascade lives in one place — src.core.llm."""
+    seen = {}
+
+    def _generate(topic, research, *, call):
+        seen.update(topic=topic, research=research, call=call)
+        return _TRANSCRIPT
+
+    monkeypatch.setenv(_KEY, "k")
+    _stub_research(monkeypatch, result=_OVERVIEW)
+    monkeypatch.setattr(podcast_task.transcript, "generate", _generate)
+
+    import podcastfy.client
+
+    monkeypatch.setattr(podcastfy.client, "generate_podcast", _capturing_podcast({}))
+    call = _ctx(_state()).call
+    _generate_episode(_ctx(_state(), call=call), "PROTACs")
+    assert seen == {"topic": "PROTACs", "research": _OVERVIEW, "call": call}
 
 
 @pytest.mark.parametrize(
@@ -237,93 +215,36 @@ def test_generate_episode_caps_podcastfy_per_part_output_tokens(monkeypatch):
     [("", None), (None, RuntimeError("403 blocked"))],
     ids=["no_research_text", "research_raises"],
 )
-def test_generate_episode_skips_when_research_yields_nothing(monkeypatch, overview, raises):
+def test_generate_episode_skips_transcript_when_research_yields_nothing(
+    monkeypatch, overview, raises
+):
     calls = []
 
-    def _capture(**kwargs):
-        calls.append(kwargs)
-        return "/tmp/ep.mp3"
+    def _generate(topic, research, *, call):
+        calls.append(topic)
+        return _TRANSCRIPT
 
-    _stub_episode_collaborators(
-        monkeypatch,
-        models=["openrouter/some-model"],
-        generate_podcast=_capture,
-        overview=overview,
-        raises=raises,
-    )
+    monkeypatch.setenv(_KEY, "k")
+    _stub_research(monkeypatch, result=overview, raises=raises)
+    monkeypatch.setattr(podcast_task.transcript, "generate", _generate)
     assert _generate_episode(_ctx(_state()), "PROTACs") is None
     assert calls == []  # never reached transcript generation
 
 
-def test_generate_episode_leads_the_cascade_with_gemini(monkeypatch):
-    """Research needs the AI Studio key, so whenever an episode is possible at all the Gemini
-    transcript candidate is available too, and it goes first."""
-    captured = {}
-
-    def _capture(**kwargs):
-        captured.update(kwargs)
+@pytest.mark.parametrize(
+    "transcript_raises, podcast_raises",
+    [(TranscriptError("no usable turns in part 3"), None), (None, RuntimeError("tts boom"))],
+    ids=["transcript_failed", "audio_failed"],
+)
+def test_generate_episode_degrades_to_none_when_a_stage_fails(
+    monkeypatch, transcript_raises, podcast_raises
+):
+    def _generate_podcast(**kwargs):
+        if podcast_raises is not None:
+            raise podcast_raises
         return "/tmp/ep.mp3"
 
     _stub_episode_collaborators(
-        monkeypatch, models=["openrouter/free-fallback"], generate_podcast=_capture
-    )
-    _generate_episode(_ctx(_state()), "PROTACs")
-    assert captured["llm_model_name"] == podcast_task._TRANSCRIPT_MODEL
-    assert captured["api_key_label"] == _KEY
-
-
-def test_generate_episode_cascades_to_next_model_when_one_fails(monkeypatch):
-    attempts = []
-
-    def _capture(**kwargs):
-        attempts.append(kwargs["llm_model_name"])
-        if len(attempts) == 1:
-            raise RuntimeError("upstream rate limit")
-        return "/tmp/ep.mp3"
-
-    _stub_episode_collaborators(
-        monkeypatch, models=["openrouter/first", "openrouter/second"], generate_podcast=_capture
-    )
-    result = _generate_episode(_ctx(_state()), "PROTACs")
-    assert result == "/tmp/ep.mp3"
-    assert attempts[0] == podcast_task._TRANSCRIPT_MODEL  # Gemini first, then OpenRouter
-    assert attempts[1] == "openrouter/first"
-
-
-def test_generate_episode_stops_the_cascade_on_an_audio_failure(monkeypatch):
-    """Regenerating the transcript cannot fix the audio layer; trying cost 30+ minutes."""
-    attempts = []
-
-    def _raise(**kwargs):
-        attempts.append(kwargs["llm_model_name"])
-        raise RuntimeError("Failed to generate audio: 400 input.text is longer than the limit")
-
-    _stub_episode_collaborators(
-        monkeypatch,
-        models=["openrouter/first", "openrouter/second", "openrouter/third"],
-        generate_podcast=_raise,
+        monkeypatch, generate_podcast=_generate_podcast, transcript_raises=transcript_raises
     )
     assert _generate_episode(_ctx(_state()), "PROTACs") is None
-    assert len(attempts) == 1  # stopped after the audio failure
-
-
-def test_generate_episode_returns_none_when_all_models_fail(monkeypatch):
-    def _raise(**kwargs):
-        raise RuntimeError("upstream rate limit")
-
-    _stub_episode_collaborators(
-        monkeypatch, models=["openrouter/a", "openrouter/b"], generate_podcast=_raise
-    )
-    assert _generate_episode(_ctx(_state()), "PROTACs") is None
-
-
-def test_generate_episode_falls_back_to_fallback_model_when_resolve_models_empty(monkeypatch):
-    attempts = []
-
-    def _capture(**kwargs):
-        attempts.append(kwargs["llm_model_name"])
-        raise RuntimeError("upstream rate limit")
-
-    _stub_episode_collaborators(monkeypatch, models=[], generate_podcast=_capture)
-    _generate_episode(_ctx(_state()), "PROTACs")
-    assert llm.FALLBACK_MODEL in attempts

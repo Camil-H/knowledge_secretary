@@ -149,14 +149,22 @@ def _install_podcast_fakes(monkeypatch, tmp_path, *, topic: str = "My Topic"):
         "research",
         lambda topic, *, api_key: _PODCAST_RESEARCH_TEXT,
     )
-    monkeypatch.setattr(llm, "resolve_models", lambda podcast=None: ["m/model"])
+    monkeypatch.setattr(
+        podcast_task.transcript,
+        "generate",
+        lambda topic, research, *, call: _PODCAST_TRANSCRIPT,
+    )
 
     ep = tmp_path / "ep.mp3"
     ep.write_bytes(b"\x00")
 
     import podcastfy.client
 
-    monkeypatch.setattr(podcastfy.client, "generate_podcast", lambda **kw: str(ep))
+    def _fake_generate_podcast(**kwargs):
+        assert kwargs["transcript_file"]  # the audio layer must receive our transcript, not text
+        return str(ep)
+
+    monkeypatch.setattr(podcastfy.client, "generate_podcast", _fake_generate_podcast)
     monkeypatch.setenv("GITHUB_REPOSITORY", "org/repo")
 
     calls: list[list[str]] = []
@@ -183,3 +191,4 @@ def _install_all_llm(monkeypatch, *, newsletter_markdown: str, youtube_bullet: s
 
 
 _PODCAST_RESEARCH_TEXT = "search-grounded overview of the topic"
+_PODCAST_TRANSCRIPT = "<Person1>Hello there.</Person1>\n<Person2>Glad to be here.</Person2>"
