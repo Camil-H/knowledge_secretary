@@ -263,7 +263,12 @@ def test_strip_wav_header_returns_the_data_chunk():
     assert _strip_wav_header(_wav(b"frames")) == b"frames"
 
 
-def test_strip_wav_header_passes_through_bare_pcm():
-    """A future non-WAV LINEAR16 response must not lose its first bytes."""
-    bare = b"\x01\x02\x03\x04"
+@pytest.mark.parametrize(
+    "bare",
+    [b"\x01\x02\x03\x04", b"\x01\x02data\x03\x04"],
+    ids=["no_marker", "samples_containing_the_marker"],
+)
+def test_strip_wav_header_passes_through_bare_pcm(bare):
+    """A non-WAV LINEAR16 response must survive intact. The second row is the one that bites:
+    "data" occurs freely in real samples, so scanning unconditionally would truncate a turn."""
     assert _strip_wav_header(bare) == bare

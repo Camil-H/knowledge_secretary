@@ -37,6 +37,7 @@ _TTS_RETRIES = int(os.environ.get("TTS_RETRIES", "3"))
 _BACKOFF_START_S = 2
 _BACKOFF_CAP_S = 30
 _TRANSIENT_MARKERS = ("429", "quota", "503", "deadline")
+_WAV_RIFF_MARKER = b"RIFF"
 _WAV_DATA_MARKER = b"data"
 _WAV_CHUNK_HEADER_BYTES = 8
 _STDERR_TAIL_CHARS = 400
@@ -145,7 +146,11 @@ def _meter(ledger: ledger_mod.Ledger, turns: list[tuple[str, str]]) -> None:
 def _strip_wav_header(audio: bytes) -> bytes:
     """The PCM frames of a WAV-containered LINEAR16 response.
 
-    The prelude is not reliably 44 bytes, so the data chunk is located rather than assumed."""
+    The prelude is not reliably 44 bytes, so the data chunk is located rather than assumed.
+    Only a RIFF payload is searched: those four bytes occur freely inside real samples, so
+    scanning headerless audio would silently cut a turn short."""
+    if not audio.startswith(_WAV_RIFF_MARKER):
+        return audio
     marker = audio.find(_WAV_DATA_MARKER)
     if marker < 0:
         return audio
