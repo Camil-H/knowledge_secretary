@@ -25,6 +25,7 @@ _OPENROUTER_KEY_LABEL = "OPENROUTER_API_KEY"
 _TTS_MODEL = "gemini"
 DISCOVER_PROMPT = (Path(__file__).parent / "source_discovery_prompt.md").read_text()
 RELEVANCE_PROMPT = (Path(__file__).parent / "relevance_prompt.md").read_text()
+INSTRUCTIONS = (Path(__file__).parent / "prompt.md").read_text()
 NO_EPISODE_NOTICE = (
     "No episode today — no source could be verified as relevant to the topic, or generation "
     "failed. The topic stays queued and is retried on the next run."
@@ -32,6 +33,11 @@ NO_EPISODE_NOTICE = (
 _MIN_RELEVANT_SOURCES = 1  # below this the episode is skipped, not built on unverified sources
 _DISCOVERY_ATTEMPTS = 2
 _JUDGE_EXCERPT_CHARS = 1200
+# Episode length: podcastfy instructs each longform part to fill max_output_tokens, so the cap
+# is the length lever. ~1200 tokens x ~9 parts ≈ 7k words ≈ 45 min; its default 8192 gave 3h17.
+_MAX_OUTPUT_TOKENS = 1200
+_MAX_NUM_CHUNKS = 8
+_MIN_CHUNK_SIZE = 600
 CONVERSATION_CONFIG = {
     "conversation_style": ["technical", "narrative", "engaging", "story-driven"],
     "roles_person1": "curious host who keeps one narrative thread going with sharp questions",
@@ -47,6 +53,8 @@ CONVERSATION_CONFIG = {
     "output_language": "English",
     "engagement_techniques": ["analogies", "worked examples", "storytelling", "callbacks"],
     "creativity": 0.7,
+    "max_num_chunks": _MAX_NUM_CHUNKS,
+    "min_chunk_size": _MIN_CHUNK_SIZE,
     "text_to_speech": {
         "gemini": {
             "default_voices": {
@@ -183,14 +191,15 @@ async def _generate_episode(ctx: Context, topic: str) -> str | None:
     # imported here, not at module scope, so the task stays importable without podcastfy
     from podcastfy.client import generate_podcast
 
-    instructions = (Path(__file__).parent / "prompt.md").read_text()
+    config = _podcastfy_config()
     last_err: Exception | None = None
     for model, key_label in _transcript_candidates():
         try:
             return generate_podcast(
                 urls=None,  # judged text only: URLs here would be re-crawled unjudged
                 text=_episode_text(topic, sources),
-                conversation_config={**CONVERSATION_CONFIG, "user_instructions": instructions},
+                config=config,
+                conversation_config={**CONVERSATION_CONFIG, "user_instructions": INSTRUCTIONS},
                 llm_model_name=model,
                 api_key_label=key_label,
                 tts_model=_TTS_MODEL,
@@ -224,3 +233,13 @@ def _episode_text(topic: str, sources: list[tuple[str, str]]) -> str:
     judged source bodies. Source text alone let the episode drift to whatever it described."""
     body = _SOURCE_SEPARATOR.join(text for _, text in sources)
     return f"{topic}{_SOURCE_SEPARATOR}{body[:MAX_SOURCE_CHARS]}"
+
+
+def _podcastfy_config():
+    """podcastfy's Config with the per-part output cap lowered from its 8192 default."""
+    from podcastfy.utils.config import load_config
+
+    config = load_config()
+    generator = {**config.get("content_generator", {}), "max_output_tokens": _MAX_OUTPUT_TOKENS}
+    config.configure(content_generator=generator)
+    return config

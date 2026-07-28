@@ -5,7 +5,8 @@ This text is passed to podcastfy as the conversation guidance.
 # Format
 - Two hosts: HOST1 (curious, keeps a single narrative thread going with sharp questions) and HOST2 (the expert, explains with depth and cause-and-effect).
 - Conversational but substantive — a technical deep-dive told as a story, not a fluff chat and not a lecture.
-- Target ~45 minutes of content: thorough coverage, multiple angles, worked examples where useful.
+- Thorough coverage: multiple angles, worked examples where useful.
+- Spend each segment on depth in the material you were given, not on recapping what came before or previewing what comes later.
 
 # One continuous conversation
 - This is ONE unbroken episode. The hosts greet the audience only once at the very beginning and sign off only once at the very end.

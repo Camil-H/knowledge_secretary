@@ -221,6 +221,26 @@ def test_generate_episode_passes_topic_anchored_judged_text_and_no_urls(monkeypa
     assert captured["tts_model"] == podcast_task._TTS_MODEL == "gemini"
 
 
+def test_generate_episode_caps_podcastfy_per_part_output_tokens(monkeypatch):
+    """podcastfy instructs every longform part to fill max_output_tokens, so its 8192 default
+    is the length lever — leaving it alone is what produced a 3h17 episode."""
+    captured = {}
+
+    def _capture(**kwargs):
+        captured.update(kwargs)
+        return "/tmp/ep.mp3"
+
+    _stub_episode_collaborators(
+        monkeypatch, models=["openrouter/some-model"], generate_podcast=_capture
+    )
+    asyncio.run(_generate_episode(_episode_ctx(), "PROTACs"))
+
+    generator = captured["config"].get("content_generator")
+    assert generator["max_output_tokens"] == podcast_task._MAX_OUTPUT_TOKENS
+    assert generator["longform_prompt_template"]  # untouched keys survive the override
+    assert captured["conversation_config"]["max_num_chunks"] == podcast_task._MAX_NUM_CHUNKS
+
+
 @pytest.mark.parametrize(
     "judge, validated_urls, article_text",
     [
