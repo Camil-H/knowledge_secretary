@@ -1,21 +1,17 @@
 """Podcast task: generate a two-host episode for the next unaired topic via podcastfy
 (Gemini 3.1 Flash transcript with an OpenRouter fallback; Google Cloud TTS for audio)."""
 
-import asyncio
 import os
-import re
 from pathlib import Path
 
 from src.core import llm, sources_loader
 from src.core import state as state_mod
 from src.core.models import Context, Result
 from src.core.registry import tasks
-from src.fetchers.url import article_text
-from src.tasks.podcast.utils import reachable_urls
+from src.tasks.podcast import content_generator
 
 DONE_KEY = "podcast_done"
 TOPICS: list[str] = sources_loader.load(Path(__file__).parent, []) or []
-MAX_SOURCE_URLS = 10
 MAX_SOURCE_CHARS = 12000  # bounds the transcript input, which drives podcastfy's part count
 _MAX_MODEL_ATTEMPTS = 4
 _SOURCE_SEPARATOR = "\n\n"
@@ -23,16 +19,11 @@ _TRANSCRIPT_MODEL = "gemini/gemini-3.1-flash"
 _GOOGLE_AI_STUDIO_KEY_LABEL = "GOOGLE_AI_STUDIO_KEY"
 _OPENROUTER_KEY_LABEL = "OPENROUTER_API_KEY"
 _TTS_MODEL = "gemini"
-DISCOVER_PROMPT = (Path(__file__).parent / "source_discovery_prompt.md").read_text()
-RELEVANCE_PROMPT = (Path(__file__).parent / "relevance_prompt.md").read_text()
 INSTRUCTIONS = (Path(__file__).parent / "prompt.md").read_text()
 NO_EPISODE_NOTICE = (
-    "No episode today — no source could be verified as relevant to the topic, or generation "
-    "failed. The topic stays queued and is retried on the next run."
+    "No episode today — grounded research or generation failed. The topic stays queued and is "
+    "retried on the next run."
 )
-_MIN_RELEVANT_SOURCES = 1  # below this the episode is skipped, not built on unverified sources
-_DISCOVERY_ATTEMPTS = 2
-_JUDGE_EXCERPT_CHARS = 1200
 # Episode length: podcastfy instructs each longform part to fill max_output_tokens, so the cap
 # is the length lever. ~1200 tokens x ~9 parts ≈ 7k words ≈ 45 min; its default 8192 gave 3h17.
 _MAX_OUTPUT_TOKENS = 1200
@@ -90,7 +81,7 @@ def run(ctx: Context) -> Result:
     topic = pending[0]
     ctx.logger.info(f"podcast: topic={topic!r} ({len(pending)} pending)")
     subject = f"Podcast — {topic}"
-    audio_path = asyncio.run(_generate_episode(ctx, topic))
+    audio_path = _generate_episode(ctx, topic)
     if audio_path is None:
         # a notice, not an empty Result: an empty one records nothing at all
         return Result(
@@ -101,98 +92,31 @@ def run(ctx: Context) -> Result:
     return Result(subject=subject, markdown="", artifacts=[audio_path], meta={"topic": topic})
 
 
-# == Source discovery =========================================================
+# == Research =================================================================
 
 
-def _discover_urls(ctx: Context, topic: str, *, exclude: list[str] | None = None) -> list[str]:
-    """Ask the LLM for candidate source URLs, capped at MAX_SOURCE_URLS.
-
-    Excluded URLs are listed back to the model so a retry proposes new candidates, and
-    filtered from the reply too, since the model may ignore the instruction."""
-    user = topic
-    if exclude:
-        user = f"{topic}\n\nDo not return any of these URLs:\n" + "\n".join(exclude)
-    raw = ctx.call(system=DISCOVER_PROMPT, user=user)
-    urls = [line.strip() for line in raw.splitlines() if line.strip().startswith("http")]
-    excluded = set(exclude or ())
-    return [url for url in urls if url not in excluded][:MAX_SOURCE_URLS]
-
-
-async def _relevant_sources(ctx: Context, topic: str) -> list[tuple[str, str]]:
-    """(url, text) pairs the judge accepted as on-topic; [] when nothing survives.
-
-    Discovery is retried excluding everything already tried, since a hallucinated URL set
-    varies between draws."""
-    tried: list[str] = []
-    for attempt in range(1, _DISCOVERY_ATTEMPTS + 1):
-        urls = await reachable_urls(_discover_urls(ctx, topic, exclude=tried))
-        ctx.logger.info(
-            "podcast: discovery %d/%d — %d reachable url(s): %s",
-            attempt,
-            _DISCOVERY_ATTEMPTS,
-            len(urls),
-            ", ".join(urls) or "none",
-        )
-        if not urls:
-            continue
-        tried.extend(urls)
-        extracted = await _extract_sources(urls)
-        if not extracted:
-            ctx.logger.warning(
-                "⚠️ podcast: no text extracted from %d reachable url(s); nothing to judge",
-                len(urls),
-            )
-            continue
-        kept = _judge_sources(ctx, topic, extracted)
-        if kept:
-            return kept
-    return []
-
-
-def _judge_sources(
-    ctx: Context, topic: str, sources: list[tuple[str, str]]
-) -> list[tuple[str, str]]:
-    """The sources the LLM judged on-topic, decided in one call over all candidates.
-
-    Judges the extracted text, not the URL: a hallucinated identifier resolves to a real
-    page, so only the body reveals the mismatch."""
-    listing = _SOURCE_SEPARATOR.join(
-        f"[{i}] {url}\n{text[:_JUDGE_EXCERPT_CHARS]}" for i, (url, text) in enumerate(sources, 1)
-    )
+def _research(ctx: Context, topic: str) -> str:
+    """Search-grounded source material for the topic; "" when research is unavailable."""
+    api_key = os.environ.get(_GOOGLE_AI_STUDIO_KEY_LABEL)
+    if not api_key:
+        ctx.logger.warning("⚠️ podcast: %s unset; cannot research", _GOOGLE_AI_STUDIO_KEY_LABEL)
+        return ""
     try:
-        reply = ctx.call(system=RELEVANCE_PROMPT, user=f"TOPIC: {topic}\n\nSOURCES:\n{listing}")
-    except Exception as exc:  # degrade to no sources, never to unjudged ones
-        ctx.logger.warning("⚠️ podcast: judge unavailable (%s); dropping all sources", exc)
-        return []
-
-    keep = _parse_keep_indices(reply, len(sources))
-    for i, (url, _) in enumerate(sources, 1):
-        ctx.logger.info("podcast: source %s %s", "kept" if i in keep else "dropped", url)
-    return [source for i, source in enumerate(sources, 1) if i in keep]
-
-
-def _parse_keep_indices(reply: str, count: int) -> set[int]:
-    """1-based indices named in the judge's reply, ignoring anything out of range.
-
-    An empty set is a valid verdict ("NONE", or nothing parsable): drop every source."""
-    return {i for i in (int(n) for n in re.findall(r"\d+", reply)) if 1 <= i <= count}
+        return content_generator.research(topic, api_key=api_key)
+    except Exception as exc:  # no episode is better than one built on nothing
+        ctx.logger.warning("⚠️ podcast: research failed for %r: %s", topic, exc)
+        return ""
 
 
 # == Episode generation =======================================================
 
 
-async def _generate_episode(ctx: Context, topic: str) -> str | None:
-    """Episode from topic-anchored, judged sources; None if none survive or every model fails."""
-    sources = await _relevant_sources(ctx, topic)
-    if len(sources) < _MIN_RELEVANT_SOURCES:
-        ctx.logger.warning(
-            "⚠️ podcast: %d relevant source(s) for %r, need %d — skipping, topic stays queued",
-            len(sources),
-            topic,
-            _MIN_RELEVANT_SOURCES,
-        )
+def _generate_episode(ctx: Context, topic: str) -> str | None:
+    """Episode from grounded research on the topic; None if research or every model fails."""
+    overview = _research(ctx, topic)
+    if not overview:
         return None
-    ctx.logger.info("podcast: %d relevant source(s) kept for %r", len(sources), topic)
+    ctx.logger.info("podcast: %d chars of grounded material for %r", len(overview), topic)
 
     # imported here, not at module scope, so the task stays importable without podcastfy
     from podcastfy.client import generate_podcast
@@ -202,8 +126,8 @@ async def _generate_episode(ctx: Context, topic: str) -> str | None:
     for model, key_label in _transcript_candidates():
         try:
             return generate_podcast(
-                urls=None,  # judged text only: URLs here would be re-crawled unjudged
-                text=_episode_text(topic, sources),
+                urls=None,  # the research text is the whole input; podcastfy must not re-crawl
+                text=_episode_text(topic, overview),
                 config=config,
                 conversation_config={**CONVERSATION_CONFIG, "user_instructions": INSTRUCTIONS},
                 llm_model_name=model,
@@ -231,17 +155,9 @@ def _transcript_candidates() -> list[tuple[str, str]]:
     return candidates[:_MAX_MODEL_ATTEMPTS]
 
 
-async def _extract_sources(urls: list[str]) -> list[tuple[str, str]]:
-    """(url, article body) for each URL that yielded text; URLs yielding none are dropped."""
-    texts = await asyncio.gather(*(asyncio.to_thread(article_text, url) for url in urls))
-    return [(url, text) for url, text in zip(urls, texts, strict=True) if text]
-
-
-def _episode_text(topic: str, sources: list[tuple[str, str]]) -> str:
-    """The transcript input: topic first so the episode stays anchored to it, then the
-    judged source bodies. Source text alone let the episode drift to whatever it described."""
-    body = _SOURCE_SEPARATOR.join(text for _, text in sources)
-    return f"{topic}{_SOURCE_SEPARATOR}{body[:MAX_SOURCE_CHARS]}"
+def _episode_text(topic: str, overview: str) -> str:
+    """The transcript input: topic first so the episode stays anchored to it, then the research."""
+    return f"{topic}{_SOURCE_SEPARATOR}{overview[:MAX_SOURCE_CHARS]}"
 
 
 def _podcastfy_config():

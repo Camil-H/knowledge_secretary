@@ -1,9 +1,7 @@
-"""Podcast queue pop/removal + URL discovery + relevance judging + episode generation.
-_generate_episode is stubbed wholesale for the queue cases and its collaborators stubbed
-individually when it is under test; ctx.call is faked for both discovery and the judge,
-keyed on the system prompt it is handed."""
+"""Podcast queue pop/removal + grounded research + episode generation. _generate_episode is
+stubbed wholesale for the queue cases; under test, its collaborators (content_generator.research,
+llm.resolve_models, podcastfy.client.generate_podcast) are stubbed individually."""
 
-import asyncio
 import logging
 
 import pytest
@@ -14,20 +12,16 @@ from src.tasks.podcast import task as podcast_task
 from src.tasks.podcast.task import (
     DONE_KEY,
     MAX_SOURCE_CHARS,
-    MAX_SOURCE_URLS,
-    _discover_urls,
     _episode_text,
     _generate_episode,
     _is_tts_failure,
-    _parse_keep_indices,
+    _research,
     run,
 )
 
 _TOPICS = ["PROTACs", "ADCs", "mRNA"]
-_SOURCE_TEXT = "extracted article body"
-_URL = "https://source.example.com"
-_JUDGE_KEEP_ALL = "1 2 3 4 5 6 7 8 9 10"
-_JUDGE_KEEP_NONE = "NONE"
+_OVERVIEW = "grounded overview of the topic"
+_KEY = "GOOGLE_AI_STUDIO_KEY"
 
 
 @pytest.fixture(autouse=True)
@@ -50,10 +44,7 @@ def _state(done=None):
 
 
 def _stub_generate(monkeypatch, result):
-    async def _gen(ctx, topic):
-        return result
-
-    monkeypatch.setattr(podcast_task, "_generate_episode", _gen)
+    monkeypatch.setattr(podcast_task, "_generate_episode", lambda ctx, topic: result)
 
 
 # ----- run: queue behavior -----
@@ -79,7 +70,7 @@ def test_run_skips_already_aired_topics(monkeypatch):
 def test_run_all_topics_aired_is_noop(monkeypatch):
     calls = {"n": 0}
 
-    async def _gen(ctx, topic):
+    def _gen(ctx, topic):
         calls["n"] += 1
         return "/tmp/ep.mp3"
 
@@ -104,60 +95,60 @@ def test_run_generation_failure_records_a_notice(monkeypatch):
     assert result.notices == [podcast_task.NO_EPISODE_NOTICE]
 
 
-# ----- discovery -----
+# ----- research -----
 
 
-def test_discover_urls_extracts_links_and_caps():
-    reply = "https://a.com\nnot a url\nhttps://b.org\n  https://c.net  \n" + "\n".join(
-        f"https://x{i}.com" for i in range(10)
-    )
-    ctx = _ctx(_state(), call=lambda system, user, max_tokens=None: reply)
-    urls = _discover_urls(ctx, "PROTACs")
-    assert urls[:3] == ["https://a.com", "https://b.org", "https://c.net"]
-    assert len(urls) == MAX_SOURCE_URLS
-    assert "not a url" not in urls
+def _stub_research(monkeypatch, result=None, raises=None):
+    def _research_impl(topic, *, api_key):
+        if raises is not None:
+            raise raises
+        return result
+
+    monkeypatch.setattr(podcast_task.content_generator, "research", _research_impl)
 
 
-def test_discover_urls_lists_and_filters_excluded_urls():
-    prompts = []
-
-    def _call(system, user, max_tokens=None):
-        prompts.append(user)
-        return "https://old.com\nhttps://new.com"
-
-    urls = _discover_urls(_ctx(_state(), call=_call), "PROTACs", exclude=["https://old.com"])
-    assert urls == ["https://new.com"]
-    assert "https://old.com" in prompts[0]
+def test_research_returns_the_grounded_overview(monkeypatch):
+    monkeypatch.setenv(_KEY, "k")
+    _stub_research(monkeypatch, result=_OVERVIEW)
+    assert _research(_ctx(_state()), "PROTACs") == _OVERVIEW
 
 
-# ----- relevance judging -----
+def test_research_passes_the_topic_and_ai_studio_key(monkeypatch):
+    monkeypatch.setenv(_KEY, "the-key")
+    seen = {}
+
+    def _research_impl(topic, *, api_key):
+        seen.update(topic=topic, api_key=api_key)
+        return _OVERVIEW
+
+    monkeypatch.setattr(podcast_task.content_generator, "research", _research_impl)
+    _research(_ctx(_state()), "PROTACs")
+    assert seen == {"topic": "PROTACs", "api_key": "the-key"}
 
 
 @pytest.mark.parametrize(
-    "reply, count, expected",
-    [
-        ("1\n3", 3, {1, 3}),
-        ("1, 2", 3, {1, 2}),
-        ("NONE", 3, set()),
-        ("", 3, set()),
-        ("keep source 2 only", 3, {2}),
-        ("7", 3, set()),  # out of range is ignored, not clamped
-        ("Fields Medal 2026", 3, set()),  # stray numbers can't invent a source
-    ],
-    ids=["lines", "inline", "none", "empty", "prose", "out_of_range", "stray_number"],
+    "key_set, raises",
+    [(False, None), (True, RuntimeError("403 blocked")), (True, None)],
+    ids=["no_key", "sdk_raises", "empty_text"],
 )
-def test_parse_keep_indices(reply, count, expected):
-    assert _parse_keep_indices(reply, count) == expected
+def test_research_degrades_to_empty_string(monkeypatch, key_set, raises):
+    """Every failure path yields "", which the caller turns into a skipped episode rather than
+    an episode built on nothing."""
+    monkeypatch.delenv(_KEY, raising=False)
+    if key_set:
+        monkeypatch.setenv(_KEY, "k")
+    _stub_research(monkeypatch, result="", raises=raises)
+    assert _research(_ctx(_state()), "PROTACs") == ""
 
 
 # ----- episode text -----
 
 
-def test_episode_text_leads_with_topic_and_caps_source_body():
+def test_episode_text_leads_with_topic_and_caps_the_research_body():
     body = "x" * (MAX_SOURCE_CHARS + 500)
-    text = _episode_text("PROTACs", [(_URL, body)])
+    text = _episode_text("PROTACs", body)
     assert text.startswith("PROTACs")
-    assert len(text) < len("PROTACs") + len(body)  # source body truncated
+    assert len(text) < len("PROTACs") + len(body)  # research body truncated
 
 
 @pytest.mark.parametrize(
@@ -177,30 +168,14 @@ def test_is_tts_failure_distinguishes_audio_from_transcript_failures(message, ex
 # ----- _generate_episode -----
 
 
-def _episode_ctx(*, discovered=_URL, judge=_JUDGE_KEEP_ALL):
-    """ctx answering discovery and the judge separately; both helpers run for real."""
-
-    def _call(system, user, max_tokens=None):
-        return judge if system == podcast_task.RELEVANCE_PROMPT else discovered
-
-    return _ctx(_state(), call=_call)
-
-
 def _stub_episode_collaborators(
-    monkeypatch, *, models, generate_podcast, validated_urls=None, article_text=None
+    monkeypatch, *, models, generate_podcast, overview=_OVERVIEW, raises=None
 ):
-    """Stub reachable_urls (pass-through when validated_urls is None), article_text,
-    llm.resolve_models, and generate_podcast (patched on the module: imported locally)."""
-
-    async def _validate(urls):
-        return urls if validated_urls is None else validated_urls
-
-    monkeypatch.setattr(podcast_task, "reachable_urls", _validate)
-    monkeypatch.setattr(podcast_task, "article_text", article_text or (lambda url: _SOURCE_TEXT))
+    """Stub content_generator.research, llm.resolve_models, and generate_podcast (patched on the
+    podcastfy module, since it is imported locally inside the function)."""
+    monkeypatch.setenv(_KEY, "k")  # research needs it, so Gemini also leads the cascade
+    _stub_research(monkeypatch, result=overview, raises=raises)
     monkeypatch.setattr(podcast_task.llm, "resolve_models", lambda podcast=None: models)
-    monkeypatch.delenv(
-        "GOOGLE_AI_STUDIO_KEY", raising=False
-    )  # default: exercise the OpenRouter path
 
     import podcastfy.client
 
@@ -214,11 +189,12 @@ def test_generate_episode_returns_none_when_generate_podcast_raises(monkeypatch)
     _stub_episode_collaborators(
         monkeypatch, models=["openrouter/some-model"], generate_podcast=_raise
     )
-    assert asyncio.run(_generate_episode(_episode_ctx(), "PROTACs")) is None
+    assert _generate_episode(_ctx(_state()), "PROTACs") is None
 
 
-def test_generate_episode_passes_topic_anchored_judged_text_and_no_urls(monkeypatch):
-    """Passing URLs would have podcastfy re-crawl sources the judge never saw."""
+def test_generate_episode_passes_topic_anchored_research_and_no_urls(monkeypatch):
+    """podcastfy gets the research text only — a URL list here would have it crawl the web
+    itself, outside the grounded search."""
     captured = {}
 
     def _capture(**kwargs):
@@ -228,11 +204,11 @@ def test_generate_episode_passes_topic_anchored_judged_text_and_no_urls(monkeypa
     _stub_episode_collaborators(
         monkeypatch, models=["openrouter/some-model"], generate_podcast=_capture
     )
-    result = asyncio.run(_generate_episode(_episode_ctx(), "PROTACs"))
+    result = _generate_episode(_ctx(_state()), "PROTACs")
     assert result == "/tmp/ep.mp3"
     assert captured["urls"] is None
     assert captured["text"].startswith("PROTACs")
-    assert _SOURCE_TEXT in captured["text"]
+    assert _OVERVIEW in captured["text"]
     assert captured["tts_model"] == podcast_task._TTS_MODEL == "gemini"
 
 
@@ -248,7 +224,7 @@ def test_generate_episode_caps_podcastfy_per_part_output_tokens(monkeypatch):
     _stub_episode_collaborators(
         monkeypatch, models=["openrouter/some-model"], generate_podcast=_capture
     )
-    asyncio.run(_generate_episode(_episode_ctx(), "PROTACs"))
+    _generate_episode(_ctx(_state()), "PROTACs")
 
     generator = captured["config"].get("content_generator")
     assert generator["max_output_tokens"] == podcast_task._MAX_OUTPUT_TOKENS
@@ -257,19 +233,11 @@ def test_generate_episode_caps_podcastfy_per_part_output_tokens(monkeypatch):
 
 
 @pytest.mark.parametrize(
-    "judge, validated_urls, article_text",
-    [
-        (_JUDGE_KEEP_NONE, None, None),
-        (_JUDGE_KEEP_ALL, [], None),
-        (_JUDGE_KEEP_ALL, None, lambda url: None),
-    ],
-    ids=["judge_rejects_all", "no_reachable_urls", "no_text_extracted"],
+    "overview, raises",
+    [("", None), (None, RuntimeError("403 blocked"))],
+    ids=["no_research_text", "research_raises"],
 )
-def test_generate_episode_skips_when_no_source_survives(
-    monkeypatch, judge, validated_urls, article_text
-):
-    """Every route to zero verified sources skips, rather than falling back to ungrounded
-    audio or to podcastfy re-crawling unjudged URLs."""
+def test_generate_episode_skips_when_research_yields_nothing(monkeypatch, overview, raises):
     calls = []
 
     def _capture(**kwargs):
@@ -280,57 +248,28 @@ def test_generate_episode_skips_when_no_source_survives(
         monkeypatch,
         models=["openrouter/some-model"],
         generate_podcast=_capture,
-        validated_urls=validated_urls,
-        article_text=article_text,
+        overview=overview,
+        raises=raises,
     )
-    result = asyncio.run(_generate_episode(_episode_ctx(judge=judge), "PROTACs"))
-    assert result is None
+    assert _generate_episode(_ctx(_state()), "PROTACs") is None
     assert calls == []  # never reached transcript generation
 
 
-def test_generate_episode_retries_discovery_excluding_the_rejected_urls(monkeypatch):
-    bad, good = "https://bad.example.com", "https://good.example.com"
-    discovery_prompts = []
-
-    def _call(system, user, max_tokens=None):
-        if system == podcast_task.RELEVANCE_PROMPT:
-            return _JUDGE_KEEP_NONE if bad in user else "1"
-        discovery_prompts.append(user)
-        return bad if len(discovery_prompts) == 1 else good
-
-    _stub_episode_collaborators(
-        monkeypatch, models=["openrouter/some-model"], generate_podcast=lambda **kw: "/tmp/ep.mp3"
-    )
-    result = asyncio.run(_generate_episode(_ctx(_state(), call=_call), "PROTACs"))
-    assert result == "/tmp/ep.mp3"
-    assert bad in discovery_prompts[1]  # second draw told not to repeat the rejected URL
-
-
-def test_generate_episode_extracts_sources_once_across_model_retries(monkeypatch):
-    extract_calls = []
-
-    def _article_text(url):
-        extract_calls.append(url)
-        return _SOURCE_TEXT
-
-    attempts = []
+def test_generate_episode_leads_the_cascade_with_gemini(monkeypatch):
+    """Research needs the AI Studio key, so whenever an episode is possible at all the Gemini
+    transcript candidate is available too, and it goes first."""
+    captured = {}
 
     def _capture(**kwargs):
-        attempts.append(kwargs["text"])
-        if len(attempts) == 1:
-            raise RuntimeError("upstream rate limit")
+        captured.update(kwargs)
         return "/tmp/ep.mp3"
 
     _stub_episode_collaborators(
-        monkeypatch,
-        models=["openrouter/first", "openrouter/second"],
-        generate_podcast=_capture,
-        article_text=_article_text,
+        monkeypatch, models=["openrouter/free-fallback"], generate_podcast=_capture
     )
-    result = asyncio.run(_generate_episode(_episode_ctx(), "PROTACs"))
-    assert result == "/tmp/ep.mp3"
-    assert len(extract_calls) == 1  # fetched once, not once per model attempt
-    assert attempts[0] == attempts[1]  # same extracted text reused on retry
+    _generate_episode(_ctx(_state()), "PROTACs")
+    assert captured["llm_model_name"] == podcast_task._TRANSCRIPT_MODEL
+    assert captured["api_key_label"] == _KEY
 
 
 def test_generate_episode_cascades_to_next_model_when_one_fails(monkeypatch):
@@ -345,69 +284,10 @@ def test_generate_episode_cascades_to_next_model_when_one_fails(monkeypatch):
     _stub_episode_collaborators(
         monkeypatch, models=["openrouter/first", "openrouter/second"], generate_podcast=_capture
     )
-    result = asyncio.run(_generate_episode(_episode_ctx(), "PROTACs"))
+    result = _generate_episode(_ctx(_state()), "PROTACs")
     assert result == "/tmp/ep.mp3"
-    assert attempts == ["openrouter/first", "openrouter/second"]
-
-
-def test_generate_episode_prefers_gemini_when_ai_studio_key_set(monkeypatch):
-    captured = {}
-
-    def _capture(**kwargs):
-        captured.update(kwargs)
-        return "/tmp/ep.mp3"
-
-    _stub_episode_collaborators(
-        monkeypatch, models=["openrouter/free-fallback"], generate_podcast=_capture
-    )
-    monkeypatch.setenv("GOOGLE_AI_STUDIO_KEY", "ai-studio-key")  # re-add after the stub's delenv
-
-    asyncio.run(_generate_episode(_episode_ctx(), "PROTACs"))
-
-    assert captured["llm_model_name"] == podcast_task._TRANSCRIPT_MODEL
-    assert captured["api_key_label"] == "GOOGLE_AI_STUDIO_KEY"
-
-
-def test_generate_episode_returns_none_when_all_models_fail(monkeypatch):
-    def _raise(**kwargs):
-        raise RuntimeError("upstream rate limit")
-
-    _stub_episode_collaborators(
-        monkeypatch,
-        models=["openrouter/a", "openrouter/b", "openrouter/c"],
-        generate_podcast=_raise,
-    )
-    assert asyncio.run(_generate_episode(_episode_ctx(), "PROTACs")) is None
-
-
-def test_generate_episode_falls_back_to_fallback_model_when_resolve_models_empty(monkeypatch):
-    captured = {}
-
-    def _capture(**kwargs):
-        captured.update(kwargs)
-        return "/tmp/ep.mp3"
-
-    _stub_episode_collaborators(monkeypatch, models=[], generate_podcast=_capture)
-    asyncio.run(_generate_episode(_episode_ctx(), "PROTACs"))
-    assert captured["llm_model_name"] == llm.FALLBACK_MODEL
-
-
-def test_generate_episode_drops_all_sources_when_the_judge_is_unavailable(monkeypatch):
-    """Failing open would restore the very path that let an off-topic source set through."""
-
-    def _call(system, user, max_tokens=None):
-        if system == podcast_task.RELEVANCE_PROMPT:
-            raise RuntimeError("all models failed")
-        return _URL
-
-    calls = []
-    _stub_episode_collaborators(
-        monkeypatch,
-        models=["openrouter/some-model"],
-        generate_podcast=lambda **kw: calls.append(kw) or "/tmp/ep.mp3",
-    )
-    assert asyncio.run(_generate_episode(_ctx(_state(), call=_call), "PROTACs")) is None
-    assert calls == []
+    assert attempts[0] == podcast_task._TRANSCRIPT_MODEL  # Gemini first, then OpenRouter
+    assert attempts[1] == "openrouter/first"
 
 
 def test_generate_episode_stops_the_cascade_on_an_audio_failure(monkeypatch):
@@ -423,5 +303,27 @@ def test_generate_episode_stops_the_cascade_on_an_audio_failure(monkeypatch):
         models=["openrouter/first", "openrouter/second", "openrouter/third"],
         generate_podcast=_raise,
     )
-    assert asyncio.run(_generate_episode(_episode_ctx(), "PROTACs")) is None
-    assert attempts == ["openrouter/first"]  # stopped after the audio failure
+    assert _generate_episode(_ctx(_state()), "PROTACs") is None
+    assert len(attempts) == 1  # stopped after the audio failure
+
+
+def test_generate_episode_returns_none_when_all_models_fail(monkeypatch):
+    def _raise(**kwargs):
+        raise RuntimeError("upstream rate limit")
+
+    _stub_episode_collaborators(
+        monkeypatch, models=["openrouter/a", "openrouter/b"], generate_podcast=_raise
+    )
+    assert _generate_episode(_ctx(_state()), "PROTACs") is None
+
+
+def test_generate_episode_falls_back_to_fallback_model_when_resolve_models_empty(monkeypatch):
+    attempts = []
+
+    def _capture(**kwargs):
+        attempts.append(kwargs["llm_model_name"])
+        raise RuntimeError("upstream rate limit")
+
+    _stub_episode_collaborators(monkeypatch, models=[], generate_podcast=_capture)
+    _generate_episode(_ctx(_state()), "PROTACs")
+    assert llm.FALLBACK_MODEL in attempts

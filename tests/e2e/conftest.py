@@ -68,15 +68,6 @@ class _CompletedOK:
     stderr = ""
 
 
-def _async_return(value):
-    """An async collaborator stub that ignores its args and returns `value`."""
-
-    async def _fn(*args, **kwargs):
-        return value
-
-    return _fn
-
-
 def _raise(exc: Exception):
     """A collaborator stub that raises `exc` unconditionally."""
 
@@ -152,10 +143,13 @@ def _install_youtube_fakes(monkeypatch, *, bullet: str = "- key point"):
 def _install_podcast_fakes(monkeypatch, tmp_path, *, topic: str = "My Topic"):
     """Fakes the podcast boundary; returns the list `gh` invocations are recorded into."""
     monkeypatch.setattr(podcast_task, "TOPICS", [topic])
-    monkeypatch.setattr(podcast_task, "reachable_urls", _async_return(["https://a.com"]))
-    monkeypatch.setattr(podcast_task, "article_text", lambda url: _PODCAST_SOURCE_TEXT)
+    monkeypatch.setenv("GOOGLE_AI_STUDIO_KEY", "ai-studio-key")  # research requires it
+    monkeypatch.setattr(
+        podcast_task.content_generator,
+        "research",
+        lambda topic, *, api_key: _PODCAST_RESEARCH_TEXT,
+    )
     monkeypatch.setattr(llm, "resolve_models", lambda podcast=None: ["m/model"])
-    monkeypatch.setattr(llm, "call", _podcast_llm_reply)
 
     ep = tmp_path / "ep.mp3"
     ep.write_bytes(b"\x00")
@@ -176,25 +170,16 @@ def _install_podcast_fakes(monkeypatch, tmp_path, *, topic: str = "My Topic"):
 
 
 def _install_all_llm(monkeypatch, *, newsletter_markdown: str, youtube_bullet: str):
-    """One llm.call fake keyed on `system`, so newsletter + youtube + podcast-discovery
-    can all be exercised in the same run without clobbering each other's stub."""
+    """One llm.call fake keyed on `system` so newsletter + youtube can be exercised in the
+    same run without clobbering each other's stub. The podcast no longer routes through
+    llm.call — its research goes straight to content_generator."""
 
     def _call(system, user, max_tokens=None):
         if system == newsletter_task.EDITOR_PROMPT:
             return newsletter_markdown
-        if system == youtube_task.PROMPT:
-            return youtube_bullet
-        return _podcast_llm_reply(system, user)
+        return youtube_bullet
 
     monkeypatch.setattr(llm, "call", _call)
 
 
-_PODCAST_SOURCE_TEXT = "extracted article body about the topic"
-
-
-def _podcast_llm_reply(system, user, max_tokens=None):
-    """Podcast's two LLM steps, keyed on `system`: source discovery, then the relevance
-    judge that gates every discovered source before it can reach the transcript."""
-    if system == podcast_task.RELEVANCE_PROMPT:
-        return "1"  # keep the single discovered source
-    return "https://a.com\nhttps://b.org"
+_PODCAST_RESEARCH_TEXT = "search-grounded overview of the topic"
