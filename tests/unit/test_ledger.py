@@ -24,6 +24,10 @@ def _today() -> str:
     return datetime.now(UTC).date().isoformat()
 
 
+def _month() -> str:
+    return datetime.now(UTC).strftime("%Y-%m")
+
+
 def _read(path: str) -> dict:
     with open(path) as f:
         return json.load(f)
@@ -97,6 +101,58 @@ def test_mark_exhausted_persists(tmp_path):
 
     assert _read(path)["models"][_MODEL]["exhausted"] is True
     assert not ledger_mod.available(ledger_mod.load(path), _MODEL, rpd=99)
+
+
+# ----- consume_tts_chars -----
+
+
+def test_consume_tts_chars_accumulates_and_writes_through(tmp_path):
+    path = _path(tmp_path)
+    ledger = ledger_mod.load(path)
+    first = ledger_mod.consume_tts_chars(ledger, 400, path=path)
+    total = ledger_mod.consume_tts_chars(ledger, 600, path=path)
+
+    assert (first, total) == (400, 1000)
+    assert _read(path)[ledger_mod.TTS_KEY] == {"month": _month(), "chars": 1000}
+
+
+def test_consume_tts_chars_resets_a_bucket_from_an_earlier_month(tmp_path):
+    path = _path(tmp_path)
+    ledger = ledger_mod.load(path)
+    ledger[ledger_mod.TTS_KEY] = {"month": "1999-01", "chars": 900_000}
+
+    assert ledger_mod.consume_tts_chars(ledger, 500, path=path) == 500
+    assert ledger[ledger_mod.TTS_KEY]["month"] == _month()
+
+
+def test_consume_tts_chars_leaves_the_model_counts_alone(tmp_path):
+    path = _path(tmp_path)
+    ledger = ledger_mod.load(path)
+    ledger_mod.consume(ledger, _MODEL, path=path)
+    ledger_mod.consume_tts_chars(ledger, 42, path=path)
+
+    stored = _read(path)
+    assert stored["models"][_MODEL]["requests"] == 1
+    assert stored[ledger_mod.TTS_KEY]["chars"] == 42
+
+
+def test_load_keeps_this_months_tts_bucket_across_a_day_rollover(tmp_path):
+    """The character budget is monthly: dropping it at midnight would lose most of a month."""
+    path = _path(tmp_path)
+    (tmp_path / "state").mkdir()
+    bucket = {"month": _month(), "chars": 12_345}
+    _write(path, {"date": "2000-01-01", "models": {_MODEL: {"requests": 3}}, "tts": bucket})
+
+    loaded = ledger_mod.load(path)
+    assert loaded == {"date": _today(), "models": {}, "tts": bucket}
+
+
+def test_load_drops_a_tts_bucket_from_an_earlier_month(tmp_path):
+    path = _path(tmp_path)
+    (tmp_path / "state").mkdir()
+    _write(path, {"date": "2000-01-01", "models": {}, "tts": {"month": "1999-01", "chars": 9}})
+
+    assert ledger_mod.load(path) == {"date": _today(), "models": {}}
 
 
 # ----- available -----

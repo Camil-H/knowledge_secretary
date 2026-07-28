@@ -11,6 +11,7 @@ import subprocess
 import sys
 
 from src.core.ledger import PATH as LEDGER_PATH
+from src.core.ledger import TTS_KEY
 
 STATE_PATH = "state/seen.json"
 _EMPTY_STATE: dict = {"ids": {}, "kv": {}}
@@ -43,12 +44,20 @@ def merge_ledger(base: dict | None, a: dict | None, b: dict | None) -> dict:
     Same day: request counts are additive (`a + b - base`, floored by each side so a missing
     base can't undercount) and `exhausted` is an OR — an undercount would cost at most one
     extra 429, which itself retires the model. Different days: one side already rolled over,
-    so the newer record wins whole."""
+    so the newer record wins whole. The Cloud TTS character bucket is merged on its own month,
+    independently of the day."""
     a, b = a or {}, b or {}
     if not a or not b:
         return a or b
+    merged = _merge_day(base, a, b)
+    tts = _merge_tts(base, a, b)
+    return {**merged, TTS_KEY: tts} if tts else merged
+
+
+def _merge_day(base: dict | None, a: dict, b: dict) -> dict:
     if a.get("date") != b.get("date"):
-        return a if (a.get("date") or "") >= (b.get("date") or "") else b
+        newer = a if (a.get("date") or "") >= (b.get("date") or "") else b
+        return {"date": newer.get("date"), "models": newer.get("models", {})}
 
     base_models = (base or {}).get("models", {})
     a_models, b_models = a.get("models", {}), b.get("models", {})
@@ -64,6 +73,19 @@ def merge_ledger(base: dict | None, a: dict | None, b: dict | None) -> dict:
             ),
         }
     return {"date": a.get("date"), "models": models}
+
+
+def _merge_tts(base: dict | None, a: dict, b: dict) -> dict | None:
+    a_tts, b_tts = a.get(TTS_KEY) or {}, b.get(TTS_KEY) or {}
+    if not a_tts or not b_tts:
+        return a_tts or b_tts or None
+    month = a_tts.get("month")
+    if month != b_tts.get("month"):
+        return a_tts if (month or "") >= (b_tts.get("month") or "") else b_tts
+    base_tts = (base or {}).get(TTS_KEY) or {}
+    base_chars = base_tts.get("chars", 0) if base_tts.get("month") == month else 0
+    a_chars, b_chars = a_tts.get("chars", 0), b_tts.get("chars", 0)
+    return {"month": month, "chars": max(a_chars, b_chars, a_chars + b_chars - base_chars)}
 
 
 def _merge_kv(base: dict, a: dict, b: dict) -> dict:

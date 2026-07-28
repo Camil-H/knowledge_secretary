@@ -1,5 +1,6 @@
 # src/core/ledger.py
-"""Per-model, per-UTC-day LLM request ledger persisted at state/llm_ledger.json.
+"""Per-model, per-UTC-day LLM request ledger — plus the per-month Cloud TTS character
+bucket — persisted at state/llm_ledger.json.
 
 The file lives under state/ so the publish action commits it and the 06:30 digest job sees
 the 06:00 podcast job's counts. Every mutation is written through: a crashed run must not
@@ -21,25 +22,36 @@ logger = logging.getLogger(__name__)
 type Ledger = dict[str, Any]
 
 PATH = "state/llm_ledger.json"
+TTS_KEY = "tts"
 
 
 # == Ledger ===================================================================
 
 
 def load(path: str = PATH) -> Ledger:
-    """Today's ledger; a missing, unreadable or stale-dated file yields a fresh day."""
+    """Today's ledger; a missing, unreadable or stale-dated file yields a fresh day.
+
+    A day rollover keeps the Cloud TTS bucket when it belongs to the current month — that
+    budget is monthly, so dropping it every midnight would make it meaningless."""
     today = _today()
+    data: Ledger = {}
     if os.path.exists(path):
         try:
             with open(path) as f:
-                data: Ledger = json.load(f)
+                data = json.load(f)
         except (OSError, ValueError):
             logger.warning("⚠️ llm ledger at %s unreadable, starting a fresh day", path)
             data = {}
-        if data.get("date") == today:
-            data.setdefault("models", {})
-            return data
-    return {"date": today, "models": {}}
+    if not isinstance(data, dict):
+        data = {}
+    if data.get("date") == today:
+        data.setdefault("models", {})
+        return data
+    fresh: Ledger = {"date": today, "models": {}}
+    bucket = data.get(TTS_KEY)
+    if isinstance(bucket, dict) and bucket.get("month") == _month():
+        fresh[TTS_KEY] = bucket
+    return fresh
 
 
 def consume(ledger: Ledger, model: str, *, path: str = PATH) -> None:
@@ -53,6 +65,20 @@ def mark_exhausted(ledger: Ledger, model: str, *, path: str = PATH) -> None:
     """Retire a model for the rest of the UTC day (its daily quota answered with a 429)."""
     _record(ledger, model)["exhausted"] = True
     _save(ledger, path)
+
+
+def consume_tts_chars(ledger: Ledger, chars: int, *, path: str = PATH) -> int:
+    """Add chars to the current month's Cloud TTS bucket (write-through); returns the month's
+    running total. A bucket left from an earlier month is reset, never carried forward."""
+    month = _month()
+    bucket: dict[str, Any] = ledger.get(TTS_KEY) or {}
+    if bucket.get("month") != month:
+        bucket = {"month": month, "chars": 0}
+        ledger[TTS_KEY] = bucket
+    total = int(bucket.get("chars", 0)) + chars
+    bucket["chars"] = total
+    _save(ledger, path)
+    return total
 
 
 def available(ledger: Ledger, model: str, rpd: int) -> bool:
@@ -78,3 +104,7 @@ def _save(ledger: Ledger, path: str) -> None:
 
 def _today() -> str:
     return datetime.now(UTC).date().isoformat()
+
+
+def _month() -> str:
+    return datetime.now(UTC).strftime("%Y-%m")

@@ -95,6 +95,59 @@ def test_merge_ledger_ors_exhaustion(a_exhausted, b_exhausted, expected):
     assert merge_ledger(_ledger(0), a, b)["models"][_MODEL]["exhausted"] is expected
 
 
+def test_merge_ledger_keeps_the_newer_day_when_the_dates_differ():
+    older = {"date": "2026-07-27", "models": {_MODEL: {"requests": 9}}}
+    newer = {"date": _DAY, "models": {_MODEL: {"requests": 2}}}
+    assert merge_ledger(None, older, newer) == newer
+
+
+@pytest.mark.parametrize(
+    "base_chars, a_chars, b_chars, expected",
+    [
+        pytest.param(1000, 1500, 1800, 2300, id="additive_from_base"),
+        pytest.param(None, 1500, 1800, 3300, id="missing_base_sums_both_sides"),
+        pytest.param(1500, 1500, 1500, 1500, id="neither_side_moved"),
+    ],
+)
+def test_merge_ledger_adds_each_sides_new_tts_chars(base_chars, a_chars, b_chars, expected):
+    month = _DAY[:7]
+
+    def _with_tts(chars):
+        return {**_ledger(1), "tts": {"month": month, "chars": chars}}
+
+    base = None if base_chars is None else _with_tts(base_chars)
+    merged = merge_ledger(base, _with_tts(a_chars), _with_tts(b_chars))
+    assert merged["tts"] == {"month": month, "chars": expected}
+
+
+def test_merge_ledger_merges_tts_on_its_own_month_across_a_day_rollover():
+    """Both jobs of a month can straddle midnight; the characters still belong to one month."""
+    month = _DAY[:7]
+    a = {"date": "2026-07-27", "models": {}, "tts": {"month": month, "chars": 500}}
+    b = {"date": _DAY, "models": {}, "tts": {"month": month, "chars": 700}}
+
+    merged = merge_ledger(None, a, b)
+    assert merged["date"] == _DAY
+    assert merged["tts"]["chars"] == 1200
+
+
+def test_merge_ledger_keeps_the_newer_month_when_the_tts_months_differ():
+    a = {"date": _DAY, "models": {}, "tts": {"month": "2026-06", "chars": 900_000}}
+    b = {"date": _DAY, "models": {}, "tts": {"month": "2026-07", "chars": 1_000}}
+    assert merge_ledger(None, a, b)["tts"] == {"month": "2026-07", "chars": 1_000}
+
+
+def test_merge_ledger_keeps_a_tts_bucket_only_one_side_has():
+    bucket = {"month": "2026-07", "chars": 33}
+    a = {"date": _DAY, "models": {}, "tts": bucket}
+    b = {"date": _DAY, "models": {}}
+    assert merge_ledger(None, a, b)["tts"] == bucket
+
+
+def test_merge_ledger_omits_tts_when_neither_side_has_one():
+    assert "tts" not in merge_ledger(None, _ledger(1), _ledger(2))
+
+
 def test_merge_ledger_keeps_models_only_one_side_has():
     a = {"date": _DAY, "models": {_MODEL: {"requests": 3}}}
     b = {"date": _DAY, "models": {"gemini-3.1-flash": {"requests": 7}}}
