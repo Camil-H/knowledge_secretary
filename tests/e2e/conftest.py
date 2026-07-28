@@ -1,5 +1,5 @@
 """Shared e2e sandbox: fakes every external boundary the pipeline touches (RSS,
-YouTube, LLM, podcastfy, gh) and confines state/history/output under tmp_path.
+YouTube, LLM, Cloud TTS, gh) and confines state/history/output under tmp_path.
 
 `run.main([...])` is driven for real — only the collaborators at the network/
 subprocess/LLM edge are stubbed, so the registry/gather/produce/deliver wiring
@@ -155,13 +155,11 @@ def _install_podcast_fakes(monkeypatch, tmp_path, *, topic: str = "My Topic"):
     ep = tmp_path / "ep.mp3"
     ep.write_bytes(b"\x00")
 
-    import podcastfy.client
-
-    def _fake_generate_podcast(**kwargs):
-        assert kwargs["transcript_file"]  # the audio layer must receive our transcript, not text
+    def _fake_synthesize(transcript, out_path, *, ledger):
+        assert transcript  # the audio layer must receive our transcript, not regenerate one
         return str(ep)
 
-    monkeypatch.setattr(podcastfy.client, "generate_podcast", _fake_generate_podcast)
+    monkeypatch.setattr(podcast_task.audio, "synthesize", _fake_synthesize)
     monkeypatch.setenv("GITHUB_REPOSITORY", "org/repo")
 
     calls: list[list[str]] = []

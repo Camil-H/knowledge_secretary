@@ -1,14 +1,16 @@
 """Podcast queue pop/removal + grounded research + episode generation. _generate_episode is
 stubbed wholesale for the queue cases; under test, its collaborators (content_generator.research,
-transcript.generate, podcastfy.client.generate_podcast) are stubbed individually."""
+transcript.generate, audio.synthesize) are stubbed individually."""
 
 import logging
+import os
 
 import pytest
 
 from src.core.errors import AuthError
 from src.core.models import Context
 from src.tasks.podcast import task as podcast_task
+from src.tasks.podcast.audio import AudioError
 from src.tasks.podcast.task import DONE_KEY, _generate_episode, _research, run
 from src.tasks.podcast.transcript import TranscriptError
 
@@ -132,13 +134,13 @@ def test_research_degrades_to_empty_string(monkeypatch, raises):
 # ----- _generate_episode -----
 
 _TRANSCRIPT = "<Person1>Hello there.</Person1>\n<Person2>Glad to be here.</Person2>"
+_LEDGER = {"date": "2026-07-28", "models": {}}
 
 
 def _stub_episode_collaborators(
-    monkeypatch, *, generate_podcast, overview=_OVERVIEW, raises=None, transcript_raises=None
+    monkeypatch, *, synthesize, overview=_OVERVIEW, raises=None, transcript_raises=None
 ):
-    """Stub content_generator.research, transcript.generate, and generate_podcast (patched on the
-    podcastfy module, since it is imported locally inside the function)."""
+    """Stub content_generator.research, transcript.generate and audio.synthesize."""
     _stub_research(monkeypatch, result=overview, raises=raises)
 
     def _generate(topic, research, *, call):
@@ -147,42 +149,36 @@ def _stub_episode_collaborators(
         return _TRANSCRIPT
 
     monkeypatch.setattr(podcast_task.transcript, "generate", _generate)
-
-    import podcastfy.client
-
-    monkeypatch.setattr(podcastfy.client, "generate_podcast", generate_podcast)
+    monkeypatch.setattr(podcast_task.audio, "synthesize", synthesize)
+    monkeypatch.setattr(podcast_task.ledger_mod, "load", lambda: _LEDGER)
 
 
-def _capturing_podcast(captured, result="/tmp/ep.mp3"):
-    def _capture(**kwargs):
-        captured.update(kwargs)
-        return result
+def _capturing_synthesize(captured):
+    """Identity on the transcript: what comes back reflects exactly what was handed off."""
+
+    def _capture(transcript, out_path, *, ledger):
+        captured.update(transcript=transcript, out_path=out_path, ledger=ledger)
+        return out_path
 
     return _capture
 
 
 def test_generate_episode_returns_the_synthesized_audio_path(monkeypatch):
-    _stub_episode_collaborators(monkeypatch, generate_podcast=_capturing_podcast({}))
-    assert _generate_episode(_ctx(_state()), "PROTACs") == "/tmp/ep.mp3"
-
-
-def test_generate_episode_hands_podcastfy_the_transcript_file_only(monkeypatch):
-    """podcastfy is the audio layer now: a text=/urls= payload would have it regenerate the
-    transcript (and crawl the web) instead of just synthesizing ours."""
     captured = {}
-    _stub_episode_collaborators(monkeypatch, generate_podcast=_capturing_podcast(captured))
+    _stub_episode_collaborators(monkeypatch, synthesize=_capturing_synthesize(captured))
+    assert _generate_episode(_ctx(_state()), "PROTACs") == captured["out_path"]
+
+
+def test_generate_episode_hands_the_audio_layer_the_transcript_and_a_fresh_path(monkeypatch):
+    """The transcript flows in memory now, and each episode gets its own writable mp3 path."""
+    captured = {}
+    _stub_episode_collaborators(monkeypatch, synthesize=_capturing_synthesize(captured))
     _generate_episode(_ctx(_state()), "PROTACs")
 
-    with open(captured["transcript_file"]) as handle:
-        assert handle.read() == _TRANSCRIPT
-    assert captured["tts_model"] == podcast_task._TTS_MODEL == "gemini"
-    speech = captured["conversation_config"]["text_to_speech"]
-    assert speech["ending_message"] == ""
-    assert speech["gemini"]["default_voices"] == {
-        "question": "en-US-Chirp3-HD-Iapetus",
-        "answer": "en-US-Chirp3-HD-Laomedeia",
-    }
-    assert not {"text", "urls", "longform", "llm_model_name"} & set(captured)
+    assert captured["transcript"] == _TRANSCRIPT
+    assert os.path.basename(captured["out_path"]) == podcast_task.EPISODE_FILENAME
+    assert os.path.isdir(os.path.dirname(captured["out_path"]))
+    assert captured["ledger"] is _LEDGER
 
 
 def test_generate_episode_passes_the_context_call_to_the_transcript_layer(monkeypatch):
@@ -195,10 +191,8 @@ def test_generate_episode_passes_the_context_call_to_the_transcript_layer(monkey
 
     _stub_research(monkeypatch, result=_OVERVIEW)
     monkeypatch.setattr(podcast_task.transcript, "generate", _generate)
-
-    import podcastfy.client
-
-    monkeypatch.setattr(podcastfy.client, "generate_podcast", _capturing_podcast({}))
+    monkeypatch.setattr(podcast_task.audio, "synthesize", _capturing_synthesize({}))
+    monkeypatch.setattr(podcast_task.ledger_mod, "load", lambda: _LEDGER)
     call = _ctx(_state()).call
     _generate_episode(_ctx(_state(), call=call), "PROTACs")
     assert seen == {"topic": "PROTACs", "research": _OVERVIEW, "call": call}
@@ -225,19 +219,22 @@ def test_generate_episode_skips_transcript_when_research_yields_nothing(
 
 
 @pytest.mark.parametrize(
-    "transcript_raises, podcast_raises",
-    [(TranscriptError("no usable turns in part 3"), None), (None, RuntimeError("tts boom"))],
+    "transcript_raises, audio_raises",
+    [
+        (TranscriptError("no usable turns in part 3"), None),
+        (None, AudioError("cloud-tts", detail="ffmpeg not on PATH")),
+    ],
     ids=["transcript_failed", "audio_failed"],
 )
 def test_generate_episode_degrades_to_none_when_a_stage_fails(
-    monkeypatch, transcript_raises, podcast_raises
+    monkeypatch, transcript_raises, audio_raises
 ):
-    def _generate_podcast(**kwargs):
-        if podcast_raises is not None:
-            raise podcast_raises
-        return "/tmp/ep.mp3"
+    def _synthesize(transcript, out_path, *, ledger):
+        if audio_raises is not None:
+            raise audio_raises
+        return out_path
 
     _stub_episode_collaborators(
-        monkeypatch, generate_podcast=_generate_podcast, transcript_raises=transcript_raises
+        monkeypatch, synthesize=_synthesize, transcript_raises=transcript_raises
     )
     assert _generate_episode(_ctx(_state()), "PROTACs") is None

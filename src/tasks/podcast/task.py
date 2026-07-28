@@ -1,35 +1,24 @@
-"""Podcast task: generate a two-host episode for the next unaired topic — grounded research
-and the longform transcript in-repo, podcastfy for audio synthesis only."""
+"""Podcast task: generate a two-host episode for the next unaired topic — grounded research,
+the longform transcript and the Cloud TTS orchestration all in-repo."""
 
+import os
 import tempfile
 from pathlib import Path
 
+from src.core import ledger as ledger_mod
 from src.core import sources_loader
 from src.core import state as state_mod
 from src.core.models import Context, Result
 from src.core.registry import tasks
-from src.tasks.podcast import content_generator, transcript
+from src.tasks.podcast import audio, content_generator, transcript
 
 DONE_KEY = "podcast_done"
 TOPICS: list[str] = sources_loader.load(Path(__file__).parent, []) or []
-_TTS_MODEL = "gemini"
+EPISODE_FILENAME = "episode.mp3"
 NO_EPISODE_NOTICE = (
     "No episode today — grounded research or generation failed. The topic stays queued and is "
     "retried on the next run."
 )
-_TTS_CONFIG = {
-    "text_to_speech": {
-        # podcastfy speaks its default "See You Next Time!" as an extra final turn; ours already
-        # signs off, so the appended turn must be empty
-        "ending_message": "",
-        "gemini": {
-            "default_voices": {
-                "question": "en-US-Chirp3-HD-Iapetus",
-                "answer": "en-US-Chirp3-HD-Laomedeia",
-            },
-        },
-    },
-}
 
 
 # == Task =====================================================================
@@ -93,22 +82,10 @@ def _generate_episode(ctx: Context, topic: str) -> str | None:
 
 
 def _synthesize(ctx: Context, text: str, topic: str) -> str | None:
-    """Audio for the transcript via podcastfy's transcript-only path; None on failure."""
-    # imported here, not at module scope, so the task stays importable without podcastfy
-    from podcastfy.client import generate_podcast
-
-    path = _transcript_file(text)
+    """Episode audio for the transcript at a fresh temp path; None on failure."""
+    out_path = os.path.join(tempfile.mkdtemp(), EPISODE_FILENAME)
     try:
-        return generate_podcast(
-            transcript_file=path, tts_model=_TTS_MODEL, conversation_config=_TTS_CONFIG
-        )
+        return audio.synthesize(text, out_path, ledger=ledger_mod.load())
     except Exception as exc:  # audio is the last stage: nothing left to fall back to
         ctx.logger.warning("⚠️ podcast: audio synthesis failed for %r: %s", topic, exc)
         return None
-
-
-def _transcript_file(text: str) -> str:
-    """The transcript on disk — podcastfy's TTS-only entry point takes a path, not a string."""
-    with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as handle:
-        handle.write(text)
-    return handle.name

@@ -1583,6 +1583,7 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "feedparser" },
+    { name = "google-cloud-texttospeech" },
     { name = "google-genai" },
     { name = "httpx" },
     { name = "markdown" },
@@ -1604,6 +1605,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "feedparser", specifier = ">=6.0" },
+    { name = "google-cloud-texttospeech", specifier = ">=2.14" },
     { name = "google-genai", specifier = ">=1.75" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "markdown", specifier = ">=3.6" },
