@@ -153,10 +153,9 @@ def _install_podcast_fakes(monkeypatch, tmp_path, *, topic: str = "My Topic"):
     """Fakes the podcast boundary; returns the list `gh` invocations are recorded into."""
     monkeypatch.setattr(podcast_task, "TOPICS", [topic])
     monkeypatch.setattr(podcast_task, "reachable_urls", _async_return(["https://a.com"]))
+    monkeypatch.setattr(podcast_task, "article_text", lambda url: _PODCAST_SOURCE_TEXT)
     monkeypatch.setattr(llm, "resolve_models", lambda podcast=None: ["m/model"])
-    monkeypatch.setattr(
-        llm, "call", lambda system, user, max_tokens=None: "https://a.com\nhttps://b.org"
-    )
+    monkeypatch.setattr(llm, "call", _podcast_llm_reply)
 
     ep = tmp_path / "ep.mp3"
     ep.write_bytes(b"\x00")
@@ -185,6 +184,17 @@ def _install_all_llm(monkeypatch, *, newsletter_markdown: str, youtube_bullet: s
             return newsletter_markdown
         if system == youtube_task.PROMPT:
             return youtube_bullet
-        return "https://a.com\nhttps://b.org"
+        return _podcast_llm_reply(system, user)
 
     monkeypatch.setattr(llm, "call", _call)
+
+
+_PODCAST_SOURCE_TEXT = "extracted article body about the topic"
+
+
+def _podcast_llm_reply(system, user, max_tokens=None):
+    """Podcast's two LLM steps, keyed on `system`: source discovery, then the relevance
+    judge that gates every discovered source before it can reach the transcript."""
+    if system == podcast_task.RELEVANCE_PROMPT:
+        return "1"  # keep the single discovered source
+    return "https://a.com\nhttps://b.org"
