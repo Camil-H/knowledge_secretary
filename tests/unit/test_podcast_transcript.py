@@ -87,7 +87,7 @@ def test_generate_gives_each_part_only_its_own_role_instruction():
 
 
 def test_generate_bounds_the_rolling_context_handed_to_each_part():
-    """podcastfy accumulated the whole conversation into every part's prompt; we pass a tail."""
+    """Each part's prompt carries only a tail of the conversation, never the whole of it."""
     call = _Call(turn_chars=MAX_TURN_CHARS - 100)
     generate(_TOPIC, _research(), call=call)
 
