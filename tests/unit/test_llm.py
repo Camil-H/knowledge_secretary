@@ -685,7 +685,7 @@ def test_openrouter_complete_posts_the_openai_shaped_body(monkeypatch):
     assert llm._openrouter_complete("openrouter/vendor/model:free", messages, 99) == "hello"
     assert seen["url"] == llm.OPENROUTER_COMPLETIONS_URL
     assert seen["json"] == {
-        "model": "vendor/model:free",  # the litellm-era prefix is not part of the API id
+        "model": "vendor/model:free",
         "messages": messages,
         "max_tokens": 99,
     }
