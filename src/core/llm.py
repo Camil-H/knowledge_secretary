@@ -84,6 +84,7 @@ _EST_OUTPUT_TOKENS = 2048
 _QUOTA_SCOPE_MINUTE = "PerMinute"
 _QUOTA_SCOPE_DAY = "PerDay"
 _RATE_LIMIT_STATUS = 429
+_NOT_FOUND_STATUS = 404
 
 
 # == Exceptions ===============================================================
@@ -129,6 +130,11 @@ def gemini_generate(
         try:
             return client.models.generate_content(model=model.id, contents=contents, config=config)
         except genai_errors.APIError as e:
+            if e.code == _NOT_FOUND_STATUS:
+                # a model id that does not exist would otherwise be re-paced and re-dispatched
+                # on every call for the rest of the day
+                ledger_mod.mark_exhausted(ledger, model.id)
+                raise ExternalError(GOOGLE_SOURCE, cause=e) from e
             if e.code != _RATE_LIMIT_STATUS:
                 raise _typed_google_error(e) from e
             if _quota_scope(e) != _QUOTA_SCOPE_DAY and attempt < _RATE_LIMIT_RETRIES - 1:

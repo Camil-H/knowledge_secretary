@@ -269,6 +269,20 @@ def test_gemini_generate_day_quota_retires_the_model_immediately(monkeypatch):
     assert ledger["models"][model.id]["exhausted"] is True
 
 
+def test_gemini_generate_retires_a_model_the_api_does_not_know(monkeypatch):
+    """An unknown model id is permanent: without retiring it, every later call in the day pays
+    its pacing delay and a failed request again. Two of the ids in the table are unverified."""
+    models = _fake_google(monkeypatch, [_api_error(404), _FakeGeminiResponse("ok")])
+    model = llm.GEMINI_TEXT_MODELS[0]
+    ledger = ledger_mod.load()
+
+    with pytest.raises(ExternalError):
+        llm.gemini_generate(model, "hi", _config(), ledger=ledger)
+
+    assert len(models.calls) == 1
+    assert not ledger_mod.available(ledger, model.id, model.rpd)
+
+
 @pytest.mark.parametrize("payload", [_MINUTE_QUOTA, _UNSCOPED_QUOTA], ids=["minute", "unscoped"])
 def test_gemini_generate_retries_a_transient_429_then_retires_the_model(monkeypatch, payload):
     models = _fake_google(monkeypatch, [_api_error(429, payload)])
