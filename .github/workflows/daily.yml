@@ -34,7 +34,6 @@ jobs:
           prune-cache: true   # v9 defaults this off; keep the smaller pre-v9 cache
       - run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - run: uv sync --frozen
-      - run: uv run playwright install --with-deps chromium   # podcastfy fetches source URLs via a browser
       - name: Generate podcast episode
         env:
           GOOGLE_AI_STUDIO_KEY: ${{ secrets.GOOGLE_AI_STUDIO_KEY }}
