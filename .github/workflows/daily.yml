@@ -41,6 +41,7 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           GH_TOKEN: ${{ github.token }}
+          LLM_RATE_LIMIT_RETRIES: "2"   # 2s of 429 backoff per model instead of 2+4+8s
         run: uv run python -m src.run podcast
       - name: Commit history + state and publish site
         uses: ./.github/actions/publish
