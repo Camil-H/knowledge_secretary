@@ -42,7 +42,12 @@ jobs:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           GH_TOKEN: ${{ github.token }}
           LLM_RATE_LIMIT_RETRIES: "2"   # 2s of 429 backoff per model instead of 2+4+8s
-        run: uv run python -m src.run podcast
+        run: |
+          uv run python -m src.run podcast
+          # the task records a notice and exits 0, so a missing episode needs annotating here
+          if ! grep -q '"audio_url"' "history/$(date -u +%F).json" 2>/dev/null; then
+            echo "::error::podcast: no episode recorded for $(date -u +%F)"
+          fi
       - name: Commit history + state and publish site
         uses: ./.github/actions/publish
         with:
