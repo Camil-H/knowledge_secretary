@@ -143,11 +143,8 @@ def _install_youtube_fakes(monkeypatch, *, bullet: str = "- key point"):
 def _install_podcast_fakes(monkeypatch, tmp_path, *, topic: str = "My Topic"):
     """Fakes the podcast boundary; returns the list `gh` invocations are recorded into."""
     monkeypatch.setattr(podcast_task, "TOPICS", [topic])
-    monkeypatch.setenv("GOOGLE_AI_STUDIO_KEY", "ai-studio-key")  # research requires it
     monkeypatch.setattr(
-        podcast_task.content_generator,
-        "research",
-        lambda topic, *, api_key: _PODCAST_RESEARCH_TEXT,
+        podcast_task.content_generator, "research", lambda topic: _PODCAST_RESEARCH_TEXT
     )
     monkeypatch.setattr(
         podcast_task.transcript,

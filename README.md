@@ -6,7 +6,7 @@ A $0, fully-automated daily digest. Once a day, via GitHub Actions, it:
 2. **YouTube** — summarizes new uploads from configured channels within a daily time window.
 3. **Podcast** — generates a long, technical two-host podcast on the next topic from a queue (each topic used once), published to the static site with the audio embedded as a player.
 
-Runs on free tiers: the newsletter, YouTube, and the podcast transcript use OpenRouter's `:free` models; the podcast's source material comes from Gemini 3.6 Flash with Google Search grounding, free for 5k prompts/month (one per episode); the podcast audio uses Google Cloud TTS (a monthly free quota covers a daily episode, or set `_TTS_MODEL = "edge"` in `src/tasks/podcast/task.py` for strictly $0 audio); plus free data sources and GitHub Actions on a public repo (unlimited minutes).
+Runs on free tiers: every text call prefers Google AI Studio's free Gemini tier (a per-day request ledger in `state/llm_ledger.json` tracks what is left) and falls back to OpenRouter's `:free` models; the podcast's source material comes from Gemini 3.6 Flash with Google Search grounding, free for 5k prompts/month (one per episode); the podcast audio uses Google Cloud TTS (a monthly free quota covers a daily episode, or set `_TTS_MODEL = "edge"` in `src/tasks/podcast/task.py` for strictly $0 audio); plus free data sources and GitHub Actions on a public repo (unlimited minutes).
 
 ## How it works
 
@@ -32,12 +32,12 @@ uv run python -m src.delivery.site   # render history/ -> public/index.html
 
 ## Configuration
 
-There's no central config file — framework knobs live as constants next to the code that uses them: model ranking in `src/core/llm.py`, the research model in `src/tasks/podcast/content_generator.py`, episode length (`PARTS`, `PART_BUDGETS`) in `src/tasks/podcast/transcript.py`, and the history depth / output dirs in `src/delivery/site.py`. The page title/subtitle are also constants there, overridable via the `SITE_TITLE`/`SITE_SUBTITLE` env vars without touching code. Per-task sources live in each task's `sources.yaml` (below). The only runtime inputs are secrets, set as GitHub Actions repository secrets:
+There's no central config file — framework knobs live as constants next to the code that uses them: the Gemini model table and the OpenRouter ranking in `src/core/llm.py`, the research model in `src/tasks/podcast/content_generator.py`, episode length (`PARTS`, `PART_BUDGETS`) in `src/tasks/podcast/transcript.py`, and the history depth / output dirs in `src/delivery/site.py`. The page title/subtitle are also constants there, overridable via the `SITE_TITLE`/`SITE_SUBTITLE` env vars without touching code. Per-task sources live in each task's `sources.yaml` (below). The only runtime inputs are secrets, set as GitHub Actions repository secrets:
 
 | Secret | Purpose |
 | --- | --- |
-| `OPENROUTER_API_KEY` | newsletter, YouTube, and the podcast transcript, using free `:free` models. A one-time $10 OpenRouter top-up raises the free cap to 1,000 req/day (20 RPM). Required. |
-| `GOOGLE_AI_STUDIO_KEY` | an **AI Studio** key, used for the podcast's grounded research (Gemini 3.6 Flash + Google Search). **Required for the podcast** — without it there is no source material and no episode is produced. Must belong to the same project where the Generative Language API is enabled, and is a different key from `GEMINI_API_KEY`. Free-tier limits are per-model (5 RPM / 250k TPM / 20 requests per day); an episode spends one request. |
+| `OPENROUTER_API_KEY` | the fallback text tier for the newsletter, YouTube, and the podcast transcript, using free `:free` models. An independent credential, so a broken Google key degrades here instead of downing every product. A one-time $10 OpenRouter top-up raises the free cap to 1,000 req/day (20 RPM). Required. |
+| `GOOGLE_AI_STUDIO_KEY` | an **AI Studio** key: the preferred text tier for all three products, and the podcast's grounded research (Gemini 3.6 Flash + Google Search). **Required for the podcast** — without it there is no source material and no episode is produced. Must belong to the same project where the Generative Language API is enabled, and is a different key from `GEMINI_API_KEY`. Free-tier limits are per-model (5 RPM / 250k TPM / 20 requests per day) and the ledger paces requests against them; an episode's research spends one request. |
 | `GEMINI_API_KEY` | podcast text-to-speech (Google Cloud Text-to-Speech). Must be a **GCP API key with the Cloud Text-to-Speech API enabled**, not a Google AI Studio key. Required for the podcast unless you switch `_TTS_MODEL` to `edge`. |
 | `PAGES_DEPLOY_TOKEN` | PAT with write access to the Pages repo (`Camil-H/camil-h.github.io`) so the workflow can publish the site cross-repo. Required. |
 | `TWITTER_AUTH_TOKEN`, `TWITTER_CT0` | X/Twitter session tokens for the `twitter-cli` X source (optional; degrades to nothing if absent). |

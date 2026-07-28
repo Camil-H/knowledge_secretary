@@ -8,14 +8,13 @@ resolve to unrelated articles."""
 import logging
 from pathlib import Path
 
-from google import genai
 from google.genai import types
+
+from src.core import ledger as ledger_mod
+from src.core import llm
 
 logger = logging.getLogger(__name__)
 
-# Search grounding is free for 5k prompts/month on the 3.x family, and Flash is the newest
-# tier still on the free plan — Pro models moved behind billing in April 2026.
-MODEL = "gemini-3.6-flash"
 PROMPT = (Path(__file__).parent / "research_prompt.md").read_text()
 _MAX_LOGGED_SOURCES = 10
 
@@ -23,17 +22,19 @@ _MAX_LOGGED_SOURCES = 10
 # == Research =================================================================
 
 
-def research(topic: str, *, api_key: str) -> str:
+def research(topic: str) -> str:
     """A search-grounded overview of the topic; "" when the model returns no text.
 
-    Raises whatever the SDK raises — the caller decides whether a failed episode is tolerable."""
-    client = genai.Client(api_key=api_key)
+    Runs on the shared Gemini primitive, so it shares the day's ledger, pacing and error
+    typing. Raises what the primitive raises — the caller decides whether a failed episode
+    is tolerable."""
     config = types.GenerateContentConfig(
         tools=[types.Tool(google_search=types.GoogleSearch())],
         system_instruction=PROMPT,
     )
-    logger.info("🚀 research model=%s topic=%r", MODEL, topic)
-    response = client.models.generate_content(model=MODEL, contents=topic, config=config)
+    response = llm.gemini_generate(
+        llm.GEMINI_TEXT_MODELS[0], topic, config, ledger=ledger_mod.load()
+    )
     _log_sources(response)
     return response.text or ""
 

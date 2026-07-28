@@ -1,7 +1,6 @@
 """Podcast task: generate a two-host episode for the next unaired topic — grounded research
 and the longform transcript in-repo, podcastfy for audio synthesis only."""
 
-import os
 import tempfile
 from pathlib import Path
 
@@ -13,7 +12,6 @@ from src.tasks.podcast import content_generator, transcript
 
 DONE_KEY = "podcast_done"
 TOPICS: list[str] = sources_loader.load(Path(__file__).parent, []) or []
-_GOOGLE_AI_STUDIO_KEY_LABEL = "GOOGLE_AI_STUDIO_KEY"
 _TTS_MODEL = "gemini"
 NO_EPISODE_NOTICE = (
     "No episode today — grounded research or generation failed. The topic stays queued and is "
@@ -68,12 +66,8 @@ def run(ctx: Context) -> Result:
 
 def _research(ctx: Context, topic: str) -> str:
     """Search-grounded source material for the topic; "" when research is unavailable."""
-    api_key = os.environ.get(_GOOGLE_AI_STUDIO_KEY_LABEL)
-    if not api_key:
-        ctx.logger.warning("⚠️ podcast: %s unset; cannot research", _GOOGLE_AI_STUDIO_KEY_LABEL)
-        return ""
     try:
-        return content_generator.research(topic, api_key=api_key)
+        return content_generator.research(topic)
     except Exception as exc:  # no episode is better than one built on nothing
         ctx.logger.warning("⚠️ podcast: research failed for %r: %s", topic, exc)
         return ""

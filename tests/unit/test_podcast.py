@@ -6,6 +6,7 @@ import logging
 
 import pytest
 
+from src.core.errors import AuthError
 from src.core.models import Context
 from src.tasks.podcast import task as podcast_task
 from src.tasks.podcast.task import DONE_KEY, _generate_episode, _research, run
@@ -13,7 +14,6 @@ from src.tasks.podcast.transcript import TranscriptError
 
 _TOPICS = ["PROTACs", "ADCs", "mRNA"]
 _OVERVIEW = "grounded overview of the topic"
-_KEY = "GOOGLE_AI_STUDIO_KEY"
 
 
 @pytest.fixture(autouse=True)
@@ -91,7 +91,7 @@ def test_run_generation_failure_records_a_notice(monkeypatch):
 
 
 def _stub_research(monkeypatch, result=None, raises=None):
-    def _research_impl(topic, *, api_key):
+    def _research_impl(topic):
         if raises is not None:
             raise raises
         return result
@@ -100,35 +100,31 @@ def _stub_research(monkeypatch, result=None, raises=None):
 
 
 def test_research_returns_the_grounded_overview(monkeypatch):
-    monkeypatch.setenv(_KEY, "k")
     _stub_research(monkeypatch, result=_OVERVIEW)
     assert _research(_ctx(_state()), "PROTACs") == _OVERVIEW
 
 
-def test_research_passes_the_topic_and_ai_studio_key(monkeypatch):
-    monkeypatch.setenv(_KEY, "the-key")
+def test_research_passes_the_topic(monkeypatch):
     seen = {}
 
-    def _research_impl(topic, *, api_key):
-        seen.update(topic=topic, api_key=api_key)
+    def _research_impl(topic):
+        seen["topic"] = topic
         return _OVERVIEW
 
     monkeypatch.setattr(podcast_task.content_generator, "research", _research_impl)
     _research(_ctx(_state()), "PROTACs")
-    assert seen == {"topic": "PROTACs", "api_key": "the-key"}
+    assert seen == {"topic": "PROTACs"}
 
 
 @pytest.mark.parametrize(
-    "key_set, raises",
-    [(False, None), (True, RuntimeError("403 blocked")), (True, None)],
-    ids=["no_key", "sdk_raises", "empty_text"],
+    "raises",
+    [None, RuntimeError("403 blocked"), AuthError("google-ai-studio")],
+    ids=["empty_text", "external_failure", "auth_failure"],
 )
-def test_research_degrades_to_empty_string(monkeypatch, key_set, raises):
+def test_research_degrades_to_empty_string(monkeypatch, raises):
     """Every failure path yields "", which the caller turns into a skipped episode rather than
-    an episode built on nothing."""
-    monkeypatch.delenv(_KEY, raising=False)
-    if key_set:
-        monkeypatch.setenv(_KEY, "k")
+    an episode built on nothing — including an auth failure, which the transport already
+    degraded across tiers before giving up."""
     _stub_research(monkeypatch, result="", raises=raises)
     assert _research(_ctx(_state()), "PROTACs") == ""
 
@@ -143,7 +139,6 @@ def _stub_episode_collaborators(
 ):
     """Stub content_generator.research, transcript.generate, and generate_podcast (patched on the
     podcastfy module, since it is imported locally inside the function)."""
-    monkeypatch.setenv(_KEY, "k")  # research needs it
     _stub_research(monkeypatch, result=overview, raises=raises)
 
     def _generate(topic, research, *, call):
@@ -198,7 +193,6 @@ def test_generate_episode_passes_the_context_call_to_the_transcript_layer(monkey
         seen.update(topic=topic, research=research, call=call)
         return _TRANSCRIPT
 
-    monkeypatch.setenv(_KEY, "k")
     _stub_research(monkeypatch, result=_OVERVIEW)
     monkeypatch.setattr(podcast_task.transcript, "generate", _generate)
 
@@ -224,7 +218,6 @@ def test_generate_episode_skips_transcript_when_research_yields_nothing(
         calls.append(topic)
         return _TRANSCRIPT
 
-    monkeypatch.setenv(_KEY, "k")
     _stub_research(monkeypatch, result=overview, raises=raises)
     monkeypatch.setattr(podcast_task.transcript, "generate", _generate)
     assert _generate_episode(_ctx(_state()), "PROTACs") is None

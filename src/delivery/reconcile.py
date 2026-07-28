@@ -10,6 +10,8 @@ import json
 import subprocess
 import sys
 
+from src.core.ledger import PATH as LEDGER_PATH
+
 STATE_PATH = "state/seen.json"
 _EMPTY_STATE: dict = {"ids": {}, "kv": {}}
 
@@ -33,6 +35,35 @@ def merge_state(base: dict | None, a: dict | None, b: dict | None) -> dict:
     base, a, b = base or _EMPTY_STATE, a or _EMPTY_STATE, b or _EMPTY_STATE
     ids = {**b.get("ids", {}), **a.get("ids", {})}
     return {"ids": ids, "kv": _merge_kv(base.get("kv", {}), a.get("kv", {}), b.get("kv", {}))}
+
+
+def merge_ledger(base: dict | None, a: dict | None, b: dict | None) -> dict:
+    """3-way merge of the LLM request ledger.
+
+    Same day: request counts are additive (`a + b - base`, floored by each side so a missing
+    base can't undercount) and `exhausted` is an OR — an undercount would cost at most one
+    extra 429, which itself retires the model. Different days: one side already rolled over,
+    so the newer record wins whole."""
+    a, b = a or {}, b or {}
+    if not a or not b:
+        return a or b
+    if a.get("date") != b.get("date"):
+        return a if (a.get("date") or "") >= (b.get("date") or "") else b
+
+    base_models = (base or {}).get("models", {})
+    a_models, b_models = a.get("models", {}), b.get("models", {})
+    models = {}
+    for model in a_models.keys() | b_models.keys():
+        a_requests = a_models.get(model, {}).get("requests", 0)
+        b_requests = b_models.get(model, {}).get("requests", 0)
+        base_requests = base_models.get(model, {}).get("requests", 0)
+        models[model] = {
+            "requests": max(a_requests, b_requests, a_requests + b_requests - base_requests),
+            "exhausted": bool(
+                a_models.get(model, {}).get("exhausted") or b_models.get(model, {}).get("exhausted")
+            ),
+        }
+    return {"date": a.get("date"), "models": models}
 
 
 def _merge_kv(base: dict, a: dict, b: dict) -> dict:
@@ -74,6 +105,8 @@ def main() -> int:
             merged = merge_history_entry(ours, theirs)
         elif path == STATE_PATH:
             merged = merge_state(base, ours, theirs)
+        elif path == LEDGER_PATH:
+            merged = merge_ledger(base, ours, theirs)
         else:
             print(f"reconcile: refusing to auto-merge unexpected path {path}", file=sys.stderr)
             return 1
