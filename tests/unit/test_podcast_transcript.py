@@ -111,6 +111,21 @@ def test_generate_caps_the_research_it_sends():
     assert "The mechanism matters here." in sent
 
 
+def test_generate_gives_every_part_after_the_intro_its_own_research():
+    """The outro once shared the last body part's chunk, so the episode covered it twice.
+    Only the intro may overlap, as a truncated taste of the first chunk. Sentences are
+    numbered because repeated filler makes distinct slices compare equal."""
+    numbered = " ".join(f"Point {i} explains the mechanism." for i in range(600))
+    call = _Call()
+    generate(_TOPIC, numbered, call=call)
+
+    sources = [recorded["user"] for recorded in call.calls]
+    assert len(set(sources[1:])) == len(sources[1:])
+    assert sources[-1] != sources[-2]
+    assert sources[1].startswith(sources[0][:60])
+    assert all(source.strip() for source in sources)
+
+
 # == Helper Functions =========================================================
 
 

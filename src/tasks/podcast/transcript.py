@@ -72,7 +72,8 @@ def generate(topic: str, research: str, *, call: Callable[..., str]) -> str:
     if not topic or not research:
         raise ValueError("topic and research are required")
 
-    chunks = _chunk_research(research[:MAX_SOURCE_CHARS], PARTS - 2)
+    # one chunk per part that carries new material: the body parts plus the outro
+    chunks = _chunk_research(research[:MAX_SOURCE_CHARS], PARTS - 1)
     parts: list[str] = []
     for index in range(PARTS):
         role = _part_role(index, PARTS)
