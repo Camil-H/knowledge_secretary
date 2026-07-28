@@ -18,6 +18,7 @@ from src.tasks.podcast.task import (
     _discover_urls,
     _episode_text,
     _generate_episode,
+    _is_tts_failure,
     _parse_keep_indices,
     run,
 )
@@ -157,6 +158,20 @@ def test_episode_text_leads_with_topic_and_caps_source_body():
     text = _episode_text("PROTACs", [(_URL, body)])
     assert text.startswith("PROTACs")
     assert len(text) < len("PROTACs") + len(body)  # source body truncated
+
+
+@pytest.mark.parametrize(
+    "message, expected",
+    [
+        ("Failed to generate audio: 400 input.text is longer than the limit", True),
+        ("Error converting text to speech: boom", True),
+        ("litellm.APIError: OpenrouterException - ResourceExhausted", False),
+        ("403 Gemini API has not been used in project", False),
+    ],
+    ids=["byte_limit", "tts_wrapper", "llm_rate_limit", "llm_auth"],
+)
+def test_is_tts_failure_distinguishes_audio_from_transcript_failures(message, expected):
+    assert _is_tts_failure(RuntimeError(message)) is expected
 
 
 # ----- _generate_episode -----
@@ -393,3 +408,20 @@ def test_generate_episode_drops_all_sources_when_the_judge_is_unavailable(monkey
     )
     assert asyncio.run(_generate_episode(_ctx(_state(), call=_call), "PROTACs")) is None
     assert calls == []
+
+
+def test_generate_episode_stops_the_cascade_on_an_audio_failure(monkeypatch):
+    """Regenerating the transcript cannot fix the audio layer; trying cost 30+ minutes."""
+    attempts = []
+
+    def _raise(**kwargs):
+        attempts.append(kwargs["llm_model_name"])
+        raise RuntimeError("Failed to generate audio: 400 input.text is longer than the limit")
+
+    _stub_episode_collaborators(
+        monkeypatch,
+        models=["openrouter/first", "openrouter/second", "openrouter/third"],
+        generate_podcast=_raise,
+    )
+    assert asyncio.run(_generate_episode(_episode_ctx(), "PROTACs")) is None
+    assert attempts == ["openrouter/first"]  # stopped after the audio failure

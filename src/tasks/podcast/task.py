@@ -38,6 +38,12 @@ _JUDGE_EXCERPT_CHARS = 1200
 _MAX_OUTPUT_TOKENS = 1200
 _MAX_NUM_CHUNKS = 8
 _MIN_CHUNK_SIZE = 600
+_TTS_FAILURE_MARKERS = (
+    "failed to generate audio",
+    "error converting text to speech",
+    "input.text",
+    "input.ssml",
+)
 CONVERSATION_CONFIG = {
     "conversation_style": ["technical", "narrative", "engaging", "story-driven"],
     "roles_person1": "curious host who keeps one narrative thread going with sharp questions",
@@ -207,6 +213,9 @@ async def _generate_episode(ctx: Context, topic: str) -> str | None:
             )
         except Exception as exc:
             last_err = exc
+            if _is_tts_failure(exc):
+                ctx.logger.warning("⚠️ podcast: audio synthesis failed, not retrying: %s", exc)
+                break
             ctx.logger.warning("⚠️ podcast: model=%s failed: %s", model, exc)
     ctx.logger.warning("⚠️ podcast: no episode produced for %r: %s", topic, last_err)
     return None
@@ -243,3 +252,9 @@ def _podcastfy_config():
     generator = {**config.get("content_generator", {}), "max_output_tokens": _MAX_OUTPUT_TOKENS}
     config.configure(content_generator=generator)
     return config
+
+
+def _is_tts_failure(exc: Exception) -> bool:
+    """True for an audio-layer failure, which another transcript model cannot fix."""
+    message = str(exc).lower()
+    return any(marker in message for marker in _TTS_FAILURE_MARKERS)
