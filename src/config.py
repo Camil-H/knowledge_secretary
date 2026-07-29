@@ -1,6 +1,8 @@
 # src/config.py
-"""Every tunable knob for the whole app: timeouts, retry and backoff bounds, HTTP statuses,
-model rosters, prompt and character budgets, voices, persisted paths and output dirs.
+"""Every tunable knob for the whole app, in two parts.
+
+"Yours to set" is what a fork changes on day one. Everything under "Defaults" already works;
+those are the values to reach for when tuning behaviour, not when adopting the project.
 
 Values only. What deliberately stays next to the code that uses it: compiled patterns, the
 prompt files each task reads, the registries that map a kind to behaviour, and the
@@ -14,7 +16,27 @@ import os
 
 from src.core.models import ModelLimit, PartBudget
 
-# == HTTP =====================================================================
+# == Yours to set =============================================================
+
+# The rest of a fork's personalisation lives outside this file: sources in each task's
+# sources.yaml, the editorial voice in the prompt markdown, schedule and publishing target in
+# .github/workflows/daily.yml.
+
+SITE_TITLE = "Knowledge Secretary"
+SITE_SUBTITLE = "Daily newsletter, YouTube digest, and technical podcast"
+
+# Voices must belong to TTS_LANGUAGE_CODE — Cloud TTS rejects a mismatch — and both hosts
+# should come from the same voice family so the two sides of the conversation match.
+TTS_LANGUAGE_CODE = "en-US"
+TTS_VOICES: dict[str, str] = {
+    "Person1": "en-US-Chirp3-HD-Iapetus",
+    "Person2": "en-US-Chirp3-HD-Laomedeia",
+}
+
+
+# == Defaults =================================================================
+
+# ----- HTTP -----
 
 # One value for every caller, so it has to cover the slowest legitimate one: an LLM completion
 # on a large free model runs 20-90s, while a feed fetch that hangs is bounded by its own task.
@@ -34,14 +56,13 @@ TRANSIENT_STATUSES = frozenset(
     {RATE_LIMIT_STATUS, SERVER_ERROR_STATUS, SERVICE_UNAVAILABLE_STATUS, GATEWAY_TIMEOUT_STATUS}
 )
 
-
-# == LLM ======================================================================
+# ----- LLM -----
 
 RATE_LIMIT_RETRIES = int(os.environ.get("LLM_RATE_LIMIT_RETRIES", "4"))
 BACKOFF_START_S = 2
 BACKOFF_CAP_S = 30
 
-# ----- Google AI Studio -----
+# ----- LLM: Google AI Studio -----
 
 GEMINI_KEY_LABEL = "GOOGLE_AI_STUDIO_KEY"
 GEMINI_AUTH_STATUSES = (UNAUTHORIZED_STATUS, FORBIDDEN_STATUS)
@@ -55,7 +76,7 @@ GEMINI_TEXT_MODELS: list[ModelLimit] = [
     ModelLimit("gemini-3.1-flash-lite", rpd=500, rpm=15, tpm=250_000, search=False),
 ]
 
-# ----- OpenRouter -----
+# ----- LLM: OpenRouter -----
 
 OPENROUTER_KEY_LABEL = "OPENROUTER_API_KEY"
 # wall-clock cap for the whole cascade so a many-item run can't burn minutes on backoff sleep
@@ -70,14 +91,12 @@ OPENROUTER_MODELS = [  # tried in order
     "openrouter/openai/gpt-oss-20b:free",
 ]
 
-
-# == Fetching =================================================================
+# ----- Fetching -----
 
 LOOKBACK_HOURS = 48  # feed-scan window; dedup filters already-seen items on top
 MAX_FETCH_WORKERS = 8
 
-
-# == Newsletter ===============================================================
+# ----- Newsletter -----
 
 PUBMED_RETMAX = 30
 OPENRXIV_MAX_PAGES = 20  # ~600 preprints; caps a busy window so one source can't stall the run
@@ -89,15 +108,11 @@ NEWSLETTER_ITEM_CHAR_LIMIT = 20000
 NEWSLETTER_TOTAL_CHAR_BUDGET = 120000
 NEWSLETTER_ITEM_CHAR_FLOOR = 1000
 
-
-# == YouTube ==================================================================
+# ----- YouTube -----
 
 YOUTUBE_TRANSCRIPT_CHAR_LIMIT = 12000
 
-
-# == Podcast ==================================================================
-
-# ----- Transcript -----
+# ----- Podcast: transcript -----
 
 TRANSCRIPT_PARTS = 8  # 1 intro + 6 body + 1 outro
 TRANSCRIPT_MAX_SOURCE_CHARS = 12000
@@ -113,35 +128,25 @@ TRANSCRIPT_PART_BUDGETS: dict[str, PartBudget] = {
     "outro": PartBudget(words=500, max_tokens=1100),
 }
 
-# ----- Audio -----
+# ----- Podcast: audio -----
 
 TTS_KEY_LABEL = "GOOGLE_CLOUD_TTS_KEY"
-TTS_LANGUAGE_CODE = "en-US"
 TTS_PCM_RATE_HZ = 24_000
 TTS_RETRIES = 3
 TTS_MAX_TURN_BYTES = 4500
 TTS_MONTH_CHAR_BUDGET = 1_000_000
 TTS_MP3_BITRATE = "32k"
-TTS_VOICES: dict[str, str] = {
-    "Person1": "en-US-Chirp3-HD-Iapetus",
-    "Person2": "en-US-Chirp3-HD-Laomedeia",
-}
 
-
-# == Data Retention ================================================================
+# ----- Data retention -----
 
 RETENTION_DAYS = 7
 
-
-# == State ====================================================================
+# ----- State -----
 
 STATE_PATH = "state/seen.json"
 LEDGER_PATH = "state/llm_ledger.json"
 
+# ----- Delivery -----
 
-# == Delivery =================================================================
-
-SITE_TITLE = "Knowledge Secretary"
-SITE_SUBTITLE = "Daily newsletter, YouTube digest, and technical podcast"
 HISTORY_DIR = "history"
 OUT_DIR = "public"
