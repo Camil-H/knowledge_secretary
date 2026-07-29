@@ -1,4 +1,4 @@
-# core/net.py
+# src/core/url_guard.py
 """SSRF guard for outbound fetches: scheme allow-list + private-host rejection.
 
 A URL is safe only when it is http(s) and every address its host resolves to is

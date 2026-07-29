@@ -4,8 +4,8 @@ import socket
 
 import pytest
 
-from src.core import net
-from src.core.net import UnsafeURLError, assert_safe_url, is_safe_url
+from src.core import url_guard
+from src.core.url_guard import UnsafeURLError, assert_safe_url, is_safe_url
 
 # ----- test doubles -----
 
@@ -39,7 +39,7 @@ def _fake_getaddrinfo(ip: str):
     ],
 )
 def test_is_safe_url_by_resolved_ip(monkeypatch, url, resolved_ip, safe):
-    monkeypatch.setattr(net.socket, "getaddrinfo", _fake_getaddrinfo(resolved_ip))
+    monkeypatch.setattr(url_guard.socket, "getaddrinfo", _fake_getaddrinfo(resolved_ip))
     assert is_safe_url(url) is safe
 
 
@@ -61,6 +61,6 @@ def test_assert_safe_url_rejects_unresolvable_host(monkeypatch):
     def _boom(*_a, **_k):
         raise socket.gaierror("no such host")
 
-    monkeypatch.setattr(net.socket, "getaddrinfo", _boom)
+    monkeypatch.setattr(url_guard.socket, "getaddrinfo", _boom)
     with pytest.raises(UnsafeURLError, match="resolve"):
         assert_safe_url("https://nope.invalid/")

@@ -4,7 +4,7 @@ import logging
 
 import trafilatura
 
-from src.core.net import is_safe_url
+from src.core.url_guard import is_safe_url
 
 logger = logging.getLogger(__name__)
 
