@@ -3,10 +3,14 @@ classification, key handling and the WAV unwrap. The TTS client and sleep are fa
 request, key or wait."""
 
 import pytest
+from google.api_core import exceptions as api_errors
 
 import src.clients.cloud_tts as cloud_tts
 from src import config
 from src.clients.cloud_tts import AudioError, _is_transient, _strip_wav_header, synthesize_turn
+
+_ResourceExhausted = api_errors.ResourceExhausted
+_Unavailable = api_errors.ServiceUnavailable
 
 _VOICE = "en-US-Chirp3-HD-Iapetus"
 
@@ -85,7 +89,7 @@ def test_synthesize_turn_returns_the_frames_without_the_wav_container(monkeypatc
 
 
 def test_synthesize_turn_retries_a_transient_refusal_then_succeeds(monkeypatch):
-    failures: list[Exception] = [RuntimeError("429 quota exceeded")] * (config.TTS_RETRIES - 1)
+    failures: list[Exception] = [_ResourceExhausted("quota exceeded")] * (config.TTS_RETRIES - 1)
     client = _fake_client(monkeypatch, failures)
 
     assert synthesize_turn("One line only.", _VOICE)
@@ -93,7 +97,7 @@ def test_synthesize_turn_retries_a_transient_refusal_then_succeeds(monkeypatch):
 
 
 def test_synthesize_turn_gives_up_once_the_retries_are_spent(monkeypatch):
-    failures: list[Exception] = [RuntimeError("503 backend unavailable")] * config.TTS_RETRIES
+    failures: list[Exception] = [_Unavailable("backend unavailable")] * config.TTS_RETRIES
     client = _fake_client(monkeypatch, failures)
 
     with pytest.raises(AudioError, match="503"):
@@ -114,7 +118,7 @@ def test_synthesize_turn_backs_off_with_a_capped_delay(monkeypatch):
     monkeypatch.setattr(cloud_tts.time, "sleep", lambda seconds: slept.append(seconds))
     monkeypatch.setattr(config, "TTS_RETRIES", 6)
     monkeypatch.setattr(config, "BACKOFF_CAP_S", 4)
-    _fake_client(monkeypatch, [RuntimeError("429 quota")] * 6)
+    _fake_client(monkeypatch, [_ResourceExhausted("quota")] * 6)
 
     with pytest.raises(AudioError):
         synthesize_turn("One line only.", _VOICE)
@@ -135,17 +139,30 @@ def test_client_reuses_the_memoized_client(monkeypatch):
 
 
 @pytest.mark.parametrize(
-    "message, expected",
+    "error, expected",
     [
-        ("429 Too Many Requests", True),
-        ("Quota exceeded for characters", True),
-        ("503 Service Unavailable", True),
-        ("Deadline Exceeded", True),
-        ("invalid voice name", False),
+        (_ResourceExhausted("quota exceeded"), True),
+        (api_errors.InternalServerError("internal error"), True),
+        (_Unavailable("unavailable"), True),
+        (api_errors.DeadlineExceeded("deadline"), True),
+        (api_errors.InvalidArgument("invalid voice name"), False),
+        (api_errors.PermissionDenied("key not authorised"), False),
+        (RuntimeError("429 quota exceeded"), False),
+    ],
+    ids=[
+        "rate_limited",
+        "server_error",
+        "unavailable",
+        "deadline",
+        "invalid_argument",
+        "forbidden",
+        "untyped_mentioning_429",
     ],
 )
-def test_is_transient_classifies_the_refusal(message, expected):
-    assert _is_transient(RuntimeError(message)) is expected
+def test_is_transient_classifies_by_status_code(error, expected):
+    """The status code decides, not the wording: a 500 is retried where the old message match
+    dropped it, and an untyped error is permanent even when its text names a transient code."""
+    assert _is_transient(error) is expected
 
 
 # ----- _strip_wav_header -----

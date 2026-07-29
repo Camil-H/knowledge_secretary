@@ -25,6 +25,14 @@ UNAUTHORIZED_STATUS = 401
 FORBIDDEN_STATUS = 403
 NOT_FOUND_STATUS = 404
 RATE_LIMIT_STATUS = 429
+SERVER_ERROR_STATUS = 500
+SERVICE_UNAVAILABLE_STATUS = 503
+GATEWAY_TIMEOUT_STATUS = 504
+
+# a request that failed with one of these may well succeed on another attempt
+TRANSIENT_STATUSES = frozenset(
+    {RATE_LIMIT_STATUS, SERVER_ERROR_STATUS, SERVICE_UNAVAILABLE_STATUS, GATEWAY_TIMEOUT_STATUS}
+)
 
 
 # == LLM ======================================================================

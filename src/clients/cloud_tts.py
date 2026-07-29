@@ -2,7 +2,7 @@
 """Google Cloud Text-to-Speech transport: one turn per request, returned as raw LINEAR16 PCM.
 
 The API answers with a WAV container, so unwrapping it belongs here — callers get frames they
-can concatenate. Its key is a GCP API key, distinct from the AI Studio one.
+can concatenate.
 """
 
 import logging
@@ -18,7 +18,6 @@ logger = logging.getLogger(__name__)
 
 SOURCE = "cloud-tts"
 
-_TRANSIENT_MARKERS = ("429", "quota", "503", "deadline")
 _WAV_RIFF_MARKER = b"RIFF"
 _WAV_DATA_MARKER = b"data"
 _WAV_CHUNK_HEADER_BYTES = 8
@@ -96,5 +95,9 @@ def _strip_wav_header(audio: bytes) -> bytes:
 
 
 def _is_transient(e: Exception) -> bool:
-    message = str(e).lower()
-    return any(marker in message for marker in _TRANSIENT_MARKERS)
+    """Whether another attempt could plausibly succeed.
+
+    google.api_core raises typed errors carrying the HTTP status as `code`, so the class of
+    failure is data rather than something to infer from message wording. Anything without a
+    code is treated as permanent: an unrecognised failure is not worth waiting on."""
+    return getattr(e, "code", None) in config.TRANSIENT_STATUSES
