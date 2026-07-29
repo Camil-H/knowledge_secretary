@@ -79,7 +79,7 @@ def test_call_degrades_to_openrouter_when_the_google_tier_auth_fails(monkeypatch
         assert llm.call("s", "u") == "from openrouter"
 
     degradations = [r for r in caplog.records if "degrading to openrouter" in r.getMessage()]
-    assert len(degradations) == 1  # one line per run, not one per model
+    assert len(degradations) == 1
 
 
 def test_call_degrades_to_openrouter_when_the_google_key_is_unset(monkeypatch):

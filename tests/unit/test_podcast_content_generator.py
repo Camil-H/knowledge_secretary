@@ -86,7 +86,7 @@ def test_research_delegates_to_the_first_search_model_with_the_topic_as_input(mo
 
     call = calls[0]
     assert call["model"] is _search_models()[0]
-    assert call["contents"] == "PROTACs"  # topic is the input; the prompt is the instruction
+    assert call["contents"] == "PROTACs"
     assert call["config"].system_instruction == content_generator.PROMPT
     assert call["ledger"][ledger_mod.BUCKETS] == {}
 
@@ -191,7 +191,7 @@ def test_research_propagates_an_untyped_primitive_failure(monkeypatch):
     [
         (["https://a.example", "https://b.example"], "https://a.example"),
         ([], None),
-        (None, None),  # no grounding metadata at all
+        (None, None),
     ],
     ids=["logs_uris", "no_chunks", "no_metadata"],
 )

@@ -39,7 +39,6 @@ _AUTH_PHRASES = ("no user or org", "invalid api key", "unauthorized")
 _UNAUTHORIZED_STATUS = 401
 _RATE_LIMIT_STATUS = 429
 _ERROR_STATUS_FLOOR = 400
-# ids passing the zero-price filter that aren't general text writers (music / guardrail / router)
 _EXCLUDE_IDS = ("lyria", "content-safety", "openrouter/free")
 _MAX_ERROR_BODY_CHARS = 300
 
@@ -143,7 +142,6 @@ def complete(model: str, messages: list[dict[str, str]], max_tokens: int | None)
 
 # == Model resolution =========================================================
 
-# live context ranking, memoized per process (see _reset_model_cache for tests)
 _MODEL_CACHE: list[str] = []
 
 

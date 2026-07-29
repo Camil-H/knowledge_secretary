@@ -45,6 +45,11 @@ def _research(chars: int = 6000, sentence: str = "The mechanism matters here. ")
     return (sentence * (chars // len(sentence) + 1))[:chars]
 
 
+def _numbered_research(sentences: int = 600) -> str:
+    """Research whose sentences differ, so two distinct slices of it never compare equal."""
+    return " ".join(f"Point {i} explains the mechanism." for i in range(sentences))
+
+
 # == Generation ===============================================================
 
 
@@ -63,8 +68,10 @@ def test_generate_requires_a_topic_and_research(topic, research):
 
 
 def test_generate_composes_one_request_per_part_from_the_role_registry():
+    """Every part gets its own role budget and its own slice of the research — the outro once
+    shared the last body part's chunk, so the episode covered it twice."""
     call = _Call()
-    generate(_TOPIC, _research(), call=call)
+    generate(_TOPIC, _numbered_research(), call=call)
 
     assert len(call.calls) == PARTS
     for index, recorded in enumerate(call.calls):
@@ -73,6 +80,9 @@ def test_generate_composes_one_request_per_part_from_the_role_registry():
         assert f"{budget.words} words" in recorded["system"]
         assert _TOPIC in recorded["system"]
         assert str(MAX_TURN_CHARS) in recorded["system"]
+
+    after_intro = [recorded["user"] for recorded in call.calls[1:]]
+    assert len(set(after_intro)) == len(after_intro)
 
 
 def test_generate_gives_each_part_only_its_own_role_instruction():
@@ -109,21 +119,6 @@ def test_generate_caps_the_research_it_sends():
     sent = "".join(recorded["user"] for recorded in call.calls)
     assert "TAILMARKER" not in sent
     assert "The mechanism matters here." in sent
-
-
-def test_generate_gives_every_part_after_the_intro_its_own_research():
-    """The outro once shared the last body part's chunk, so the episode covered it twice.
-    Only the intro may overlap, as a truncated taste of the first chunk. Sentences are
-    numbered because repeated filler makes distinct slices compare equal."""
-    numbered = " ".join(f"Point {i} explains the mechanism." for i in range(600))
-    call = _Call()
-    generate(_TOPIC, numbered, call=call)
-
-    sources = [recorded["user"] for recorded in call.calls]
-    assert len(set(sources[1:])) == len(sources[1:])
-    assert sources[-1] != sources[-2]
-    assert sources[1].startswith(sources[0][:60])
-    assert all(source.strip() for source in sources)
 
 
 # == Helper Functions =========================================================

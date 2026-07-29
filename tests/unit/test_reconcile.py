@@ -50,9 +50,9 @@ def test_merge_state_unions_ids():
 @pytest.mark.parametrize(
     "a_queue,b_queue,expected",
     [
-        (["Y"], ["X", "Y"], ["Y"]),  # a advanced the queue, b untouched -> a
-        (["X", "Y"], ["Y"], ["Y"]),  # b advanced, a untouched -> b
-        (["X", "Y"], ["X", "Y"], ["X", "Y"]),  # neither changed -> unchanged
+        (["Y"], ["X", "Y"], ["Y"]),
+        (["X", "Y"], ["Y"], ["Y"]),
+        (["X", "Y"], ["X", "Y"], ["X", "Y"]),
     ],
     ids=["a-changed", "b-changed", "neither"],
 )

@@ -147,7 +147,7 @@ def test_call_raises_auth_error_immediately(monkeypatch):
     monkeypatch.setattr(openrouter, "complete", _complete)
     with pytest.raises(AuthError):
         openrouter.call("s", "u", None)
-    assert tried == ["openrouter/a:free"]  # auth fails loudly on the first model, no fallback
+    assert tried == ["openrouter/a:free"]
 
 
 def test_call_external_error_carries_the_last_exception_as_cause(monkeypatch):

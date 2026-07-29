@@ -46,16 +46,16 @@ def _stub_generate(monkeypatch, result):
 
 def test_run_airs_first_pending_topic_and_marks_it_done(monkeypatch):
     _stub_generate(monkeypatch, "/tmp/ep.mp3")
-    state = _state()  # nothing aired -> pending is all of TOPICS, in order
+    state = _state()
     result = run(_ctx(state))
     assert result.meta["topic"] == "PROTACs"
     assert result.artifacts == ["/tmp/ep.mp3"]
-    assert state["kv"][DONE_KEY] == ["PROTACs"]  # marked aired
+    assert state["kv"][DONE_KEY] == ["PROTACs"]
 
 
 def test_run_skips_already_aired_topics(monkeypatch):
     _stub_generate(monkeypatch, "/tmp/ep.mp3")
-    state = _state(["PROTACs", "ADCs"])  # first two aired -> next pending is mRNA
+    state = _state(["PROTACs", "ADCs"])
     result = run(_ctx(state))
     assert result.meta["topic"] == "mRNA"
     assert set(state["kv"][DONE_KEY]) == {"PROTACs", "ADCs", "mRNA"}
@@ -69,7 +69,7 @@ def test_run_all_topics_aired_is_noop(monkeypatch):
         return "/tmp/ep.mp3"
 
     monkeypatch.setattr(podcast_task, "_generate_episode", _gen)
-    result = run(_ctx(_state(_TOPICS)))  # every topic already aired
+    result = run(_ctx(_state(_TOPICS)))
     assert result.markdown == "" and not result.artifacts
     assert calls["n"] == 0
 
@@ -79,7 +79,7 @@ def test_run_generation_failure_does_not_mark_done(monkeypatch):
     state = _state()
     result = run(_ctx(state))
     assert result.artifacts == []
-    assert DONE_KEY not in state["kv"]  # not aired -> stays pending, retried next run
+    assert DONE_KEY not in state["kv"]
 
 
 def test_run_generation_failure_records_a_notice(monkeypatch):
@@ -215,7 +215,7 @@ def test_generate_episode_skips_transcript_when_research_yields_nothing(
     _stub_research(monkeypatch, result=overview, raises=raises)
     monkeypatch.setattr(podcast_task.transcript, "generate", _generate)
     assert _generate_episode(_ctx(_state()), "PROTACs") is None
-    assert calls == []  # never reached transcript generation
+    assert calls == []
 
 
 @pytest.mark.parametrize(

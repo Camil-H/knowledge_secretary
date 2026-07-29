@@ -6,9 +6,9 @@ A bucket's `period` is the calendar string of its own granularity — a UTC day 
 request count, a UTC month for the Cloud TTS character count — so load() can drop what has
 rolled over without knowing which quantity it is looking at.
 
-The file lives under state/ so the publish action commits it and the 06:30 digest job sees
-the 06:00 podcast job's counts. Every mutation is written through: a crashed run must not
-forget quota it already spent.
+The file lives under state/ so the publish action commits it and a later job sees an earlier
+job's counts. Every mutation is written through: a crashed run must not forget quota it
+already spent.
 
 The ledger day is UTC while Google resets quota at midnight US-Pacific. Both daily jobs fall
 inside one Google day, and the 429 -> exhausted rule corrects any drift. Single-threaded by

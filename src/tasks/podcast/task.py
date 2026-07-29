@@ -46,7 +46,7 @@ def run(ctx: Context) -> Result:
             subject=subject, markdown="", meta={"topic": topic}, notices=[NO_EPISODE_NOTICE]
         )
 
-    state_mod.set_kv(ctx.state, DONE_KEY, sorted(done | {topic}))  # mark aired only on success
+    state_mod.set_kv(ctx.state, DONE_KEY, sorted(done | {topic}))
     return Result(subject=subject, markdown="", artifacts=[audio_path], meta={"topic": topic})
 
 
@@ -57,7 +57,7 @@ def _research(ctx: Context, topic: str) -> str:
     """Search-grounded source material for the topic; "" when research is unavailable."""
     try:
         return content_generator.research(topic)
-    except Exception as exc:  # no episode is better than one built on nothing
+    except Exception as exc:
         ctx.logger.warning("⚠️ podcast: research failed for %r: %s", topic, exc)
         return ""
 
@@ -86,6 +86,6 @@ def _synthesize(ctx: Context, text: str, topic: str) -> str | None:
     out_path = os.path.join(tempfile.mkdtemp(), EPISODE_FILENAME)
     try:
         return audio.synthesize(text, out_path, ledger=ledger_mod.load())
-    except Exception as exc:  # audio is the last stage: nothing left to fall back to
+    except Exception as exc:
         ctx.logger.warning("⚠️ podcast: audio synthesis failed for %r: %s", topic, exc)
         return None

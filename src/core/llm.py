@@ -3,8 +3,8 @@
 
 The two tiers are separate credentials on purpose — a broken Google key degrades to
 OpenRouter instead of taking the newsletter, the youtube digest and the podcast down at once.
-Google's free tier has no quota API, so a per-day ledger (src/core/ledger.py) plus 429s are
-the only truth about what is left.
+Google's free tier has no quota API, so what is left of it is metered locally
+(src/core/ledger.py).
 """
 
 import logging

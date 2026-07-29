@@ -103,9 +103,7 @@ def test_generate_returns_the_sdk_response(monkeypatch):
     _fake_google(monkeypatch, [response])
     model = gemini.TEXT_MODELS[0]
 
-    assert (
-        gemini.generate(model, "hi", _config(), ledger=ledger_mod.load()) is response
-    )  # the raw response, so callers can read grounding metadata
+    assert gemini.generate(model, "hi", _config(), ledger=ledger_mod.load()) is response
 
 
 def test_generate_sends_the_model_contents_and_config(monkeypatch):
@@ -127,7 +125,7 @@ def test_generate_raises_auth_error_without_a_key(monkeypatch):
         gemini.generate(gemini.TEXT_MODELS[0], "hi", _config(), ledger=ledger)
 
     assert calls == []
-    assert ledger[ledger_mod.BUCKETS] == {}  # nothing was dispatched, so nothing was spent
+    assert ledger[ledger_mod.BUCKETS] == {}
 
 
 @pytest.mark.parametrize(
@@ -197,7 +195,7 @@ def test_generate_day_quota_retires_the_model_immediately(monkeypatch):
     with pytest.raises(QuotaExhausted, match=model.id):
         gemini.generate(model, "hi", _config(), ledger=ledger)
 
-    assert len(models.calls) == 1  # a day limit is not worth retrying
+    assert len(models.calls) == 1
     assert ledger[ledger_mod.BUCKETS][model.id]["exhausted"] is True
 
 
@@ -297,7 +295,7 @@ def test_generate_does_not_pace_across_different_models(monkeypatch):
     for model in gemini.TEXT_MODELS:
         gemini.generate(model, "hi", _config(), ledger=ledger)
 
-    assert clock["t"] == 0  # each model has its own rpm window
+    assert clock["t"] == 0
 
 
 # ----- _quota_scope -----
