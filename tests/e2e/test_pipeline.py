@@ -6,7 +6,7 @@ fake factories."""
 import pytest
 
 import src.run as run
-from src.core import llm
+from src.clients import llm
 from src.delivery import site
 from src.tasks.newsletter import task as newsletter_task
 from tests.e2e.conftest import (

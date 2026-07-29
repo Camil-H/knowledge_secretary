@@ -1,4 +1,4 @@
-# src/core/gemini.py
+# src/clients/gemini.py
 """Google AI Studio transport: one paced, ledger-metered completion, and the tier loop over
 the free-tier model table.
 
@@ -150,7 +150,7 @@ def call(system: str, user: str, max_tokens: int | None, *, ledger: ledger_mod.L
     """First non-empty completion from the model table; "" when every model is spent, failing
     or empty.
 
-    AuthError propagates — the cross-tier decision belongs to the cascade in src/core/llm.py."""
+    AuthError propagates — the cross-tier decision belongs to the cascade in src/clients/llm.py."""
     config = types.GenerateContentConfig(system_instruction=system, max_output_tokens=max_tokens)
     for model in TEXT_MODELS:
         if not ledger_mod.available(ledger, model.id, model.rpd):

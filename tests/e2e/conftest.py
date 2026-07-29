@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from src.core import llm
+from src.clients import llm
 from src.delivery import site
 from src.fetchers import rss
 from src.fetchers import youtube as yt

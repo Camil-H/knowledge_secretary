@@ -179,7 +179,7 @@ def test_merge_ledger_tolerates_a_missing_side(side):
 
 
 def test_main_rejects_unexpected_conflicted_path(monkeypatch):
-    monkeypatch.setattr(reconcile, "_conflicted_paths", lambda: ["src/core/llm.py"])
+    monkeypatch.setattr(reconcile, "_conflicted_paths", lambda: ["src/clients/llm.py"])
     assert main() == 1
 
 

@@ -3,7 +3,7 @@
 import logging
 import sys
 
-from src.core import llm
+from src.clients import llm
 from src.core import state as state_mod
 from src.core.models import Context, State
 from src.core.registry import deliverers, tasks

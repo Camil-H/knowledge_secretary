@@ -3,7 +3,7 @@ and the ledger path is confined via chdir — no real request, key or wait."""
 
 import pytest
 
-from src.core import gemini, llm, openrouter
+from src.clients import gemini, llm, openrouter
 from src.core import ledger as ledger_mod
 from src.core.errors import AuthError, ExternalError
 

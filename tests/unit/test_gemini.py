@@ -4,7 +4,7 @@ the ledger path (via chdir) and sleep are all faked — no real request, key or 
 import pytest
 from google.genai import errors as genai_errors
 
-import src.core.gemini as gemini
+import src.clients.gemini as gemini
 from src.core import ledger as ledger_mod
 from src.core.errors import AuthError, ExternalError, QuotaExhausted
 

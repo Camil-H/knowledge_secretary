@@ -1,4 +1,4 @@
-# src/core/openrouter.py
+# src/clients/openrouter.py
 """OpenRouter transport: the live zero-cost model catalog, one chat completion, and the
 deadline-bounded tier loop over the ranked candidates.
 

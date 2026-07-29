@@ -5,7 +5,7 @@ import logging
 
 import pytest
 
-from src.core import gemini
+from src.clients import gemini
 from src.core import ledger as ledger_mod
 from src.core.errors import AuthError, ExternalError, QuotaExhausted
 from src.tasks.podcast import content_generator

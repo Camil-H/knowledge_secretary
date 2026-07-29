@@ -182,7 +182,7 @@ def test_generate_episode_hands_the_audio_layer_the_transcript_and_a_fresh_path(
 
 
 def test_generate_episode_passes_the_context_call_to_the_transcript_layer(monkeypatch):
-    """The transcript rides ctx.call, so its model cascade lives in one place — src.core.llm."""
+    """The transcript rides ctx.call, so its model cascade lives in one place — src.clients.llm."""
     seen = {}
 
     def _generate(topic, research, *, call):

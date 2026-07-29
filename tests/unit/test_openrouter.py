@@ -4,7 +4,7 @@ over the ranked candidates. httpx and sleep are faked — no real request, key o
 import httpx
 import pytest
 
-import src.core.openrouter as openrouter
+import src.clients.openrouter as openrouter
 from src.core.errors import AuthError, ExternalError
 
 # ----- test doubles -----

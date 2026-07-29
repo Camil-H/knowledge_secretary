@@ -1,4 +1,4 @@
-# src/core/llm.py
+# src/clients/llm.py
 """LLM transport: the Google AI Studio free tier first, OpenRouter's free models behind it.
 
 The two tiers are separate credentials on purpose — a broken Google key degrades to
@@ -9,7 +9,7 @@ Google's free tier has no quota API, so what is left of it is metered locally
 
 import logging
 
-from src.core import gemini, openrouter
+from src.clients import gemini, openrouter
 from src.core import ledger as ledger_mod
 from src.core.errors import AuthError
 
