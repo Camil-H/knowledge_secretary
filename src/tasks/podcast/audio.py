@@ -30,8 +30,7 @@ PCM_RATE_HZ = 24_000
 MP3_BITRATE = "32k"
 MAX_TURN_BYTES = 4500
 MONTH_CHAR_BUDGET = 1_000_000
-# the Cloud TTS key keeps its historical secret name, so no CI secret has to be rotated
-_TTS_KEY_LABEL = "GEMINI_API_KEY"
+_TTS_KEY_LABEL = "GOOGLE_CLOUD_TTS_KEY"
 _LANGUAGE_CODE = "en-US"
 _TTS_RETRIES = int(os.environ.get("TTS_RETRIES", "3"))
 _BACKOFF_START_S = 2
