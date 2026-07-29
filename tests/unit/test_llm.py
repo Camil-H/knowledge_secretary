@@ -4,6 +4,7 @@ and the ledger path is confined via chdir — no real request, key or wait."""
 import pytest
 
 from src.core import gemini, llm, openrouter
+from src.core import ledger as ledger_mod
 from src.core.errors import AuthError, ExternalError
 
 # ----- test doubles -----
@@ -65,7 +66,7 @@ def test_call_prefers_the_gemini_tier(monkeypatch):
         "the user text",
         1234,
     )
-    assert call["ledger"]["models"] == {}  # today's ledger, loaded once for the whole cascade
+    assert call["ledger"][ledger_mod.BUCKETS] == {}
 
 
 def test_call_degrades_to_openrouter_when_the_google_tier_auth_fails(monkeypatch, caplog):

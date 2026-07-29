@@ -134,7 +134,7 @@ def test_research_degrades_to_empty_string(monkeypatch, raises):
 # ----- _generate_episode -----
 
 _TRANSCRIPT = "<Person1>Hello there.</Person1>\n<Person2>Glad to be here.</Person2>"
-_LEDGER = {"date": "2026-07-28", "models": {}}
+_LEDGER = {podcast_task.ledger_mod.BUCKETS: {}}
 
 
 def _stub_episode_collaborators(

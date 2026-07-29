@@ -127,7 +127,7 @@ def test_generate_raises_auth_error_without_a_key(monkeypatch):
         gemini.generate(gemini.TEXT_MODELS[0], "hi", _config(), ledger=ledger)
 
     assert calls == []
-    assert ledger["models"] == {}  # nothing was dispatched, so nothing was spent
+    assert ledger[ledger_mod.BUCKETS] == {}  # nothing was dispatched, so nothing was spent
 
 
 @pytest.mark.parametrize(
@@ -170,7 +170,7 @@ def test_generate_consumes_budget_at_dispatch(monkeypatch, script, expected_disp
     except ExternalError:
         pass
 
-    assert ledger["models"][model.id]["requests"] == expected_dispatches
+    assert ledger[ledger_mod.BUCKETS][model.id]["requests"] == expected_dispatches
     assert len(models.calls) == expected_dispatches
 
 
@@ -182,7 +182,7 @@ def test_generate_writes_the_dispatch_through_to_disk(monkeypatch):
         gemini.generate(model, "hi", _config(), ledger=ledger_mod.load())
 
     reloaded = ledger_mod.load()
-    assert reloaded["models"][model.id]["requests"] == 1
+    assert reloaded[ledger_mod.BUCKETS][model.id]["requests"] == 1
     assert not ledger_mod.available(reloaded, model.id, model.rpd)
 
 
@@ -198,7 +198,7 @@ def test_generate_day_quota_retires_the_model_immediately(monkeypatch):
         gemini.generate(model, "hi", _config(), ledger=ledger)
 
     assert len(models.calls) == 1  # a day limit is not worth retrying
-    assert ledger["models"][model.id]["exhausted"] is True
+    assert ledger[ledger_mod.BUCKETS][model.id]["exhausted"] is True
 
 
 def test_generate_retires_a_model_the_api_does_not_know(monkeypatch):
@@ -226,7 +226,7 @@ def test_generate_retries_a_transient_429_then_retires_the_model(monkeypatch, pa
         gemini.generate(model, "hi", _config(), ledger=ledger)
 
     assert len(models.calls) == gemini._RATE_LIMIT_RETRIES
-    assert ledger["models"][model.id]["requests"] == gemini._RATE_LIMIT_RETRIES
+    assert ledger[ledger_mod.BUCKETS][model.id]["requests"] == gemini._RATE_LIMIT_RETRIES
 
 
 def test_generate_succeeds_after_a_minute_quota_retry(monkeypatch):

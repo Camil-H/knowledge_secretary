@@ -10,11 +10,13 @@ import json
 import subprocess
 import sys
 
+from src.core.ledger import BUCKETS
 from src.core.ledger import PATH as LEDGER_PATH
-from src.core.ledger import TTS_KEY
 
 STATE_PATH = "state/seen.json"
 _EMPTY_STATE: dict = {"ids": {}, "kv": {}}
+_ADDITIVE_FIELDS = ("requests", "chars")
+_OR_FIELDS = ("exhausted",)
 
 
 # == Merge ====================================================================
@@ -39,53 +41,47 @@ def merge_state(base: dict | None, a: dict | None, b: dict | None) -> dict:
 
 
 def merge_ledger(base: dict | None, a: dict | None, b: dict | None) -> dict:
-    """3-way merge of the LLM request ledger.
+    """3-way merge of the quota ledger: one rule per bucket, whatever it counts.
 
-    Same day: request counts are additive (`a + b - base`, floored by each side so a missing
-    base can't undercount) and `exhausted` is an OR — an undercount would cost at most one
-    extra 429, which itself retires the model. Different days: one side already rolled over,
-    so the newer record wins whole. The Cloud TTS character bucket is merged on its own month,
-    independently of the day."""
+    Every bucket carries its own period, so the day-scoped request counts and the
+    month-scoped TTS characters merge under the same rule rather than one each."""
     a, b = a or {}, b or {}
     if not a or not b:
         return a or b
-    merged = _merge_day(base, a, b)
-    tts = _merge_tts(base, a, b)
-    return {**merged, TTS_KEY: tts} if tts else merged
+    base_buckets, a_buckets, b_buckets = _buckets(base), _buckets(a), _buckets(b)
+    merged = {
+        name: _merge_bucket(base_buckets.get(name), a_buckets.get(name), b_buckets.get(name))
+        for name in a_buckets.keys() | b_buckets.keys()
+    }
+    return {BUCKETS: merged}
 
 
-def _merge_day(base: dict | None, a: dict, b: dict) -> dict:
-    if a.get("date") != b.get("date"):
-        newer = a if (a.get("date") or "") >= (b.get("date") or "") else b
-        return {"date": newer.get("date"), "models": newer.get("models", {})}
+def _merge_bucket(base: dict | None, a: dict | None, b: dict | None) -> dict:
+    """Within one period, counters are additive (`a + b - base`, floored by each side so a
+    missing base can't undercount) and `exhausted` is an OR — an undercount costs at most one
+    extra 429, which itself retires the model. Across periods one side already rolled over,
+    so the newer bucket wins whole."""
+    if not a or not b:
+        return a or b or {}
+    period = a.get("period")
+    if period != b.get("period"):
+        return a if (period or "") >= (b.get("period") or "") else b
+    if (base or {}).get("period") != period:
+        base = {}
+    merged = {**b, **a}
+    for field in _ADDITIVE_FIELDS:
+        if field in a or field in b:
+            a_count, b_count = a.get(field, 0), b.get(field, 0)
+            merged[field] = max(a_count, b_count, a_count + b_count - (base or {}).get(field, 0))
+    for field in _OR_FIELDS:
+        if field in a or field in b:
+            merged[field] = bool(a.get(field) or b.get(field))
+    return merged
 
-    base_models = (base or {}).get("models", {})
-    a_models, b_models = a.get("models", {}), b.get("models", {})
-    models = {}
-    for model in a_models.keys() | b_models.keys():
-        a_requests = a_models.get(model, {}).get("requests", 0)
-        b_requests = b_models.get(model, {}).get("requests", 0)
-        base_requests = base_models.get(model, {}).get("requests", 0)
-        models[model] = {
-            "requests": max(a_requests, b_requests, a_requests + b_requests - base_requests),
-            "exhausted": bool(
-                a_models.get(model, {}).get("exhausted") or b_models.get(model, {}).get("exhausted")
-            ),
-        }
-    return {"date": a.get("date"), "models": models}
 
-
-def _merge_tts(base: dict | None, a: dict, b: dict) -> dict | None:
-    a_tts, b_tts = a.get(TTS_KEY) or {}, b.get(TTS_KEY) or {}
-    if not a_tts or not b_tts:
-        return a_tts or b_tts or None
-    month = a_tts.get("month")
-    if month != b_tts.get("month"):
-        return a_tts if (month or "") >= (b_tts.get("month") or "") else b_tts
-    base_tts = (base or {}).get(TTS_KEY) or {}
-    base_chars = base_tts.get("chars", 0) if base_tts.get("month") == month else 0
-    a_chars, b_chars = a_tts.get("chars", 0), b_tts.get("chars", 0)
-    return {"month": month, "chars": max(a_chars, b_chars, a_chars + b_chars - base_chars)}
+def _buckets(ledger: dict | None) -> dict:
+    stored = (ledger or {}).get(BUCKETS)
+    return stored if isinstance(stored, dict) else {}
 
 
 def _merge_kv(base: dict, a: dict, b: dict) -> dict:

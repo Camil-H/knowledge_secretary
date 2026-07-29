@@ -5,6 +5,7 @@ import json
 
 import pytest
 
+from src.core.ledger import BUCKETS, TTS_KEY
 from src.delivery import reconcile
 from src.delivery.reconcile import (
     LEDGER_PATH,
@@ -67,10 +68,17 @@ def test_merge_state_kv_keeps_the_side_that_changed(a_queue, b_queue, expected):
 
 _MODEL = "gemini-3.6-flash"
 _DAY = "2026-07-28"
+_MONTH = "2026-07"
 
 
-def _ledger(requests: int, *, exhausted: bool = False, date: str = _DAY) -> dict:
-    return {"date": date, "models": {_MODEL: {"requests": requests, "exhausted": exhausted}}}
+def _ledger(requests: int, *, exhausted: bool = False, period: str = _DAY) -> dict:
+    bucket = {"period": period, "requests": requests, "exhausted": exhausted}
+    return {BUCKETS: {_MODEL: bucket}}
+
+
+def _with_tts(ledger: dict, chars: int, *, period: str = _MONTH) -> dict:
+    buckets = {**ledger[BUCKETS], TTS_KEY: {"period": period, "chars": chars}}
+    return {BUCKETS: buckets}
 
 
 @pytest.mark.parametrize(
@@ -79,11 +87,14 @@ def _ledger(requests: int, *, exhausted: bool = False, date: str = _DAY) -> dict
         pytest.param(_ledger(2), _ledger(5), _ledger(9), 12, id="additive_from_base"),
         pytest.param(None, _ledger(5), _ledger(9), 14, id="missing_base_sums_both_sides"),
         pytest.param(_ledger(5), _ledger(5), _ledger(5), 5, id="neither_side_moved"),
+        pytest.param(
+            _ledger(4, period="2026-07-27"), _ledger(5), _ledger(9), 14, id="base_rolled_over"
+        ),
     ],
 )
 def test_merge_ledger_adds_each_sides_new_requests(base, a, b, expected_requests):
     """Undercounting would cost at most one extra 429, but overcounting would waste budget."""
-    assert merge_ledger(base, a, b)["models"][_MODEL]["requests"] == expected_requests
+    assert merge_ledger(base, a, b)[BUCKETS][_MODEL]["requests"] == expected_requests
 
 
 @pytest.mark.parametrize(
@@ -92,13 +103,7 @@ def test_merge_ledger_adds_each_sides_new_requests(base, a, b, expected_requests
 )
 def test_merge_ledger_ors_exhaustion(a_exhausted, b_exhausted, expected):
     a, b = _ledger(1, exhausted=a_exhausted), _ledger(1, exhausted=b_exhausted)
-    assert merge_ledger(_ledger(0), a, b)["models"][_MODEL]["exhausted"] is expected
-
-
-def test_merge_ledger_keeps_the_newer_day_when_the_dates_differ():
-    older = {"date": "2026-07-27", "models": {_MODEL: {"requests": 9}}}
-    newer = {"date": _DAY, "models": {_MODEL: {"requests": 2}}}
-    assert merge_ledger(None, older, newer) == newer
+    assert merge_ledger(_ledger(0), a, b)[BUCKETS][_MODEL]["exhausted"] is expected
 
 
 @pytest.mark.parametrize(
@@ -110,57 +115,57 @@ def test_merge_ledger_keeps_the_newer_day_when_the_dates_differ():
     ],
 )
 def test_merge_ledger_adds_each_sides_new_tts_chars(base_chars, a_chars, b_chars, expected):
-    month = _DAY[:7]
+    """The character count merges under the same rule as the request counts."""
+    base = None if base_chars is None else _with_tts(_ledger(1), base_chars)
+    a, b = _with_tts(_ledger(1), a_chars), _with_tts(_ledger(1), b_chars)
 
-    def _with_tts(chars):
-        return {**_ledger(1), "tts": {"month": month, "chars": chars}}
-
-    base = None if base_chars is None else _with_tts(base_chars)
-    merged = merge_ledger(base, _with_tts(a_chars), _with_tts(b_chars))
-    assert merged["tts"] == {"month": month, "chars": expected}
+    merged = merge_ledger(base, a, b)
+    assert merged[BUCKETS][TTS_KEY] == {"period": _MONTH, "chars": expected}
 
 
-def test_merge_ledger_merges_tts_on_its_own_month_across_a_day_rollover():
-    """Both jobs of a month can straddle midnight; the characters still belong to one month."""
-    month = _DAY[:7]
-    a = {"date": "2026-07-27", "models": {}, "tts": {"month": month, "chars": 500}}
-    b = {"date": _DAY, "models": {}, "tts": {"month": month, "chars": 700}}
-
-    merged = merge_ledger(None, a, b)
-    assert merged["date"] == _DAY
-    assert merged["tts"]["chars"] == 1200
-
-
-def test_merge_ledger_keeps_the_newer_month_when_the_tts_months_differ():
-    a = {"date": _DAY, "models": {}, "tts": {"month": "2026-06", "chars": 900_000}}
-    b = {"date": _DAY, "models": {}, "tts": {"month": "2026-07", "chars": 1_000}}
-    assert merge_ledger(None, a, b)["tts"] == {"month": "2026-07", "chars": 1_000}
-
-
-def test_merge_ledger_keeps_a_tts_bucket_only_one_side_has():
-    bucket = {"month": "2026-07", "chars": 33}
-    a = {"date": _DAY, "models": {}, "tts": bucket}
-    b = {"date": _DAY, "models": {}}
-    assert merge_ledger(None, a, b)["tts"] == bucket
-
-
-def test_merge_ledger_omits_tts_when_neither_side_has_one():
-    assert "tts" not in merge_ledger(None, _ledger(1), _ledger(2))
+@pytest.mark.parametrize(
+    "name, older, newer",
+    [
+        pytest.param(
+            _MODEL,
+            {"period": "2026-07-27", "requests": 19},
+            {"period": _DAY, "requests": 2},
+            id="day",
+        ),
+        pytest.param(
+            TTS_KEY,
+            {"period": "2026-06", "chars": 900_000},
+            {"period": _MONTH, "chars": 1_000},
+            id="month",
+        ),
+    ],
+)
+def test_merge_ledger_keeps_the_newer_bucket_whole_when_the_periods_differ(name, older, newer):
+    """A rollover mid-conflict means the older bucket counts quota from a period that reset."""
+    a, b = {BUCKETS: {name: older}}, {BUCKETS: {name: newer}}
+    assert merge_ledger(a, a, b) == {BUCKETS: {name: newer}}
+    assert merge_ledger(a, b, a) == {BUCKETS: {name: newer}}
 
 
-def test_merge_ledger_keeps_models_only_one_side_has():
-    a = {"date": _DAY, "models": {_MODEL: {"requests": 3}}}
-    b = {"date": _DAY, "models": {"gemini-3.1-flash": {"requests": 7}}}
-    merged = merge_ledger(None, a, b)
-    assert merged["models"][_MODEL]["requests"] == 3
-    assert merged["models"]["gemini-3.1-flash"]["requests"] == 7
+def test_merge_ledger_scopes_each_bucket_to_its_own_period():
+    """One side rolled the day over while the month held: the day is replaced whole and the
+    characters still add up."""
+    a = _with_tts(_ledger(19, period="2026-07-27"), 500)
+    b = _with_tts(_ledger(2), 700)
+
+    merged = merge_ledger(None, a, b)[BUCKETS]
+    assert merged[_MODEL] == {"period": _DAY, "requests": 2, "exhausted": False}
+    assert merged[TTS_KEY] == {"period": _MONTH, "chars": 1200}
 
 
-def test_merge_ledger_keeps_the_newer_day_whole_across_a_rollover():
-    """A UTC-day rollover mid-conflict means the older record is spent quota from yesterday."""
-    yesterday, today = _ledger(19, date="2026-07-27"), _ledger(2)
-    assert merge_ledger(yesterday, yesterday, today) == today
-    assert merge_ledger(yesterday, today, yesterday) == today
+def test_merge_ledger_keeps_a_bucket_only_one_side_has():
+    a = _with_tts(_ledger(3), 33)
+    b = {BUCKETS: {"gemini-3.1-flash-lite": {"period": _DAY, "requests": 7}}}
+
+    merged = merge_ledger(None, a, b)[BUCKETS]
+    assert merged[_MODEL]["requests"] == 3
+    assert merged["gemini-3.1-flash-lite"]["requests"] == 7
+    assert merged[TTS_KEY]["chars"] == 33
 
 
 @pytest.mark.parametrize("side", ["a", "b"], ids=["theirs_missing", "ours_missing"])
@@ -207,4 +212,4 @@ def test_main_merges_a_conflicted_ledger(monkeypatch, tmp_path):
 
     assert main() == 0
     written = json.loads((tmp_path / LEDGER_PATH).read_text())
-    assert written["models"][_MODEL]["requests"] == 9
+    assert written[BUCKETS][_MODEL]["requests"] == 9
