@@ -1,18 +1,16 @@
-"""Cloud TTS orchestration: turn parsing, the voice registry, PCM stitching, the ffmpeg
-encode and the character meter. The TTS client, ffmpeg, the ledger and sleep are all faked —
-no request, key, binary or wait is real."""
+"""Cloud TTS orchestration: turn parsing, the voice registry, PCM stitching, the ffmpeg encode
+and the character meter. The TTS transport, ffmpeg and the ledger are all faked — no request,
+key or binary is real."""
 
 import pytest
 
 import src.tasks.podcast.audio as audio
+from src.clients.cloud_tts import AudioError
 from src.tasks.podcast.audio import (
     MAX_TURN_BYTES,
     MONTH_CHAR_BUDGET,
     MP3_BITRATE,
-    PCM_RATE_HZ,
     VOICES,
-    AudioError,
-    _strip_wav_header,
     _turns,
     synthesize,
 )
@@ -28,36 +26,18 @@ _OUT = "/tmp/does-not-matter/episode.mp3"
 # ----- test doubles -----
 
 
-def _wav(payload: bytes) -> bytes:
-    header = b"RIFF\x00\x00\x00\x00WAVEfmt \x10\x00\x00\x00" + b"\x00" * 16
-    return header + b"data" + len(payload).to_bytes(4, "little") + payload
+class _FakeTurnSynthesizer:
+    """Stands in for cloud_tts.synthesize_turn: records each turn, returns distinct frames."""
 
+    def __init__(self, raises: Exception | None = None) -> None:
+        self.calls: list[tuple[str, str]] = []
+        self.raises = raises
 
-class _Response:
-    def __init__(self, audio_content: bytes) -> None:
-        self.audio_content = audio_content
-
-
-class _FakeTTSClient:
-    """Records the request each turn composes and hands back distinguishable payloads."""
-
-    def __init__(self, raises: list[Exception] | None = None) -> None:
-        self.calls: list[dict] = []
-        self.raises = list(raises or [])
-
-    def synthesize_speech(self, *, input, voice, audio_config):
-        self.calls.append(
-            {
-                "text": input.text,
-                "voice_name": voice.name,
-                "language_code": voice.language_code,
-                "encoding": audio_config.audio_encoding,
-                "sample_rate": audio_config.sample_rate_hertz,
-            }
-        )
+    def __call__(self, text: str, voice: str) -> bytes:
+        self.calls.append((text, voice))
         if self.raises:
-            raise self.raises.pop(0)
-        return _Response(_wav(f"pcm{len(self.calls)}".encode()))
+            raise self.raises
+        return f"pcm{len(self.calls)}".encode()
 
 
 class _Completed:
@@ -78,9 +58,9 @@ class _FfmpegRecorder:
         return _Completed(self.returncode, stderr=b"x" * 10 + b"unsupported sample format")
 
 
-def _install(monkeypatch, *, client=None, ffmpeg=None, totals=None, has_ffmpeg=True):
-    """Fake every boundary; returns (client, ffmpeg recorder, list of metered char counts)."""
-    client = client or _FakeTTSClient()
+def _install(monkeypatch, *, turn=None, ffmpeg=None, totals=None, has_ffmpeg=True):
+    """Fake every boundary; returns (turn synthesizer, ffmpeg recorder, metered char counts)."""
+    turn = turn or _FakeTurnSynthesizer()
     ffmpeg = ffmpeg or _FfmpegRecorder()
     metered: list[int] = []
     totals = list(totals or [])
@@ -89,18 +69,13 @@ def _install(monkeypatch, *, client=None, ffmpeg=None, totals=None, has_ffmpeg=T
         metered.append(chars)
         return totals.pop(0) if totals else chars
 
-    monkeypatch.setattr(audio, "_client", lambda: client)
+    monkeypatch.setattr(audio.cloud_tts, "synthesize_turn", turn)
     monkeypatch.setattr(
         audio.shutil, "which", lambda name: "/usr/bin/ffmpeg" if has_ffmpeg else None
     )
     monkeypatch.setattr(audio.subprocess, "run", ffmpeg)
     monkeypatch.setattr(audio.ledger_mod, "consume_tts_chars", _consume)
-    return client, ffmpeg, metered
-
-
-@pytest.fixture(autouse=True)
-def _no_backoff_sleep(monkeypatch):
-    monkeypatch.setattr(audio.time, "sleep", lambda seconds: None)
+    return turn, ffmpeg, metered
 
 
 # ===== Synthesis =====
@@ -112,29 +87,13 @@ def test_synthesize_returns_the_out_path(monkeypatch):
 
 
 def test_synthesize_maps_each_speaker_to_its_registered_voice(monkeypatch):
-    client, _, _ = _install(monkeypatch)
+    turn, _, _ = _install(monkeypatch)
     synthesize(_TRANSCRIPT, _OUT, ledger={})
 
-    assert [call["voice_name"] for call in client.calls] == [
-        VOICES["Person1"],
-        VOICES["Person2"],
-        VOICES["Person1"],
-    ]
-    assert [call["text"] for call in client.calls] == [text for _, text in _turns(_TRANSCRIPT)]
+    assert turn.calls == [(text, VOICES[speaker]) for speaker, text in _turns(_TRANSCRIPT)]
 
 
-def test_synthesize_requests_linear16_at_the_pcm_rate(monkeypatch):
-    client, _, _ = _install(monkeypatch)
-    synthesize(_TRANSCRIPT, _OUT, ledger={})
-
-    expected = audio.texttospeech.AudioEncoding.LINEAR16
-    for call in client.calls:
-        assert call["language_code"] == audio._LANGUAGE_CODE
-        assert call["encoding"] == expected
-        assert call["sample_rate"] == PCM_RATE_HZ
-
-
-def test_synthesize_hands_ffmpeg_the_stripped_payloads_in_turn_order(monkeypatch):
+def test_synthesize_hands_ffmpeg_the_turn_payloads_in_order(monkeypatch):
     _, ffmpeg, _ = _install(monkeypatch)
     synthesize(_TRANSCRIPT, _OUT, ledger={})
 
@@ -149,34 +108,19 @@ def test_synthesize_encodes_mono_pcm_at_the_pinned_bitrate(monkeypatch):
     argv = ffmpeg.argv
     assert argv[0] == "ffmpeg"
     assert argv[-1] == _OUT
-    for pair in (["-f", "s16le"], ["-ar", str(PCM_RATE_HZ)], ["-ac", "1"], ["-b:a", MP3_BITRATE]):
+    rate = str(audio.cloud_tts.PCM_RATE_HZ)
+    for pair in (["-f", "s16le"], ["-ar", rate], ["-ac", "1"], ["-b:a", MP3_BITRATE]):
         index = argv.index(pair[0])
         assert argv[index : index + 2] == pair
 
 
-def test_synthesize_retries_a_transient_refusal_then_succeeds(monkeypatch):
-    failures: list[Exception] = [RuntimeError("429 quota exceeded")] * (audio._TTS_RETRIES - 1)
-    client, ffmpeg, _ = _install(monkeypatch, client=_FakeTTSClient(raises=failures))
+def test_synthesize_propagates_a_turn_failure(monkeypatch):
+    boom = AudioError("cloud-tts", detail="turn retries exhausted")
+    _install(monkeypatch, turn=_FakeTurnSynthesizer(raises=boom))
 
-    assert synthesize("<Person1>One line only.</Person1>", _OUT, ledger={}) == _OUT
-    assert len(client.calls) == audio._TTS_RETRIES
-
-
-def test_synthesize_gives_up_once_the_retries_are_spent(monkeypatch):
-    failures: list[Exception] = [RuntimeError("503 backend unavailable")] * audio._TTS_RETRIES
-    client, _, _ = _install(monkeypatch, client=_FakeTTSClient(raises=failures))
-
-    with pytest.raises(AudioError, match="503"):
-        synthesize("<Person1>One line only.</Person1>", _OUT, ledger={})
-    assert len(client.calls) == audio._TTS_RETRIES
-
-
-def test_synthesize_does_not_retry_a_non_transient_failure(monkeypatch):
-    client, _, _ = _install(monkeypatch, client=_FakeTTSClient(raises=[ValueError("bad voice")]))
-
-    with pytest.raises(AudioError, match="bad voice"):
+    with pytest.raises(AudioError) as ei:
         synthesize(_TRANSCRIPT, _OUT, ledger={})
-    assert len(client.calls) == 1
+    assert ei.value is boom
 
 
 @pytest.mark.parametrize(
@@ -226,12 +170,6 @@ def test_synthesize_stays_silent_under_the_month_budget(monkeypatch, caplog):
     assert caplog.records == []
 
 
-def test_client_without_a_key_is_an_audio_error(monkeypatch):
-    monkeypatch.delenv(audio._TTS_KEY_LABEL, raising=False)
-    with pytest.raises(AudioError, match=audio._TTS_KEY_LABEL):
-        audio._client()
-
-
 # ----- _turns -----
 
 
@@ -254,21 +192,3 @@ def test_turns_pairs_each_speaker_with_its_text():
 )
 def test_turns_edge_cases(transcript, expected):
     assert _turns(transcript) == expected
-
-
-# ----- _strip_wav_header -----
-
-
-def test_strip_wav_header_returns_the_data_chunk():
-    assert _strip_wav_header(_wav(b"frames")) == b"frames"
-
-
-@pytest.mark.parametrize(
-    "bare",
-    [b"\x01\x02\x03\x04", b"\x01\x02data\x03\x04"],
-    ids=["no_marker", "samples_containing_the_marker"],
-)
-def test_strip_wav_header_passes_through_bare_pcm(bare):
-    """A non-WAV LINEAR16 response must survive intact. The second row is the one that bites:
-    "data" occurs freely in real samples, so scanning unconditionally would truncate a turn."""
-    assert _strip_wav_header(bare) == bare

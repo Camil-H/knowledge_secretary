@@ -7,10 +7,10 @@ import os
 
 import pytest
 
+from src.clients.cloud_tts import AudioError
 from src.core.errors import AuthError
 from src.core.models import Context
 from src.tasks.podcast import task as podcast_task
-from src.tasks.podcast.audio import AudioError
 from src.tasks.podcast.task import DONE_KEY, _generate_episode, _research, run
 from src.tasks.podcast.transcript import TranscriptError
 
