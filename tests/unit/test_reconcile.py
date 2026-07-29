@@ -5,7 +5,7 @@ import json
 
 import pytest
 
-from src.core.ledger import BUCKETS, TTS_KEY
+from src.core.ledger import TTS_KEY
 from src.delivery import reconcile
 from src.delivery.reconcile import (
     LEDGER_PATH,
@@ -72,13 +72,11 @@ _MONTH = "2026-07"
 
 
 def _ledger(requests: int, *, exhausted: bool = False, period: str = _DAY) -> dict:
-    bucket = {"period": period, "requests": requests, "exhausted": exhausted}
-    return {BUCKETS: {_MODEL: bucket}}
+    return {_MODEL: {"period": period, "requests": requests, "exhausted": exhausted}}
 
 
 def _with_tts(ledger: dict, chars: int, *, period: str = _MONTH) -> dict:
-    buckets = {**ledger[BUCKETS], TTS_KEY: {"period": period, "chars": chars}}
-    return {BUCKETS: buckets}
+    return {**ledger, TTS_KEY: {"period": period, "chars": chars}}
 
 
 @pytest.mark.parametrize(
@@ -94,7 +92,7 @@ def _with_tts(ledger: dict, chars: int, *, period: str = _MONTH) -> dict:
 )
 def test_merge_ledger_adds_each_sides_new_requests(base, a, b, expected_requests):
     """Undercounting would cost at most one extra 429, but overcounting would waste budget."""
-    assert merge_ledger(base, a, b)[BUCKETS][_MODEL]["requests"] == expected_requests
+    assert merge_ledger(base, a, b)[_MODEL]["requests"] == expected_requests
 
 
 @pytest.mark.parametrize(
@@ -103,7 +101,7 @@ def test_merge_ledger_adds_each_sides_new_requests(base, a, b, expected_requests
 )
 def test_merge_ledger_ors_exhaustion(a_exhausted, b_exhausted, expected):
     a, b = _ledger(1, exhausted=a_exhausted), _ledger(1, exhausted=b_exhausted)
-    assert merge_ledger(_ledger(0), a, b)[BUCKETS][_MODEL]["exhausted"] is expected
+    assert merge_ledger(_ledger(0), a, b)[_MODEL]["exhausted"] is expected
 
 
 @pytest.mark.parametrize(
@@ -120,7 +118,7 @@ def test_merge_ledger_adds_each_sides_new_tts_chars(base_chars, a_chars, b_chars
     a, b = _with_tts(_ledger(1), a_chars), _with_tts(_ledger(1), b_chars)
 
     merged = merge_ledger(base, a, b)
-    assert merged[BUCKETS][TTS_KEY] == {"period": _MONTH, "chars": expected}
+    assert merged[TTS_KEY] == {"period": _MONTH, "chars": expected}
 
 
 @pytest.mark.parametrize(
@@ -140,29 +138,29 @@ def test_merge_ledger_adds_each_sides_new_tts_chars(base_chars, a_chars, b_chars
         ),
     ],
 )
-def test_merge_ledger_keeps_the_newer_bucket_whole_when_the_periods_differ(name, older, newer):
-    """A rollover mid-conflict means the older bucket counts quota from a period that reset."""
-    a, b = {BUCKETS: {name: older}}, {BUCKETS: {name: newer}}
-    assert merge_ledger(a, a, b) == {BUCKETS: {name: newer}}
-    assert merge_ledger(a, b, a) == {BUCKETS: {name: newer}}
+def test_merge_ledger_keeps_the_newer_entry_whole_when_the_periods_differ(name, older, newer):
+    """A rollover mid-conflict means the older entry counts quota from a period that reset."""
+    a, b = {name: older}, {name: newer}
+    assert merge_ledger(a, a, b) == {name: newer}
+    assert merge_ledger(a, b, a) == {name: newer}
 
 
-def test_merge_ledger_scopes_each_bucket_to_its_own_period():
+def test_merge_ledger_scopes_each_entry_to_its_own_period():
     """One side rolled the day over while the month held: the day is replaced whole and the
     characters still add up."""
     a = _with_tts(_ledger(19, period="2026-07-27"), 500)
     b = _with_tts(_ledger(2), 700)
 
-    merged = merge_ledger(None, a, b)[BUCKETS]
+    merged = merge_ledger(None, a, b)
     assert merged[_MODEL] == {"period": _DAY, "requests": 2, "exhausted": False}
     assert merged[TTS_KEY] == {"period": _MONTH, "chars": 1200}
 
 
-def test_merge_ledger_keeps_a_bucket_only_one_side_has():
+def test_merge_ledger_keeps_an_entry_only_one_side_has():
     a = _with_tts(_ledger(3), 33)
-    b = {BUCKETS: {"gemini-3.1-flash-lite": {"period": _DAY, "requests": 7}}}
+    b = {"gemini-3.1-flash-lite": {"period": _DAY, "requests": 7}}
 
-    merged = merge_ledger(None, a, b)[BUCKETS]
+    merged = merge_ledger(None, a, b)
     assert merged[_MODEL]["requests"] == 3
     assert merged["gemini-3.1-flash-lite"]["requests"] == 7
     assert merged[TTS_KEY]["chars"] == 33
@@ -212,4 +210,4 @@ def test_main_merges_a_conflicted_ledger(monkeypatch, tmp_path):
 
     assert main() == 0
     written = json.loads((tmp_path / LEDGER_PATH).read_text())
-    assert written[BUCKETS][_MODEL]["requests"] == 9
+    assert written[_MODEL]["requests"] == 9

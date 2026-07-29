@@ -10,7 +10,6 @@ import json
 import subprocess
 import sys
 
-from src.core.ledger import BUCKETS
 from src.core.ledger import PATH as LEDGER_PATH
 
 STATE_PATH = "state/seen.json"
@@ -41,26 +40,23 @@ def merge_state(base: dict | None, a: dict | None, b: dict | None) -> dict:
 
 
 def merge_ledger(base: dict | None, a: dict | None, b: dict | None) -> dict:
-    """3-way merge of the quota ledger: one rule per bucket, whatever it counts.
+    """3-way merge of the quota ledger: one rule per entry, whatever it counts.
 
-    Every bucket carries its own period, so the day-scoped request counts and the
+    Every entry carries its own period, so the day-scoped request counts and the
     month-scoped TTS characters merge under the same rule rather than one each."""
-    a, b = a or {}, b or {}
+    base, a, b = base or {}, a or {}, b or {}
     if not a or not b:
         return a or b
-    base_buckets, a_buckets, b_buckets = _buckets(base), _buckets(a), _buckets(b)
-    merged = {
-        name: _merge_bucket(base_buckets.get(name), a_buckets.get(name), b_buckets.get(name))
-        for name in a_buckets.keys() | b_buckets.keys()
+    return {
+        name: _merge_entry(base.get(name), a.get(name), b.get(name)) for name in a.keys() | b.keys()
     }
-    return {BUCKETS: merged}
 
 
-def _merge_bucket(base: dict | None, a: dict | None, b: dict | None) -> dict:
+def _merge_entry(base: dict | None, a: dict | None, b: dict | None) -> dict:
     """Within one period, counters are additive (`a + b - base`, floored by each side so a
     missing base can't undercount) and `exhausted` is an OR — an undercount costs at most one
     extra 429, which itself retires the model. Across periods one side already rolled over,
-    so the newer bucket wins whole."""
+    so the newer entry wins whole."""
     if not a or not b:
         return a or b or {}
     period = a.get("period")
@@ -77,11 +73,6 @@ def _merge_bucket(base: dict | None, a: dict | None, b: dict | None) -> dict:
         if field in a or field in b:
             merged[field] = bool(a.get(field) or b.get(field))
     return merged
-
-
-def _buckets(ledger: dict | None) -> dict:
-    stored = (ledger or {}).get(BUCKETS)
-    return stored if isinstance(stored, dict) else {}
 
 
 def _merge_kv(base: dict, a: dict, b: dict) -> dict:

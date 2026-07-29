@@ -88,7 +88,7 @@ def test_research_delegates_to_the_first_search_model_with_the_topic_as_input(mo
     assert call["model"] is _search_models()[0]
     assert call["contents"] == "PROTACs"
     assert call["config"].system_instruction == content_generator.PROMPT
-    assert call["ledger"][ledger_mod.BUCKETS] == {}
+    assert call["ledger"] == {}
 
 
 def test_research_enables_the_google_search_tool(monkeypatch):
