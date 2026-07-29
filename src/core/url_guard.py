@@ -9,7 +9,11 @@ space (loopback, RFC1918, link-local metadata endpoints, and the like).
 
 import ipaddress
 import socket
-from urllib.parse import urlsplit
+from urllib.parse import urljoin, urlsplit
+
+import httpx
+
+from src import config
 
 type IPAddress = ipaddress.IPv4Address | ipaddress.IPv6Address
 
@@ -46,6 +50,33 @@ def is_safe_url(url: str) -> bool:
         return True
     except UnsafeURLError:
         return False
+
+
+# == Guarded fetch =======================================================
+
+
+def fetch_following_safe_redirects(url: str) -> httpx.Response:
+    """GET `url` and return the final response, checking every hop against `assert_safe_url`.
+
+    Redirects are walked here rather than left to the http client: a client that follows them
+    internally validates only the URL it was handed, so a public URL can bounce the fetch into
+    private address space. Raises UnsafeURLError on an unsafe hop or a chain longer than
+    config.MAX_REDIRECT_HOPS; transport failures surface as httpx errors.
+    """
+    current = url
+    with httpx.Client(
+        timeout=config.HTTP_TIMEOUT_S,
+        follow_redirects=False,
+        headers={"User-Agent": config.HTTP_USER_AGENT},
+    ) as client:
+        for _ in range(config.MAX_REDIRECT_HOPS + 1):
+            assert_safe_url(current)
+            response = client.get(current)
+            location = response.headers.get("location")
+            if response.status_code not in config.REDIRECT_STATUSES or not location:
+                return response
+            current = urljoin(current, location)
+    raise UnsafeURLError(f"more than {config.MAX_REDIRECT_HOPS} redirects from {url}")
 
 
 # == Helper Functions ==

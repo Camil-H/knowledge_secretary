@@ -42,6 +42,10 @@ TTS_VOICES: dict[str, str] = {
 # on a large free model runs 20-90s, while a feed fetch that hangs is bounded by its own task.
 HTTP_TIMEOUT_S = 120
 
+# Sent on the guarded fetch: publishers that served trafilatura's own request happily will 403
+# a bare client, and the guard now issues the request itself.
+HTTP_USER_AGENT = "Mozilla/5.0 (compatible; KnowledgeSecretary/1.0)"
+
 ERROR_STATUS_FLOOR = 400
 UNAUTHORIZED_STATUS = 401
 FORBIDDEN_STATUS = 403
@@ -55,6 +59,11 @@ GATEWAY_TIMEOUT_STATUS = 504
 TRANSIENT_STATUSES = frozenset(
     {RATE_LIMIT_STATUS, SERVER_ERROR_STATUS, SERVICE_UNAVAILABLE_STATUS, GATEWAY_TIMEOUT_STATUS}
 )
+
+REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
+# Hops the guard walks itself, re-checking each one. An article sits one or two hops away
+# (http -> https, then the canonical URL); a longer chain is a loop or a tracker.
+MAX_REDIRECT_HOPS = 3
 
 # ----- LLM -----
 

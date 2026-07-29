@@ -10,6 +10,7 @@ import httpx
 import pytest
 
 from src.core.errors import AuthError
+from src.core.url_guard import UnsafeURLError
 from src.fetchers import openrxiv, pubmed, rss, x, youtube
 from src.fetchers import url as url_fetcher
 
@@ -30,9 +31,10 @@ class _BadJsonResp:
 
 
 class _FakeHttpResp:
-    def __init__(self, content=b"", status_code=200):
+    def __init__(self, content=b"", status_code=200, text=""):
         self.content = content
         self.status_code = status_code
+        self.text = text
 
 
 def _raiser(exc):
@@ -473,38 +475,42 @@ def test_openrxiv_parse_date(raw, expected):
 # ----- url.article_text -----
 
 
-def test_article_text_none_when_fetch_fails_without_extracting(monkeypatch):
-    monkeypatch.setattr(url_fetcher, "is_safe_url", lambda _u: True)
-    extract_calls = []
-    monkeypatch.setattr(url_fetcher.trafilatura, "fetch_url", lambda _u: None)
-    monkeypatch.setattr(
-        url_fetcher.trafilatura, "extract", lambda d: extract_calls.append(d) or "should-not-happen"
-    )
-
-    assert url_fetcher.article_text("http://x") is None
-    assert extract_calls == []
+def _patch_fetch(monkeypatch, result):
+    fetch = result if callable(result) else lambda _u: result
+    monkeypatch.setattr(url_fetcher, "fetch_following_safe_redirects", fetch)
 
 
 def test_article_text_returns_extracted_text_on_success(monkeypatch):
-    monkeypatch.setattr(url_fetcher, "is_safe_url", lambda _u: True)
-    monkeypatch.setattr(url_fetcher.trafilatura, "fetch_url", lambda _u: "<html>raw</html>")
+    _patch_fetch(monkeypatch, _FakeHttpResp(text="<html>raw</html>"))
     monkeypatch.setattr(url_fetcher.trafilatura, "extract", lambda d: f"extracted:{d}")
 
     assert url_fetcher.article_text("http://x") == "extracted:<html>raw</html>"
 
 
-def test_article_text_none_on_any_exception(monkeypatch):
-    monkeypatch.setattr(url_fetcher, "is_safe_url", lambda _u: True)
-    monkeypatch.setattr(url_fetcher.trafilatura, "fetch_url", _raiser(RuntimeError("boom")))
-    assert url_fetcher.article_text("http://x") is None
-
-
-def test_article_text_none_when_url_unsafe(monkeypatch):
-    monkeypatch.setattr(url_fetcher, "is_safe_url", lambda _u: False)
+@pytest.mark.parametrize(
+    "result",
+    [
+        pytest.param(_FakeHttpResp(text=""), id="empty_body"),
+        pytest.param(_FakeHttpResp(text="<html>err</html>", status_code=500), id="error_status"),
+        pytest.param(_raiser(UnsafeURLError("non-public host")), id="unsafe_hop"),
+        pytest.param(_raiser(httpx.TimeoutException("timed out")), id="transport_error"),
+    ],
+)
+def test_article_text_degrades_to_none_without_extracting(monkeypatch, caplog, result):
+    _patch_fetch(monkeypatch, result)
     monkeypatch.setattr(
-        url_fetcher.trafilatura, "fetch_url", _raiser(AssertionError("must not fetch"))
+        url_fetcher.trafilatura, "extract", _raiser(AssertionError("must not extract"))
     )
-    assert url_fetcher.article_text("http://169.254.169.254") is None
+
+    with caplog.at_level(logging.WARNING):
+        assert url_fetcher.article_text("http://x") is None
+    assert sum("degraded" in r.message for r in caplog.records) == 1
+
+
+def test_article_text_none_when_extraction_itself_raises(monkeypatch):
+    _patch_fetch(monkeypatch, _FakeHttpResp(text="<html>raw</html>"))
+    monkeypatch.setattr(url_fetcher.trafilatura, "extract", _raiser(RuntimeError("boom")))
+    assert url_fetcher.article_text("http://x") is None
 
 
 # ----- youtube.channel_videos (maps rss.fetch output) -----
