@@ -13,8 +13,8 @@ import subprocess
 
 from src import config
 from src.clients import cloud_tts
-from src.clients.cloud_tts import AudioError
 from src.core import ledger as ledger_mod
+from src.core.errors import AudioError
 from src.tasks.podcast.transcript import TURN_PATTERN
 
 logger = logging.getLogger(__name__)

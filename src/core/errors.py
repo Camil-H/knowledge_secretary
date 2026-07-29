@@ -23,3 +23,7 @@ class AuthError(ExternalError):
 
 class QuotaExhausted(ExternalError):
     """A model's free-tier quota is spent for the day — the caller tries the next candidate."""
+
+
+class AudioError(ExternalError):
+    """Episode audio could not be produced (synthesis or encoding failed)."""

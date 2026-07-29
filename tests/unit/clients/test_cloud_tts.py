@@ -7,7 +7,8 @@ from google.api_core import exceptions as api_errors
 
 import src.clients.cloud_tts as cloud_tts
 from src import config
-from src.clients.cloud_tts import AudioError, _is_transient, _strip_wav_header, synthesize_turn
+from src.clients.cloud_tts import _is_transient, _strip_wav_header, synthesize_turn
+from src.core.errors import AudioError
 
 _ResourceExhausted = api_errors.ResourceExhausted
 _Unavailable = api_errors.ServiceUnavailable

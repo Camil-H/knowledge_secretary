@@ -6,7 +6,7 @@ import pytest
 
 import src.tasks.podcast.audio as audio
 from src import config
-from src.clients.cloud_tts import AudioError
+from src.core.errors import AudioError
 from src.tasks.podcast.audio import _turns, synthesize
 
 _TRANSCRIPT = (

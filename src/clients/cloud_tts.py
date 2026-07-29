@@ -12,7 +12,7 @@ import time
 from google.cloud import texttospeech
 
 from src import config
-from src.core.errors import ExternalError
+from src.core.errors import AudioError
 
 logger = logging.getLogger(__name__)
 
@@ -21,13 +21,6 @@ SOURCE = "cloud-tts"
 _WAV_RIFF_MARKER = b"RIFF"
 _WAV_DATA_MARKER = b"data"
 _WAV_CHUNK_HEADER_BYTES = 8
-
-
-# == Exceptions ===============================================================
-
-
-class AudioError(ExternalError):
-    """Episode audio could not be produced (synthesis or encoding failed)."""
 
 
 # == Primitive ================================================================
