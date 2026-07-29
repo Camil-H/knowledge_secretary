@@ -71,12 +71,15 @@ OPENROUTER_PREFERRED_CONTEXT = [
 
 LOOKBACK_HOURS = 48  # feed-scan window; dedup filters already-seen items on top
 MAX_FETCH_WORKERS = 8
-PUBMED_RETMAX = 30
-OPENRXIV_MAX_PAGES = 20  # ~600 preprints; caps a busy window so one source can't stall the run
-X_TWEET_LIMIT = 20
 
 
 # == Newsletter ===============================================================
+
+# Per-source caps. They live here because the newsletter is the only task whose sources.yaml
+# uses these kinds; the fetchers themselves are generic.
+PUBMED_RETMAX = 30
+OPENRXIV_MAX_PAGES = 20  # ~600 preprints; caps a busy window so one source can't stall the run
+X_TWEET_LIMIT = 20
 
 NEWSLETTER_ITEM_CHAR_LIMIT = 20000
 # Sized for the smallest model call() might fall back to (~32k tokens), not the selected one —
