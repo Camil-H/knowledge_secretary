@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 import httpx
 
 from src import config
+from src.core.url_guard import UnsafeURLError, assert_safe_url
 
 logger = logging.getLogger(__name__)
 
@@ -20,9 +21,9 @@ def search_recent(
     try:
         reldate = max(1, (datetime.now(UTC) - since).days)
         idlist = (
-            httpx.get(
+            _guarded_json(
                 f"{_EUTILS}/esearch.fcgi",
-                params={
+                {
                     "db": "pubmed",
                     "term": " OR ".join(queries),
                     "datetype": "pdat",
@@ -31,24 +32,17 @@ def search_recent(
                     "sort": "date",
                     "retmode": "json",
                 },
-                timeout=config.HTTP_TIMEOUT_S,
             )
-            .json()
             .get("esearchresult", {})
             .get("idlist", [])
         )
         if not idlist:
             return []
 
-        result = (
-            httpx.get(
-                f"{_EUTILS}/esummary.fcgi",
-                params={"db": "pubmed", "id": ",".join(idlist), "retmode": "json"},
-                timeout=config.HTTP_TIMEOUT_S,
-            )
-            .json()
-            .get("result", {})
-        )
+        result = _guarded_json(
+            f"{_EUTILS}/esummary.fcgi",
+            {"db": "pubmed", "id": ",".join(idlist), "retmode": "json"},
+        ).get("result", {})
         out = []
         for pmid in result.get("uids", idlist):
             title = result.get(pmid, {}).get("title", "")
@@ -62,12 +56,18 @@ def search_recent(
                 }
             )
         return out
-    except (httpx.HTTPError, ValueError) as e:  # NCBI unreachable or unparseable response
+    except (UnsafeURLError, httpx.HTTPError, ValueError) as e:  # rejected, unreachable, unparseable
         logger.warning("⚠️ pubmed degraded: %s", e)
         return []
 
 
 # == Helper Functions =========================================================
+
+
+def _guarded_json(url: str, params: dict[str, str | int]) -> dict:
+    """GET an E-utilities endpoint through the SSRF guard and return its parsed JSON."""
+    assert_safe_url(url)
+    return httpx.get(url, params=params, timeout=config.HTTP_TIMEOUT_S).json()
 
 
 def _parse_date(raw: str, fallback: datetime) -> datetime:

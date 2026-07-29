@@ -44,6 +44,58 @@ def _raiser(exc):
     return _raise
 
 
+_GUARDED_FETCHERS = (rss, pubmed, openrxiv)
+
+
+@pytest.fixture(autouse=True)
+def _guard_allows_every_url(monkeypatch):
+    """These fetchers guard every URL before fetching; rejection has its own tests below."""
+    for module in _GUARDED_FETCHERS:
+        monkeypatch.setattr(module, "assert_safe_url", lambda _u: None)
+
+
+def _reject_urls(monkeypatch, module) -> list[str]:
+    """Make `module`'s guard reject every URL, recording any fetch that slips past it."""
+    fetched: list[str] = []
+    monkeypatch.setattr(module, "assert_safe_url", _raiser(UnsafeURLError("non-public host")))
+    monkeypatch.setattr(module.httpx, "get", lambda url, **_k: fetched.append(url))
+    return fetched
+
+
+# ----- the url guard, in every fetcher that applies it -----
+
+_SINCE = datetime(2024, 1, 1, tzinfo=UTC)
+
+
+@pytest.mark.parametrize(
+    ("module", "call", "degraded"),
+    [
+        pytest.param(
+            rss,
+            lambda: rss.fetch("http://169.254.169.254/feed"),
+            {"title": "", "entries": []},
+            id="rss",
+        ),
+        pytest.param(pubmed, lambda: pubmed.search_recent(["q"], _SINCE), [], id="pubmed"),
+        pytest.param(
+            openrxiv,
+            lambda: openrxiv.recent("biorxiv", ["neuroscience"], _SINCE),
+            [],
+            id="openrxiv",
+        ),
+    ],
+)
+def test_fetcher_degrades_without_fetching_when_the_guard_rejects(
+    monkeypatch, caplog, module, call, degraded
+):
+    fetched = _reject_urls(monkeypatch, module)
+
+    with caplog.at_level(logging.WARNING):
+        assert call() == degraded
+    assert fetched == []
+    assert any("degraded" in r.message for r in caplog.records)
+
+
 # ----- youtube.video_id_from_url -----
 
 

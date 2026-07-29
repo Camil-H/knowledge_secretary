@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 import httpx
 
 from src import config
+from src.core.url_guard import UnsafeURLError, assert_safe_url
 
 logger = logging.getLogger(__name__)
 
@@ -27,8 +28,9 @@ def recent(server: str, categories: list[str], since: datetime) -> list[dict]:
             server=server, frm=f"{since:%Y-%m-%d}", to=f"{today:%Y-%m-%d}", cursor=cursor
         )
         try:
+            assert_safe_url(url)
             payload = httpx.get(url, timeout=config.HTTP_TIMEOUT_S).json()
-        except (httpx.HTTPError, ValueError) as e:  # unreachable or unparseable
+        except (UnsafeURLError, httpx.HTTPError, ValueError) as e:  # rejected, unreachable, or bad
             logger.warning("⚠️ %s degraded: %s", server, e)
             break
         batch = payload.get("collection") or []

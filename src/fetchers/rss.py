@@ -8,6 +8,7 @@ import feedparser
 import httpx
 
 from src import config
+from src.core.url_guard import assert_safe_url
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +21,7 @@ def fetch(url: str) -> dict:
     underlying feedparser entry, for callers that need extras (e.g. yt_videoid).
     """
     try:
+        assert_safe_url(url)
         resp = httpx.get(url, timeout=config.HTTP_TIMEOUT_S)
         parsed = feedparser.parse(resp.content)
         status = resp.status_code
@@ -38,7 +40,7 @@ def fetch(url: str) -> dict:
             for e in parsed.entries
         ]
         return {"title": parsed.feed.get("title", ""), "entries": entries}
-    except Exception as e:  # httpx transport errors + feedparser's assorted malformed-feed errors
+    except Exception as e:  # guard rejection, httpx transport, or a malformed feed
         logger.warning("⚠️ rss %s degraded: %s", url, e)
         return {"title": "", "entries": []}
 
