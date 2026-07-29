@@ -120,21 +120,23 @@ def test_call_falls_through_to_the_next_model_on_other_error(monkeypatch):
     assert openrouter.call("s", "u", None) == "second"
 
 
-@pytest.mark.parametrize("candidates", [[], None], ids=["empty_list", "degraded_fetch"])
-def test_call_uses_the_fallback_model_when_none_resolve(monkeypatch, candidates):
-    if candidates is None:
-        monkeypatch.setattr(openrouter.httpx, "get", _raiser(httpx.HTTPError("boom")))
-    else:
-        monkeypatch.setattr(openrouter, "models", lambda: candidates)
-    seen = {}
+def test_models_stands_in_the_curated_list_when_the_catalog_is_unreachable(monkeypatch):
+    monkeypatch.setattr(openrouter.httpx, "get", _raiser(httpx.HTTPError("boom")))
+    assert openrouter.models() == config.OPENROUTER_PREFERRED_CONTEXT
+
+
+def test_call_walks_the_curated_list_when_the_catalog_is_unreachable(monkeypatch):
+    """A dead catalog must not reduce the tier to a single hardcoded id."""
+    monkeypatch.setattr(openrouter.httpx, "get", _raiser(httpx.HTTPError("boom")))
+    tried = []
 
     def _complete(model, messages, max_tokens):
-        seen["model"] = model
-        return "ok"
+        tried.append(model)
+        return "ok" if len(tried) == 2 else ""
 
     monkeypatch.setattr(openrouter, "complete", _complete)
     assert openrouter.call("s", "u", None) == "ok"
-    assert seen["model"] == config.OPENROUTER_FALLBACK_MODEL
+    assert tried == config.OPENROUTER_PREFERRED_CONTEXT[:2]
 
 
 def test_call_raises_auth_error_immediately(monkeypatch):

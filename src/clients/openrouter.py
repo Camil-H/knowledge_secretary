@@ -50,7 +50,7 @@ def call(system: str, user: str, max_tokens: int | None) -> str:
     auth failure raises immediately, other errors fall through, all-fail raises ExternalError.
     A wall-clock deadline caps total time so the cascade is abandoned rather than walking
     every model x retry."""
-    candidates = models() or [config.OPENROUTER_FALLBACK_MODEL]
+    candidates = models()
     messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
     deadline = time.monotonic() + config.OPENROUTER_DEADLINE_S
     last_err: Exception | None = None
@@ -132,9 +132,12 @@ def _reset_model_cache() -> None:
 def models() -> list[str]:
     """Zero-cost models, context-ranked, with the curated preferred ids leading.
 
-    A preferred id currently unavailable for free is silently skipped, and an empty live
-    fetch still yields []."""
+    A preferred id currently unavailable for free is silently skipped. When the catalog cannot
+    be fetched the curated list stands in unranked, so an unreachable catalog costs ranking
+    rather than the whole tier."""
     live = _free_models()
+    if not live:
+        return list(config.OPENROUTER_PREFERRED_CONTEXT)
     live_set = set(live)
     ordered_preferred = [m for m in config.OPENROUTER_PREFERRED_CONTEXT if m in live_set]
     preferred_set = set(ordered_preferred)

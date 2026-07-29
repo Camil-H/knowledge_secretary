@@ -53,7 +53,6 @@ OPENROUTER_KEY_LABEL = "OPENROUTER_API_KEY"
 OPENROUTER_FREE_LIMIT = 8
 # wall-clock cap for the whole cascade so a many-item run can't burn minutes on backoff sleep
 OPENROUTER_DEADLINE_S = 120.0
-OPENROUTER_FALLBACK_MODEL = "openrouter/google/gemma-4-31b-it:free"
 OPENROUTER_EXCLUDE_IDS = ("lyria", "content-safety", "openrouter/free")
 
 # Curated known-good free models, best first. Layered on top of the live ranking in
