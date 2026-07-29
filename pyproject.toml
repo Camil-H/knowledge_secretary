@@ -28,6 +28,9 @@ package = false            # this is an application, not an installable library
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+# the test tree mirrors src/, so basenames repeat (three test_task.py); importlib mode gives
+# each module a unique name without needing an __init__.py in every directory
+addopts = ["--import-mode=importlib"]
 
 [tool.ruff]
 line-length = 100
