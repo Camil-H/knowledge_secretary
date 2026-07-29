@@ -4,16 +4,15 @@ version = "0.1.0"
 description = "Daily $0 industry digest: newsletter, YouTube summaries, and a technical podcast."
 requires-python = ">=3.12"
 dependencies = [
-    "litellm>=1.50",
     "httpx>=0.27",
     "feedparser>=6.0",
     "trafilatura>=1.12",
     "youtube-transcript-api>=0.6,<1",
-    "podcastfy>=0.4",
-    "playwright>=1.40",
     "markdown>=3.6",
     "PyYAML>=6.0",
     "nh3>=0.3.6",
+    "google-genai>=1.75",
+    "google-cloud-texttospeech>=2.14",
 ]
 
 [dependency-groups]

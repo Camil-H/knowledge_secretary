@@ -1,5 +1,5 @@
 """Shared e2e sandbox: fakes every external boundary the pipeline touches (RSS,
-YouTube, LLM, podcastfy, gh) and confines state/history/output under tmp_path.
+YouTube, LLM, Cloud TTS, gh) and confines state/history/output under tmp_path.
 
 `run.main([...])` is driven for real — only the collaborators at the network/
 subprocess/LLM edge are stubbed, so the registry/gather/produce/deliver wiring
@@ -66,15 +66,6 @@ class _CompletedOK:
     returncode = 0
     stdout = "[]"  # empty release list for the prune step; ignored by create/upload
     stderr = ""
-
-
-def _async_return(value):
-    """An async collaborator stub that ignores its args and returns `value`."""
-
-    async def _fn(*args, **kwargs):
-        return value
-
-    return _fn
 
 
 def _raise(exc: Exception):
@@ -152,18 +143,23 @@ def _install_youtube_fakes(monkeypatch, *, bullet: str = "- key point"):
 def _install_podcast_fakes(monkeypatch, tmp_path, *, topic: str = "My Topic"):
     """Fakes the podcast boundary; returns the list `gh` invocations are recorded into."""
     monkeypatch.setattr(podcast_task, "TOPICS", [topic])
-    monkeypatch.setattr(podcast_task, "reachable_urls", _async_return(["https://a.com"]))
-    monkeypatch.setattr(llm, "resolve_models", lambda podcast=None: ["m/model"])
     monkeypatch.setattr(
-        llm, "call", lambda system, user, max_tokens=None: "https://a.com\nhttps://b.org"
+        podcast_task.content_generator, "research", lambda topic: _PODCAST_RESEARCH_TEXT
+    )
+    monkeypatch.setattr(
+        podcast_task.transcript,
+        "generate",
+        lambda topic, research, *, call: _PODCAST_TRANSCRIPT,
     )
 
     ep = tmp_path / "ep.mp3"
     ep.write_bytes(b"\x00")
 
-    import podcastfy.client
+    def _fake_synthesize(transcript, out_path, *, ledger):
+        assert transcript  # the audio layer must receive our transcript, not regenerate one
+        return str(ep)
 
-    monkeypatch.setattr(podcastfy.client, "generate_podcast", lambda **kw: str(ep))
+    monkeypatch.setattr(podcast_task.audio, "synthesize", _fake_synthesize)
     monkeypatch.setenv("GITHUB_REPOSITORY", "org/repo")
 
     calls: list[list[str]] = []
@@ -177,14 +173,17 @@ def _install_podcast_fakes(monkeypatch, tmp_path, *, topic: str = "My Topic"):
 
 
 def _install_all_llm(monkeypatch, *, newsletter_markdown: str, youtube_bullet: str):
-    """One llm.call fake keyed on `system`, so newsletter + youtube + podcast-discovery
-    can all be exercised in the same run without clobbering each other's stub."""
+    """One llm.call fake keyed on `system` so newsletter + youtube can be exercised in the
+    same run without clobbering each other's stub. The podcast no longer routes through
+    llm.call — its research goes straight to content_generator."""
 
     def _call(system, user, max_tokens=None):
         if system == newsletter_task.EDITOR_PROMPT:
             return newsletter_markdown
-        if system == youtube_task.PROMPT:
-            return youtube_bullet
-        return "https://a.com\nhttps://b.org"
+        return youtube_bullet
 
     monkeypatch.setattr(llm, "call", _call)
+
+
+_PODCAST_RESEARCH_TEXT = "search-grounded overview of the topic"
+_PODCAST_TRANSCRIPT = "<Person1>Hello there.</Person1>\n<Person2>Glad to be here.</Person2>"

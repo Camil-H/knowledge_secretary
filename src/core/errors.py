@@ -19,3 +19,7 @@ class ExternalError(Exception):
 
 class AuthError(ExternalError):
     """A credential / authorization failure — propagated, never degraded."""
+
+
+class QuotaExhausted(ExternalError):
+    """A model's free-tier quota is spent for the day — the caller tries the next candidate."""
