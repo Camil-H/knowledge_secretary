@@ -10,8 +10,8 @@ from pathlib import Path
 
 from google.genai import types
 
+from src.core import gemini
 from src.core import ledger as ledger_mod
-from src.core import llm
 
 logger = logging.getLogger(__name__)
 
@@ -32,9 +32,7 @@ def research(topic: str) -> str:
         tools=[types.Tool(google_search=types.GoogleSearch())],
         system_instruction=PROMPT,
     )
-    response = llm.gemini_generate(
-        llm.GEMINI_TEXT_MODELS[0], topic, config, ledger=ledger_mod.load()
-    )
+    response = gemini.generate(gemini.TEXT_MODELS[0], topic, config, ledger=ledger_mod.load())
     _log_sources(response)
     return response.text or ""
 

@@ -5,7 +5,7 @@ import logging
 
 import pytest
 
-from src.core import llm
+from src.core import gemini
 from src.tasks.podcast import content_generator
 from src.tasks.podcast.content_generator import research
 
@@ -43,14 +43,14 @@ def _sandbox_ledger(monkeypatch, tmp_path):
 
 
 def _stub_primitive(monkeypatch, response):
-    """Replace llm.gemini_generate; returns the list its calls are recorded into."""
+    """Replace gemini.generate; returns the list its calls are recorded into."""
     calls = []
 
     def _generate(model, contents, config, *, ledger):
         calls.append({"model": model, "contents": contents, "config": config, "ledger": ledger})
         return response
 
-    monkeypatch.setattr(content_generator.llm, "gemini_generate", _generate)
+    monkeypatch.setattr(content_generator.gemini, "generate", _generate)
     return calls
 
 
@@ -74,7 +74,7 @@ def test_research_delegates_to_the_first_gemini_model_with_the_topic_as_input(mo
     research("PROTACs")
 
     call = calls[0]
-    assert call["model"] is llm.GEMINI_TEXT_MODELS[0]
+    assert call["model"] is gemini.TEXT_MODELS[0]
     assert call["contents"] == "PROTACs"  # topic is the input; the prompt is the instruction
     assert call["config"].system_instruction == content_generator.PROMPT
     assert call["ledger"]["models"] == {}  # today's shared ledger, so research shares the budget
@@ -96,7 +96,7 @@ def test_research_propagates_primitive_failures(monkeypatch):
     def _generate(*_a, **_k):
         raise boom
 
-    monkeypatch.setattr(content_generator.llm, "gemini_generate", _generate)
+    monkeypatch.setattr(content_generator.gemini, "generate", _generate)
     with pytest.raises(RuntimeError) as ei:
         research("PROTACs")
     assert ei.value is boom
