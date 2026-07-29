@@ -62,7 +62,7 @@ def site(result: Result) -> None:
         audio_url = _upload_release_asset(
             result.artifacts[0], result.subject, result.meta.get("topic", ""), episode_repo
         )
-        _prune_old_releases(episode_repo, config.HISTORY_DAYS)
+        _prune_old_releases(episode_repo, config.RETENTION_DAYS)
         payload = {
             "kind": "podcast",
             "subject": result.subject,
@@ -76,7 +76,7 @@ def site(result: Result) -> None:
         payload["notices"] = result.notices
     entry["tasks"][task] = payload
     _save_entry(config.HISTORY_DIR, today, entry)
-    _prune(config.HISTORY_DIR, config.HISTORY_DAYS)
+    _prune(config.HISTORY_DIR, config.RETENTION_DAYS)
     logger.info("✅ site: recorded task %s for %s", task, today)
 
 
@@ -84,7 +84,7 @@ def site(result: Result) -> None:
 
 
 def render() -> None:
-    """Render the newest config.HISTORY_DAYS days of history into config.OUT_DIR/index.html.
+    """Render the newest config.RETENTION_DAYS days of history into config.OUT_DIR/index.html.
 
     Reads the history dir rather than the Result just delivered, so the page is a pure
     function of what is committed. That is what lets the two daily jobs publish in any
@@ -95,7 +95,7 @@ def render() -> None:
         with open(path) as f:
             entries.append(json.load(f))
     entries.sort(key=lambda e: e["date"], reverse=True)
-    entries = entries[: config.HISTORY_DAYS]
+    entries = entries[: config.RETENTION_DAYS]
 
     days_html = "\n".join(_render_day(entry, is_latest=(i == 0)) for i, entry in enumerate(entries))
     page = string.Template(_PAGE).substitute(
@@ -264,7 +264,7 @@ def _upload_release_asset(mp3_path: str, subject: str, topic: str, repo: str) ->
 
 def _prune_old_releases(repo: str, keep_days: int) -> None:
     """Delete podcast releases + tags older than keep_days so GH releases track the site's
-    config.HISTORY_DAYS window — the audio is only linked while its day is still displayed."""
+    config.RETENTION_DAYS window — the audio is only linked while its day is still displayed."""
     if not repo:
         return
     cutoff = (datetime.now(UTC).date() - timedelta(days=keep_days)).isoformat()

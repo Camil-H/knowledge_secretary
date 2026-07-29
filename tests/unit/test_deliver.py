@@ -162,7 +162,7 @@ def test_render_includes_a_day_this_process_never_delivered():
 
 
 def test_render_keeps_only_the_newest_history_days(monkeypatch):
-    monkeypatch.setattr(config, "HISTORY_DAYS", 2)
+    monkeypatch.setattr(config, "RETENTION_DAYS", 2)
     for date in ["2026-07-19", "2026-07-20", "2026-07-21"]:
         _write_day(date, f"Day {date}")
     site.render()

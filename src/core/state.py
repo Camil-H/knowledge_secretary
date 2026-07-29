@@ -38,7 +38,7 @@ def set_kv(state: State, key: str, value: Any) -> None:
     state["kv"][key] = value
 
 
-def prune(state: State, days: int = config.STATE_RETENTION_DAYS) -> None:
+def prune(state: State, days: int = config.RETENTION_DAYS) -> None:
     # ISO dates sort lexicographically == chronologically.
     cutoff = (datetime.now(UTC).date() - timedelta(days=days)).isoformat()
     state["ids"] = {k: v for k, v in state["ids"].items() if v >= cutoff}

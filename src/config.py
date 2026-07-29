@@ -126,10 +126,17 @@ TTS_VOICES: dict[str, str] = {
 }
 
 
+# == Retention ================================================================
+
+# One window for everything that expires together: how many days of history the site renders and
+# keeps, how long a podcast release is hosted, and how long an id stays "seen". These must agree —
+# ids expiring before their history card would let an item be re-fetched and published twice.
+RETENTION_DAYS = 7
+
+
 # == State ====================================================================
 
 STATE_PATH = "state/seen.json"
-STATE_RETENTION_DAYS = 7
 LEDGER_PATH = "state/llm_ledger.json"
 
 
@@ -140,5 +147,4 @@ SITE_SUBTITLE = os.environ.get(
     "SITE_SUBTITLE", "Daily newsletter, YouTube digest, and technical podcast"
 )
 HISTORY_DIR = "history"
-HISTORY_DAYS = 7
 OUT_DIR = "public"
