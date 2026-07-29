@@ -5,16 +5,16 @@ from datetime import UTC, datetime
 
 import httpx
 
+from src import config
+
 logger = logging.getLogger(__name__)
 
 _EUTILS = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
 _DATE_FORMATS = ("%Y %b %d", "%Y %b", "%Y/%m/%d", "%Y-%m-%d", "%Y")
-_HTTP_TIMEOUT_S = 30
-_DEFAULT_RETMAX = 30
 
 
 def search_recent(
-    queries: list[str], since: datetime, *, retmax: int = _DEFAULT_RETMAX
+    queries: list[str], since: datetime, *, retmax: int = config.PUBMED_RETMAX
 ) -> list[dict]:
     """Recent PubMed hits (esearch + esummary). Each: {pmid, title, published (UTC)}."""
     try:
@@ -31,7 +31,7 @@ def search_recent(
                     "sort": "date",
                     "retmode": "json",
                 },
-                timeout=_HTTP_TIMEOUT_S,
+                timeout=config.HTTP_TIMEOUT_S,
             )
             .json()
             .get("esearchresult", {})
@@ -44,7 +44,7 @@ def search_recent(
             httpx.get(
                 f"{_EUTILS}/esummary.fcgi",
                 params={"db": "pubmed", "id": ",".join(idlist), "retmode": "json"},
-                timeout=_HTTP_TIMEOUT_S,
+                timeout=config.HTTP_TIMEOUT_S,
             )
             .json()
             .get("result", {})

@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 
 import pytest
 
+from src import config
 from src.clients import llm
 from src.delivery import site
 from src.fetchers import rss
@@ -28,8 +29,8 @@ def _sandbox(tmp_path, monkeypatch):
     """Confine state/seen.json (via cwd — its path default is bound at def time,
     see plan note) and history/public (via site's module globals) under tmp_path."""
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(site, "HISTORY_DIR", str(tmp_path / "history"))
-    monkeypatch.setattr(site, "OUT_DIR", str(tmp_path / "public"))
+    monkeypatch.setattr(config, "HISTORY_DIR", str(tmp_path / "history"))
+    monkeypatch.setattr(config, "OUT_DIR", str(tmp_path / "public"))
     monkeypatch.delenv("GITHUB_REPOSITORY", raising=False)
 
 
@@ -46,14 +47,14 @@ def _read_state() -> dict:
 
 
 def _read_history(date: str) -> dict:
-    with open(os.path.join(site.HISTORY_DIR, f"{date}.json")) as f:
+    with open(os.path.join(config.HISTORY_DIR, f"{date}.json")) as f:
         return json.load(f)
 
 
 def _render_index() -> str:
     """Render the page as the publish action does, once the run's history is committed."""
     site.render()
-    with open(os.path.join(site.OUT_DIR, "index.html")) as f:
+    with open(os.path.join(config.OUT_DIR, "index.html")) as f:
         return f.read()
 
 

@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from src import config
 from src.core.models import Result
 from src.delivery import site
 
@@ -37,12 +38,12 @@ def _todays_tag() -> str:
 
 @pytest.fixture(autouse=True)
 def _tmp_paths(tmp_path, monkeypatch):
-    monkeypatch.setattr(site, "HISTORY_DIR", str(tmp_path / "history"))
-    monkeypatch.setattr(site, "OUT_DIR", str(tmp_path / "public"))
+    monkeypatch.setattr(config, "HISTORY_DIR", str(tmp_path / "history"))
+    monkeypatch.setattr(config, "OUT_DIR", str(tmp_path / "public"))
 
 
 def _index_html():
-    with open(os.path.join(site.OUT_DIR, "index.html")) as f:
+    with open(os.path.join(config.OUT_DIR, "index.html")) as f:
         return f.read()
 
 
@@ -54,7 +55,7 @@ def _rendered(result: Result) -> str:
 
 
 def _todays_tasks() -> dict:
-    return site._load_entry(site.HISTORY_DIR, datetime.now(UTC).strftime("%Y-%m-%d"))["tasks"]
+    return site._load_entry(config.HISTORY_DIR, datetime.now(UTC).strftime("%Y-%m-%d"))["tasks"]
 
 
 # ----- site: markdown tasks -----
@@ -80,7 +81,7 @@ def test_site_does_not_render_at_record_time():
     # rendered its own page would deploy one missing the other job's cards.
     site.site(Result(markdown="# News", meta={"task": "newsletter"}))
     assert "newsletter" in _todays_tasks()
-    assert not os.path.exists(os.path.join(site.OUT_DIR, "index.html"))
+    assert not os.path.exists(os.path.join(config.OUT_DIR, "index.html"))
 
 
 def test_site_podcast_uploads_and_renders_audio(monkeypatch):
@@ -103,7 +104,7 @@ def test_site_podcast_degrades_to_none_url_when_upload_fails(monkeypatch):
 
 def test_site_empty_result_is_noop():
     site.site(Result(meta={"task": "newsletter"}))
-    assert not glob.glob(os.path.join(site.HISTORY_DIR, "*.json"))
+    assert not glob.glob(os.path.join(config.HISTORY_DIR, "*.json"))
 
 
 def test_site_renders_notice_banner():
@@ -128,7 +129,7 @@ def test_site_notices_only_result_still_records():
 
 def _write_day(date: str, markdown: str) -> None:
     site._save_entry(
-        site.HISTORY_DIR,
+        config.HISTORY_DIR,
         date,
         {"date": date, "tasks": {"newsletter": {"kind": "markdown", "markdown": markdown}}},
     )
@@ -148,9 +149,9 @@ def test_render_includes_a_day_this_process_never_delivered():
     # render reads the history dir, so it can never publish a page that drops it.
     today = datetime.now(UTC).strftime("%Y-%m-%d")
     site.site(Result(markdown="# Mine", meta={"task": "youtube"}))
-    entry = site._load_entry(site.HISTORY_DIR, today)
+    entry = site._load_entry(config.HISTORY_DIR, today)
     entry["tasks"]["podcast"] = {"kind": "podcast", "topic": "Theirs", "audio_url": None}
-    site._save_entry(site.HISTORY_DIR, today, entry)
+    site._save_entry(config.HISTORY_DIR, today, entry)
 
     site.render()
 
@@ -161,7 +162,7 @@ def test_render_includes_a_day_this_process_never_delivered():
 
 
 def test_render_keeps_only_the_newest_history_days(monkeypatch):
-    monkeypatch.setattr(site, "HISTORY_DAYS", 2)
+    monkeypatch.setattr(config, "HISTORY_DAYS", 2)
     for date in ["2026-07-19", "2026-07-20", "2026-07-21"]:
         _write_day(date, f"Day {date}")
     site.render()
@@ -176,7 +177,7 @@ def test_render_keeps_only_the_newest_history_days(monkeypatch):
 def test_render_logs_the_newest_days_cards(caplog):
     _write_day("2026-07-26", "Older")
     site._save_entry(
-        site.HISTORY_DIR,
+        config.HISTORY_DIR,
         "2026-07-27",
         {
             "date": "2026-07-27",
@@ -197,7 +198,7 @@ def test_render_logs_the_newest_days_cards(caplog):
 
 
 def test_render_log_names_a_day_that_rendered_no_cards(caplog):
-    site._save_entry(site.HISTORY_DIR, "2026-07-27", {"date": "2026-07-27", "tasks": {}})
+    site._save_entry(config.HISTORY_DIR, "2026-07-27", {"date": "2026-07-27", "tasks": {}})
 
     with caplog.at_level(logging.INFO, logger="src.delivery.site"):
         site.render()

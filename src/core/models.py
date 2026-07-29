@@ -48,3 +48,26 @@ class Context:
     gather: Callable[[list[SourceSpec], datetime], list[Item]]
     call: Callable[..., str]
     logger: logging.Logger
+
+
+@dataclass(frozen=True)
+class ModelLimit:
+    """An AI Studio model with its free-tier ceilings — requests/day, requests/min, tokens/min —
+    and whether it can run the google_search grounding tool.
+
+    rpd is metered in the ledger; rpm/tpm drive proactive pacing. search is a hard gate, not a
+    preference: handing the tool to a model without it fails the request outright."""
+
+    id: str
+    rpd: int
+    rpm: int
+    tpm: int
+    search: bool
+
+
+@dataclass(frozen=True)
+class PartBudget:
+    """One transcript part's length contract."""
+
+    words: int  # soft target, written into the part instruction
+    max_tokens: int  # hard ceiling passed to call()

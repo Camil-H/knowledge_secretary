@@ -10,9 +10,8 @@ import json
 import subprocess
 import sys
 
-from src.core.ledger import PATH as LEDGER_PATH
+from src import config
 
-STATE_PATH = "state/seen.json"
 _EMPTY_STATE: dict = {"ids": {}, "kv": {}}
 _ADDITIVE_FIELDS = ("requests", "chars")
 _OR_FIELDS = ("exhausted",)
@@ -112,9 +111,9 @@ def main() -> int:
         base, ours, theirs = _blob(1, path), _blob(2, path), _blob(3, path)
         if path.startswith("history/"):
             merged = merge_history_entry(ours, theirs)
-        elif path == STATE_PATH:
+        elif path == config.STATE_PATH:
             merged = merge_state(base, ours, theirs)
-        elif path == LEDGER_PATH:
+        elif path == config.LEDGER_PATH:
             merged = merge_ledger(base, ours, theirs)
         else:
             print(f"reconcile: refusing to auto-merge unexpected path {path}", file=sys.stderr)

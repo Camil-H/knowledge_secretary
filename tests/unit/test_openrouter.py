@@ -5,6 +5,7 @@ import httpx
 import pytest
 
 import src.clients.openrouter as openrouter
+from src import config
 from src.core.errors import AuthError, ExternalError
 
 # ----- test doubles -----
@@ -81,7 +82,7 @@ def _patch_models(monkeypatch):
 def _isolate(monkeypatch):
     """No sleeps and no catalog memoized between tests."""
     monkeypatch.setattr(openrouter.time, "sleep", lambda _s: None)
-    monkeypatch.setenv(openrouter.KEY_LABEL, "or-key")
+    monkeypatch.setenv(config.OPENROUTER_KEY_LABEL, "or-key")
     openrouter._reset_model_cache()
     yield
     openrouter._reset_model_cache()
@@ -133,7 +134,7 @@ def test_call_uses_the_fallback_model_when_none_resolve(monkeypatch, candidates)
 
     monkeypatch.setattr(openrouter, "complete", _complete)
     assert openrouter.call("s", "u", None) == "ok"
-    assert seen["model"] == openrouter.FALLBACK_MODEL
+    assert seen["model"] == config.OPENROUTER_FALLBACK_MODEL
 
 
 def test_call_raises_auth_error_immediately(monkeypatch):
@@ -185,13 +186,13 @@ def test_call_persistent_rate_limit_exhausts_retries(monkeypatch, candidates, ex
         with pytest.raises(ExternalError):
             openrouter.call("s", "u", None)
 
-    assert calls["a"] == openrouter._RATE_LIMIT_RETRIES
+    assert calls["a"] == config.RATE_LIMIT_RETRIES
 
 
 def test_call_backoff_doubles_and_caps(monkeypatch):
     monkeypatch.setattr(openrouter, "models", lambda: ["openrouter/a:free"])
     retries = 7
-    monkeypatch.setattr(openrouter, "_RATE_LIMIT_RETRIES", retries)
+    monkeypatch.setattr(config, "RATE_LIMIT_RETRIES", retries)
     sleeps: list[float] = []
     monkeypatch.setattr(openrouter.time, "sleep", lambda s: sleeps.append(s))
     monkeypatch.setattr(openrouter, "complete", _raiser(_StatusErr("rate limit", status_code=429)))
@@ -200,10 +201,10 @@ def test_call_backoff_doubles_and_caps(monkeypatch):
         openrouter.call("s", "u", None)
 
     expected = []
-    backoff = openrouter._BACKOFF_START_S
+    backoff = config.BACKOFF_START_S
     for _ in range(retries - 1):
         expected.append(backoff)
-        backoff = min(backoff * 2, openrouter._BACKOFF_CAP_S)
+        backoff = min(backoff * 2, config.BACKOFF_CAP_S)
     assert sleeps == expected
 
 
@@ -212,8 +213,8 @@ def test_call_backoff_doubles_and_caps(monkeypatch):
 
 def test_call_abandons_the_cascade_once_the_deadline_is_exceeded(monkeypatch):
     _fake_clock(monkeypatch)
-    monkeypatch.setattr(openrouter, "_DEADLINE_S", 5.0)
-    candidates = [f"openrouter/m{i}:free" for i in range(openrouter._FREE_LIMIT)]
+    monkeypatch.setattr(config, "OPENROUTER_DEADLINE_S", 5.0)
+    candidates = [f"openrouter/m{i}:free" for i in range(config.OPENROUTER_FREE_LIMIT)]
     monkeypatch.setattr(openrouter, "models", lambda: candidates)
     tried = []
 
@@ -226,7 +227,7 @@ def test_call_abandons_the_cascade_once_the_deadline_is_exceeded(monkeypatch):
         openrouter.call("s", "u", None)
 
     assert len(set(tried)) < len(candidates)
-    assert len(tried) < len(candidates) * openrouter._RATE_LIMIT_RETRIES
+    assert len(tried) < len(candidates) * config.RATE_LIMIT_RETRIES
 
 
 # ----- empty / whitespace content -----
@@ -276,7 +277,7 @@ def test_complete_posts_the_openai_shaped_body(monkeypatch):
         "max_tokens": 99,
     }
     assert seen["headers"]["Authorization"].endswith("or-key")
-    assert seen["timeout"] == openrouter._HTTP_TIMEOUT_S
+    assert seen["timeout"] == config.HTTP_TIMEOUT_S
 
 
 @pytest.mark.parametrize(
@@ -321,10 +322,10 @@ def test_complete_truncates_the_error_body(monkeypatch):
 
 
 def test_complete_raises_auth_error_without_a_key(monkeypatch):
-    monkeypatch.delenv(openrouter.KEY_LABEL, raising=False)
+    monkeypatch.delenv(config.OPENROUTER_KEY_LABEL, raising=False)
     monkeypatch.setattr(openrouter.httpx, "post", _raiser(AssertionError("must not be called")))
 
-    with pytest.raises(AuthError, match=openrouter.KEY_LABEL):
+    with pytest.raises(AuthError, match=config.OPENROUTER_KEY_LABEL):
         openrouter.complete("openrouter/a:free", [], None)
 
 
@@ -384,8 +385,8 @@ def test_free_models_rank_key_handles_a_missing_context_length(monkeypatch):
 
 def test_models_prefers_curated_ids_present_in_live_list(monkeypatch):
     preferred_first, preferred_second = (
-        openrouter.PREFERRED_CONTEXT[0],
-        (openrouter.PREFERRED_CONTEXT[1]),
+        config.OPENROUTER_PREFERRED_CONTEXT[0],
+        (config.OPENROUTER_PREFERRED_CONTEXT[1]),
     )
     catalog = {
         "data": [
@@ -415,7 +416,7 @@ def test_models_prefers_curated_ids_present_in_live_list(monkeypatch):
 
 
 def test_models_skips_absent_preferred_ids_without_crashing(monkeypatch):
-    _patch_models(monkeypatch)  # none of PREFERRED_CONTEXT's ids are present
+    _patch_models(monkeypatch)  # none of OPENROUTER_PREFERRED_CONTEXT's ids are present
     assert openrouter.models() == ["openrouter/big-ctx", "openrouter/small-ctx"]
 
 

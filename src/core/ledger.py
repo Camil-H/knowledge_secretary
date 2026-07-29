@@ -21,11 +21,12 @@ import os
 from datetime import UTC, datetime
 from typing import Any
 
+from src import config
+
 logger = logging.getLogger(__name__)
 
 type Ledger = dict[str, Any]
 
-PATH = "state/llm_ledger.json"
 TTS_KEY = "cloud-tts"
 
 _DAY_FORMAT = "%Y-%m-%d"
@@ -38,7 +39,7 @@ _TTS_FIELDS: dict[str, Any] = {"chars": 0}
 # == Ledger ===================================================================
 
 
-def load(path: str = PATH) -> Ledger:
+def load(path: str = config.LEDGER_PATH) -> Ledger:
     """The ledger with every rolled-over entry dropped; a missing or unreadable file yields
     an empty one.
 
@@ -61,7 +62,7 @@ def load(path: str = PATH) -> Ledger:
     }
 
 
-def consume(ledger: Ledger, model: str, *, path: str = PATH) -> None:
+def consume(ledger: Ledger, model: str, *, path: str = config.LEDGER_PATH) -> None:
     """Count a dispatched request. Never refunded: a failed attempt may still have counted
     against the provider's quota."""
     entry = _entry(ledger, model, _today(), _REQUEST_FIELDS)
@@ -69,13 +70,13 @@ def consume(ledger: Ledger, model: str, *, path: str = PATH) -> None:
     _save(ledger, path)
 
 
-def mark_exhausted(ledger: Ledger, model: str, *, path: str = PATH) -> None:
+def mark_exhausted(ledger: Ledger, model: str, *, path: str = config.LEDGER_PATH) -> None:
     """Retire a model for the rest of the UTC day (its daily quota answered with a 429)."""
     _entry(ledger, model, _today(), _REQUEST_FIELDS)["exhausted"] = True
     _save(ledger, path)
 
 
-def consume_tts_chars(ledger: Ledger, chars: int, *, path: str = PATH) -> int:
+def consume_tts_chars(ledger: Ledger, chars: int, *, path: str = config.LEDGER_PATH) -> int:
     """Add chars to the current month's Cloud TTS entry (write-through); returns the month's
     running total. An entry left from an earlier month is reset, never carried forward."""
     entry = _entry(ledger, TTS_KEY, _this_month(), _TTS_FIELDS)

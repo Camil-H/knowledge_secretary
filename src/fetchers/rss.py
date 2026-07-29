@@ -7,9 +7,9 @@ from datetime import UTC, datetime
 import feedparser
 import httpx
 
-logger = logging.getLogger(__name__)
+from src import config
 
-_HTTP_TIMEOUT_S = 30
+logger = logging.getLogger(__name__)
 
 
 def fetch(url: str) -> dict:
@@ -20,7 +20,7 @@ def fetch(url: str) -> dict:
     underlying feedparser entry, for callers that need extras (e.g. yt_videoid).
     """
     try:
-        resp = httpx.get(url, timeout=_HTTP_TIMEOUT_S)
+        resp = httpx.get(url, timeout=config.HTTP_TIMEOUT_S)
         parsed = feedparser.parse(resp.content)
         status = resp.status_code
         if status >= 400 or (getattr(parsed, "bozo", 0) and not parsed.entries):

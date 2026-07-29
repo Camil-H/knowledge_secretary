@@ -3,16 +3,10 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from src import config
 from src.core.models import Context, Item
 from src.tasks.youtube import task as youtube_task
-from src.tasks.youtube.task import (
-    PROMPT,
-    TRANSCRIPT_CHAR_LIMIT,
-    _render,
-    _section_order,
-    _summarize,
-    run,
-)
+from src.tasks.youtube.task import PROMPT, _render, _section_order, _summarize, run
 
 _TEST_SPEC = {
     "key": "yt_x",
@@ -84,7 +78,7 @@ def test_summarize_composes_request_with_truncated_transcript():
         seen["user"] = user
         return "- b1"
 
-    long_text = "x" * (TRANSCRIPT_CHAR_LIMIT * 2)
+    long_text = "x" * (config.YOUTUBE_TRANSCRIPT_CHAR_LIMIT * 2)
     item = _video("yt:A", text=long_text)
     item.title = "Some Title"
     item.meta = {"channel": "Some Channel"}
@@ -94,9 +88,10 @@ def test_summarize_composes_request_with_truncated_transcript():
     assert seen["system"] == PROMPT
     assert "Title: Some Title" in seen["user"]
     assert "Channel: Some Channel" in seen["user"]
-    assert f"Transcript:\n{long_text[:TRANSCRIPT_CHAR_LIMIT]}" in seen["user"]
-    assert long_text[:TRANSCRIPT_CHAR_LIMIT] != long_text  # sanity: truncation actually bites
-    assert seen["user"].count("x") == TRANSCRIPT_CHAR_LIMIT
+    assert f"Transcript:\n{long_text[: config.YOUTUBE_TRANSCRIPT_CHAR_LIMIT]}" in seen["user"]
+    # sanity: truncation actually bites
+    assert long_text[: config.YOUTUBE_TRANSCRIPT_CHAR_LIMIT] != long_text
+    assert seen["user"].count("x") == config.YOUTUBE_TRANSCRIPT_CHAR_LIMIT
 
 
 def test_summarize_filters_blank_lines_from_reply():

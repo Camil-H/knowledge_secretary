@@ -5,6 +5,7 @@ request, key or wait."""
 import pytest
 
 import src.clients.cloud_tts as cloud_tts
+from src import config
 from src.clients.cloud_tts import AudioError, _is_transient, _strip_wav_header, synthesize_turn
 
 _VOICE = "en-US-Chirp3-HD-Iapetus"
@@ -56,7 +57,7 @@ def _isolate(monkeypatch):
     """No sleeps, no memoized client and no key carried between tests."""
     monkeypatch.setattr(cloud_tts.time, "sleep", lambda _s: None)
     monkeypatch.setattr(cloud_tts, "_CLIENT", None)
-    monkeypatch.delenv(cloud_tts.KEY_LABEL, raising=False)
+    monkeypatch.delenv(config.TTS_KEY_LABEL, raising=False)
 
 
 # ===== Primitive =====
@@ -71,9 +72,9 @@ def test_synthesize_turn_requests_the_text_and_voice_as_linear16_at_the_pcm_rate
         {
             "text": "Hello and welcome.",
             "voice_name": _VOICE,
-            "language_code": cloud_tts._LANGUAGE_CODE,
+            "language_code": config.TTS_LANGUAGE_CODE,
             "encoding": cloud_tts.texttospeech.AudioEncoding.LINEAR16,
-            "sample_rate": cloud_tts.PCM_RATE_HZ,
+            "sample_rate": config.TTS_PCM_RATE_HZ,
         }
     ]
 
@@ -84,20 +85,20 @@ def test_synthesize_turn_returns_the_frames_without_the_wav_container(monkeypatc
 
 
 def test_synthesize_turn_retries_a_transient_refusal_then_succeeds(monkeypatch):
-    failures: list[Exception] = [RuntimeError("429 quota exceeded")] * (cloud_tts._TTS_RETRIES - 1)
+    failures: list[Exception] = [RuntimeError("429 quota exceeded")] * (config.TTS_RETRIES - 1)
     client = _fake_client(monkeypatch, failures)
 
     assert synthesize_turn("One line only.", _VOICE)
-    assert len(client.calls) == cloud_tts._TTS_RETRIES
+    assert len(client.calls) == config.TTS_RETRIES
 
 
 def test_synthesize_turn_gives_up_once_the_retries_are_spent(monkeypatch):
-    failures: list[Exception] = [RuntimeError("503 backend unavailable")] * cloud_tts._TTS_RETRIES
+    failures: list[Exception] = [RuntimeError("503 backend unavailable")] * config.TTS_RETRIES
     client = _fake_client(monkeypatch, failures)
 
     with pytest.raises(AudioError, match="503"):
         synthesize_turn("One line only.", _VOICE)
-    assert len(client.calls) == cloud_tts._TTS_RETRIES
+    assert len(client.calls) == config.TTS_RETRIES
 
 
 def test_synthesize_turn_does_not_retry_a_non_transient_failure(monkeypatch):
@@ -111,8 +112,8 @@ def test_synthesize_turn_does_not_retry_a_non_transient_failure(monkeypatch):
 def test_synthesize_turn_backs_off_with_a_capped_delay(monkeypatch):
     slept: list[float] = []
     monkeypatch.setattr(cloud_tts.time, "sleep", lambda seconds: slept.append(seconds))
-    monkeypatch.setattr(cloud_tts, "_TTS_RETRIES", 6)
-    monkeypatch.setattr(cloud_tts, "_BACKOFF_CAP_S", 4)
+    monkeypatch.setattr(config, "TTS_RETRIES", 6)
+    monkeypatch.setattr(config, "BACKOFF_CAP_S", 4)
     _fake_client(monkeypatch, [RuntimeError("429 quota")] * 6)
 
     with pytest.raises(AudioError):
@@ -121,7 +122,7 @@ def test_synthesize_turn_backs_off_with_a_capped_delay(monkeypatch):
 
 
 def test_client_without_a_key_is_an_audio_error():
-    with pytest.raises(AudioError, match=cloud_tts.KEY_LABEL):
+    with pytest.raises(AudioError, match=config.TTS_KEY_LABEL):
         cloud_tts._client()
 
 

@@ -10,6 +10,7 @@ from pathlib import Path
 
 from google.genai import types
 
+from src import config
 from src.clients import gemini
 from src.core import ledger as ledger_mod
 from src.core.errors import AuthError, ExternalError
@@ -31,16 +32,16 @@ def research(topic: str) -> str:
     an ungrounded overview defeats the point of this step. Runs on the shared Gemini primitive,
     so the day's ledger, pacing and error typing are the same as general text. AuthError
     propagates: a credential failure is not something a later candidate recovers from."""
-    config = types.GenerateContentConfig(
+    gen_config = types.GenerateContentConfig(
         tools=[types.Tool(google_search=types.GoogleSearch())],
         system_instruction=PROMPT,
     )
     ledger = ledger_mod.load()
-    for model in [m for m in gemini.TEXT_MODELS if m.search]:
+    for model in [m for m in config.GEMINI_TEXT_MODELS if m.search]:
         if not ledger_mod.available(ledger, model.id, model.rpd):
             continue
         try:
-            response = gemini.generate(model, topic, config, ledger=ledger)
+            response = gemini.generate(model, topic, gen_config, ledger=ledger)
         except AuthError:
             raise
         except ExternalError as e:

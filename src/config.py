@@ -1,0 +1,142 @@
+# src/config.py
+"""Every tunable knob for the whole app: timeouts, retry and backoff bounds, HTTP statuses,
+model rosters, prompt and character budgets, voices, persisted paths and output dirs.
+
+Values only. What deliberately stays next to the code that uses it: compiled patterns, the
+prompt files each task reads, the registries that map a kind to behaviour, and the
+wire-protocol literals a provider dictates — none of those are things an operator tunes.
+
+Readers import the module (`from src import config`) and reference `config.NAME`, so one
+definition is what every caller and every test sees.
+"""
+
+import os
+
+from src.core.models import ModelLimit, PartBudget
+
+# == HTTP =====================================================================
+
+# One value for every caller, so it has to cover the slowest legitimate one: an LLM completion
+# on a large free model runs 20-90s, while a feed fetch that hangs is bounded by its own task.
+HTTP_TIMEOUT_S = 120
+
+ERROR_STATUS_FLOOR = 400
+UNAUTHORIZED_STATUS = 401
+FORBIDDEN_STATUS = 403
+NOT_FOUND_STATUS = 404
+RATE_LIMIT_STATUS = 429
+
+
+# == LLM ======================================================================
+
+RATE_LIMIT_RETRIES = int(os.environ.get("LLM_RATE_LIMIT_RETRIES", "4"))
+BACKOFF_START_S = 2
+BACKOFF_CAP_S = 30
+
+# ----- Google AI Studio -----
+
+GEMINI_KEY_LABEL = "GOOGLE_AI_STUDIO_KEY"
+GEMINI_AUTH_STATUSES = (UNAUTHORIZED_STATUS, FORBIDDEN_STATUS)
+GEMINI_EST_OUTPUT_TOKENS = 2048
+
+# quality-descending, so the 500-rpd model is the safety net rather than the default
+GEMINI_TEXT_MODELS: list[ModelLimit] = [
+    ModelLimit("gemini-3.6-flash", rpd=20, rpm=5, tpm=250_000, search=True),
+    ModelLimit("gemini-3.5-flash", rpd=20, rpm=5, tpm=250_000, search=True),
+    ModelLimit("gemini-3.5-flash-lite", rpd=20, rpm=5, tpm=250_000, search=True),
+    ModelLimit("gemini-3.1-flash-lite", rpd=500, rpm=15, tpm=250_000, search=False),
+]
+
+# ----- OpenRouter -----
+
+OPENROUTER_KEY_LABEL = "OPENROUTER_API_KEY"
+OPENROUTER_FREE_LIMIT = int(os.environ.get("LLM_FREE_LIMIT", "8"))
+# wall-clock cap for the whole cascade so a many-item run can't burn minutes on backoff sleep
+OPENROUTER_DEADLINE_S = float(os.environ.get("LLM_DEADLINE_S", "120"))
+OPENROUTER_FALLBACK_MODEL = "openrouter/google/gemma-4-31b-it:free"
+OPENROUTER_EXCLUDE_IDS = ("lyria", "content-safety", "openrouter/free")
+
+# Curated known-good free models, best first. Layered on top of the live ranking in
+# openrouter.models(): a preferred id absent from the current live list is simply skipped.
+OPENROUTER_PREFERRED_CONTEXT = [
+    "openrouter/google/gemma-4-31b-it:free",
+    "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free",
+    "openrouter/google/gemma-4-26b-a4b-it:free",
+    "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
+    "openrouter/nvidia/nemotron-3-nano-30b-a3b:free",
+    "openrouter/openai/gpt-oss-20b:free",
+]
+
+
+# == Fetching =================================================================
+
+LOOKBACK_HOURS = 48  # feed-scan window; dedup filters already-seen items on top
+MAX_FETCH_WORKERS = 8
+PUBMED_RETMAX = 30
+OPENRXIV_MAX_PAGES = 20  # ~600 preprints; caps a busy window so one source can't stall the run
+X_TWEET_LIMIT = 20
+
+
+# == Newsletter ===============================================================
+
+NEWSLETTER_ITEM_CHAR_LIMIT = 20000
+# Sized for the smallest model call() might fall back to (~32k tokens), not the selected one —
+# we can't know which rung of the cascade answers.
+NEWSLETTER_TOTAL_CHAR_BUDGET = 120000
+NEWSLETTER_ITEM_CHAR_FLOOR = 1000
+
+
+# == YouTube ==================================================================
+
+YOUTUBE_TRANSCRIPT_CHAR_LIMIT = 12000
+
+
+# == Podcast ==================================================================
+
+# ----- Transcript -----
+
+TRANSCRIPT_PARTS = 8  # 1 intro + 6 body + 1 outro
+TRANSCRIPT_MAX_SOURCE_CHARS = 12000
+TRANSCRIPT_MAX_TURN_CHARS = 1200
+TRANSCRIPT_CONTEXT_TAIL_CHARS = 2500
+TRANSCRIPT_INTRO_SOURCE_CHARS = 1200
+
+# Word targets sum to 5,550 — set by the Cloud TTS monthly character budget at 30 episodes a
+# month, not by taste. Raising them costs money.
+TRANSCRIPT_PART_BUDGETS: dict[str, PartBudget] = {
+    "intro": PartBudget(words=250, max_tokens=600),
+    "body": PartBudget(words=800, max_tokens=1600),
+    "outro": PartBudget(words=500, max_tokens=1100),
+}
+
+# ----- Audio -----
+
+TTS_KEY_LABEL = "GOOGLE_CLOUD_TTS_KEY"
+TTS_LANGUAGE_CODE = "en-US"
+TTS_PCM_RATE_HZ = 24_000
+TTS_RETRIES = int(os.environ.get("TTS_RETRIES", "3"))
+TTS_MAX_TURN_BYTES = 4500
+TTS_MONTH_CHAR_BUDGET = 1_000_000
+TTS_MP3_BITRATE = "32k"
+TTS_VOICES: dict[str, str] = {
+    "Person1": "en-US-Chirp3-HD-Iapetus",
+    "Person2": "en-US-Chirp3-HD-Laomedeia",
+}
+
+
+# == State ====================================================================
+
+STATE_PATH = "state/seen.json"
+STATE_RETENTION_DAYS = 7
+LEDGER_PATH = "state/llm_ledger.json"
+
+
+# == Delivery =================================================================
+
+SITE_TITLE = os.environ.get("SITE_TITLE", "Knowledge Secretary")
+SITE_SUBTITLE = os.environ.get(
+    "SITE_SUBTITLE", "Daily newsletter, YouTube digest, and technical podcast"
+)
+HISTORY_DIR = "history"
+HISTORY_DAYS = 7
+OUT_DIR = "public"

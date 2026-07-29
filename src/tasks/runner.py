@@ -6,6 +6,7 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 
+from src import config
 from src.core import state as state_mod
 from src.core.errors import AuthError
 from src.core.models import Context, Item, Result, SourceSpec, State
@@ -13,9 +14,7 @@ from src.core.registry import enrichers, sources
 
 logger = logging.getLogger(__name__)
 
-LOOKBACK_HOURS = 48  # feed-scan window; dedup filters already-seen items on top
 _NOTICES_KEY = "_notices"  # transient: gather appends, run_source_task drains before state is saved
-_MAX_FETCH_WORKERS = 8
 
 
 def gather(specs: list[SourceSpec], state: State, since: datetime) -> list[Item]:
@@ -28,7 +27,7 @@ def gather(specs: list[SourceSpec], state: State, since: datetime) -> list[Item]
     def _fetch(spec: SourceSpec) -> list[Item]:
         return sources.get(spec["kind"])(spec, since, state)
 
-    workers = min(_MAX_FETCH_WORKERS, len(specs)) or 1
+    workers = min(config.MAX_FETCH_WORKERS, len(specs)) or 1
     with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = [pool.submit(_fetch, spec) for spec in specs]
 
@@ -75,7 +74,7 @@ def run_source_task(
     subject: str,
 ) -> Result:
     """Gather new items, render via `produce` -> markdown, consume all gathered."""
-    since = datetime.now(UTC) - timedelta(hours=LOOKBACK_HOURS)
+    since = datetime.now(UTC) - timedelta(hours=config.LOOKBACK_HOURS)
     items = ctx.gather(source_specs, since)
     notices = ctx.state.pop(_NOTICES_KEY, [])
     ctx.logger.info(f"{subject}: {len(items)} new item(s)")

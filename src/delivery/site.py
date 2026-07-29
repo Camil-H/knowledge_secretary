@@ -18,6 +18,7 @@ from urllib.parse import urlsplit
 import markdown
 import nh3
 
+from src import config
 from src.core.models import Result
 from src.core.registry import Registry, deliverers
 
@@ -36,13 +37,6 @@ _PAGE = (Path(__file__).parent / "template.html").read_text()
 _MARKDOWN_URL_SCHEMES = {"http", "https", "mailto"}
 _AUDIO_URL_SCHEMES = ("http", "https")
 
-TITLE = os.environ.get("SITE_TITLE", "Knowledge Secretary")
-SUBTITLE = os.environ.get(
-    "SITE_SUBTITLE", "Daily newsletter, YouTube digest, and technical podcast"
-)
-HISTORY_DIR = "history"
-HISTORY_DAYS = 7
-OUT_DIR = "public"
 RELEASE_TAG_PREFIX = "podcast-"
 
 
@@ -51,7 +45,7 @@ RELEASE_TAG_PREFIX = "podcast-"
 
 @deliverers.register("site")
 def site(result: Result) -> None:
-    """Store today's result under HISTORY_DIR keyed by task, then prune.
+    """Store today's result under config.HISTORY_DIR keyed by task, then prune.
 
     Recording only — the page is rendered later, by `render`, from the committed history."""
     task = result.meta.get("task", "")
@@ -60,7 +54,7 @@ def site(result: Result) -> None:
         return
 
     today = datetime.now(UTC).strftime("%Y-%m-%d")
-    entry = _load_entry(HISTORY_DIR, today)
+    entry = _load_entry(config.HISTORY_DIR, today)
 
     payload: Payload
     if result.artifacts:
@@ -68,7 +62,7 @@ def site(result: Result) -> None:
         audio_url = _upload_release_asset(
             result.artifacts[0], result.subject, result.meta.get("topic", ""), episode_repo
         )
-        _prune_old_releases(episode_repo, HISTORY_DAYS)
+        _prune_old_releases(episode_repo, config.HISTORY_DAYS)
         payload = {
             "kind": "podcast",
             "subject": result.subject,
@@ -81,8 +75,8 @@ def site(result: Result) -> None:
     if result.notices:
         payload["notices"] = result.notices
     entry["tasks"][task] = payload
-    _save_entry(HISTORY_DIR, today, entry)
-    _prune(HISTORY_DIR, HISTORY_DAYS)
+    _save_entry(config.HISTORY_DIR, today, entry)
+    _prune(config.HISTORY_DIR, config.HISTORY_DAYS)
     logger.info("✅ site: recorded task %s for %s", task, today)
 
 
@@ -90,26 +84,29 @@ def site(result: Result) -> None:
 
 
 def render() -> None:
-    """Render the newest HISTORY_DAYS days of history into OUT_DIR/index.html.
+    """Render the newest config.HISTORY_DAYS days of history into config.OUT_DIR/index.html.
 
     Reads the history dir rather than the Result just delivered, so the page is a pure
     function of what is committed. That is what lets the two daily jobs publish in any
     order: whichever renders last picks up the other's cards instead of dropping them.
     """
     entries = []
-    for path in glob.glob(os.path.join(HISTORY_DIR, "*.json")):
+    for path in glob.glob(os.path.join(config.HISTORY_DIR, "*.json")):
         with open(path) as f:
             entries.append(json.load(f))
     entries.sort(key=lambda e: e["date"], reverse=True)
-    entries = entries[:HISTORY_DAYS]
+    entries = entries[: config.HISTORY_DAYS]
 
     days_html = "\n".join(_render_day(entry, is_latest=(i == 0)) for i, entry in enumerate(entries))
     page = string.Template(_PAGE).substitute(
-        title=TITLE, subtitle=SUBTITLE, updated=datetime.now(UTC).isoformat(), days=days_html
+        title=config.SITE_TITLE,
+        subtitle=config.SITE_SUBTITLE,
+        updated=datetime.now(UTC).isoformat(),
+        days=days_html,
     )
 
-    os.makedirs(OUT_DIR, exist_ok=True)
-    out_path = os.path.join(OUT_DIR, "index.html")
+    os.makedirs(config.OUT_DIR, exist_ok=True)
+    out_path = os.path.join(config.OUT_DIR, "index.html")
     with open(out_path, "w") as f:
         f.write(page)
     # name the newest day's cards: the deployed page is what the run is judged on, and a
@@ -267,7 +264,7 @@ def _upload_release_asset(mp3_path: str, subject: str, topic: str, repo: str) ->
 
 def _prune_old_releases(repo: str, keep_days: int) -> None:
     """Delete podcast releases + tags older than keep_days so GH releases track the site's
-    HISTORY_DAYS window — the audio is only linked while its day is still displayed."""
+    config.HISTORY_DAYS window — the audio is only linked while its day is still displayed."""
     if not repo:
         return
     cutoff = (datetime.now(UTC).date() - timedelta(days=keep_days)).isoformat()

@@ -11,18 +11,13 @@ import time
 
 from google.cloud import texttospeech
 
+from src import config
 from src.core.errors import ExternalError
 
 logger = logging.getLogger(__name__)
 
-KEY_LABEL = "GOOGLE_CLOUD_TTS_KEY"
 SOURCE = "cloud-tts"
-PCM_RATE_HZ = 24_000
 
-_LANGUAGE_CODE = "en-US"
-_TTS_RETRIES = int(os.environ.get("TTS_RETRIES", "3"))
-_BACKOFF_START_S = 2
-_BACKOFF_CAP_S = 30
 _TRANSIENT_MARKERS = ("429", "quota", "503", "deadline")
 _WAV_RIFF_MARKER = b"RIFF"
 _WAV_DATA_MARKER = b"data"
@@ -42,21 +37,23 @@ _CLIENT: texttospeech.TextToSpeechClient | None = None
 
 
 def synthesize_turn(text: str, voice: str) -> bytes:
-    """One turn spoken by voice, as mono LINEAR16 PCM frames at PCM_RATE_HZ.
+    """One turn spoken by voice, as mono LINEAR16 PCM frames at config.TTS_PCM_RATE_HZ.
 
     A transient refusal is retried with capped exponential backoff, anything else raises
     AudioError immediately; the raise is the terminal signal, so no failure is logged here."""
     client = _client()
-    attempts = max(_TTS_RETRIES, 1)
-    backoff = _BACKOFF_START_S
+    attempts = max(config.TTS_RETRIES, 1)
+    backoff = config.BACKOFF_START_S
     for attempt in range(attempts):
         try:
             response = client.synthesize_speech(
                 input=texttospeech.SynthesisInput(text=text),
-                voice=texttospeech.VoiceSelectionParams(language_code=_LANGUAGE_CODE, name=voice),
+                voice=texttospeech.VoiceSelectionParams(
+                    language_code=config.TTS_LANGUAGE_CODE, name=voice
+                ),
                 audio_config=texttospeech.AudioConfig(
                     audio_encoding=texttospeech.AudioEncoding.LINEAR16,
-                    sample_rate_hertz=PCM_RATE_HZ,
+                    sample_rate_hertz=config.TTS_PCM_RATE_HZ,
                 ),
             )
         except Exception as e:
@@ -64,7 +61,7 @@ def synthesize_turn(text: str, voice: str) -> bytes:
                 raise AudioError(SOURCE, cause=e) from e
             logger.warning("⚠️ cloud tts: turn refused (%s); backoff %ss", e, backoff)
             time.sleep(backoff)
-            backoff = min(backoff * 2, _BACKOFF_CAP_S)
+            backoff = min(backoff * 2, config.BACKOFF_CAP_S)
             continue
         return _strip_wav_header(response.audio_content)
     raise AudioError(SOURCE, detail="turn retries exhausted")
@@ -74,9 +71,9 @@ def _client() -> texttospeech.TextToSpeechClient:
     """The memoized API-key client; a missing key fails the episode, not the run."""
     global _CLIENT
     if _CLIENT is None:
-        key = os.environ.get(KEY_LABEL)
+        key = os.environ.get(config.TTS_KEY_LABEL)
         if not key:
-            raise AudioError(SOURCE, detail=f"{KEY_LABEL} unset")
+            raise AudioError(SOURCE, detail=f"{config.TTS_KEY_LABEL} unset")
         _CLIENT = texttospeech.TextToSpeechClient(client_options={"api_key": key})
     return _CLIENT
 

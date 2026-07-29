@@ -3,13 +3,9 @@ repaired and stitched. The LLM seam is a recording stub — nothing here talks t
 
 import pytest
 
+from src import config
 from src.tasks.podcast.transcript import (
     _PART_INSTRUCTIONS,
-    CONTEXT_TAIL_CHARS,
-    MAX_SOURCE_CHARS,
-    MAX_TURN_CHARS,
-    PART_BUDGETS,
-    PARTS,
     PERSON1,
     PERSON2,
     TURN_PATTERN,
@@ -56,7 +52,7 @@ def _numbered_research(sentences: int = 600) -> str:
 def test_generate_returns_an_alternating_transcript():
     transcript = generate(_TOPIC, _research(), call=_Call())
     speakers = [m.group(1) for m in TURN_PATTERN.finditer(transcript)]
-    assert speakers == [PERSON1, PERSON2] * PARTS
+    assert speakers == [PERSON1, PERSON2] * config.TRANSCRIPT_PARTS
 
 
 @pytest.mark.parametrize(
@@ -73,13 +69,13 @@ def test_generate_composes_one_request_per_part_from_the_role_registry():
     call = _Call()
     generate(_TOPIC, _numbered_research(), call=call)
 
-    assert len(call.calls) == PARTS
+    assert len(call.calls) == config.TRANSCRIPT_PARTS
     for index, recorded in enumerate(call.calls):
-        budget = PART_BUDGETS[_part_role(index, PARTS)]
+        budget = config.TRANSCRIPT_PART_BUDGETS[_part_role(index, config.TRANSCRIPT_PARTS)]
         assert recorded["max_tokens"] == budget.max_tokens
         assert f"{budget.words} words" in recorded["system"]
         assert _TOPIC in recorded["system"]
-        assert str(MAX_TURN_CHARS) in recorded["system"]
+        assert str(config.TRANSCRIPT_MAX_TURN_CHARS) in recorded["system"]
 
     after_intro = [recorded["user"] for recorded in call.calls[1:]]
     assert len(set(after_intro)) == len(after_intro)
@@ -90,7 +86,7 @@ def test_generate_gives_each_part_only_its_own_role_instruction():
     generate(_TOPIC, _research(), call=call)
 
     for index, recorded in enumerate(call.calls):
-        role = _part_role(index, PARTS)
+        role = _part_role(index, config.TRANSCRIPT_PARTS)
         assert _PART_INSTRUCTIONS[role] in recorded["system"]
         others = [text for key, text in _PART_INSTRUCTIONS.items() if key != role]
         assert all(text not in recorded["system"] for text in others)
@@ -98,7 +94,7 @@ def test_generate_gives_each_part_only_its_own_role_instruction():
 
 def test_generate_bounds_the_rolling_context_handed_to_each_part():
     """Each part's prompt carries only a tail of the conversation, never the whole of it."""
-    call = _Call(turn_chars=MAX_TURN_CHARS - 100)
+    call = _Call(turn_chars=config.TRANSCRIPT_MAX_TURN_CHARS - 100)
     generate(_TOPIC, _research(), call=call)
 
     contexts = [
@@ -108,13 +104,13 @@ def test_generate_bounds_the_rolling_context_handed_to_each_part():
     ]
     assert contexts  # later parts do get the conversation so far
     assert _CONTEXT_MARKER not in call.calls[0]["system"]  # nothing precedes the intro
-    assert max(len(context) for context in contexts) == CONTEXT_TAIL_CHARS
+    assert max(len(context) for context in contexts) == config.TRANSCRIPT_CONTEXT_TAIL_CHARS
 
 
 def test_generate_caps_the_research_it_sends():
     tail = "TAILMARKER. " * 42
     call = _Call()
-    generate(_TOPIC, _research(MAX_SOURCE_CHARS) + tail[:500], call=call)
+    generate(_TOPIC, _research(config.TRANSCRIPT_MAX_SOURCE_CHARS) + tail[:500], call=call)
 
     sent = "".join(recorded["user"] for recorded in call.calls)
     assert "TAILMARKER" not in sent
@@ -166,7 +162,7 @@ def test_repair_truncates_an_over_cap_turn_at_a_sentence_boundary(caplog):
         repaired = _repair(raw, 2)
 
     first = TURN_PATTERN.findall(repaired)[0][1]
-    assert len(first) <= MAX_TURN_CHARS
+    assert len(first) <= config.TRANSCRIPT_MAX_TURN_CHARS
     assert first.endswith(".")
     assert any("⚠️" in record.message for record in caplog.records)
 

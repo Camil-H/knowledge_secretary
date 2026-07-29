@@ -5,13 +5,12 @@ import os
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from src import config
+
 from .models import Item, State
 
-DEFAULT_PATH = "state/seen.json"
-RETENTION_DAYS = 7
 
-
-def load(path: str = DEFAULT_PATH) -> State:
+def load(path: str = config.STATE_PATH) -> State:
     if os.path.exists(path):
         with open(path) as f:
             data = json.load(f)
@@ -39,13 +38,13 @@ def set_kv(state: State, key: str, value: Any) -> None:
     state["kv"][key] = value
 
 
-def prune(state: State, days: int = RETENTION_DAYS) -> None:
+def prune(state: State, days: int = config.STATE_RETENTION_DAYS) -> None:
     # ISO dates sort lexicographically == chronologically.
     cutoff = (datetime.now(UTC).date() - timedelta(days=days)).isoformat()
     state["ids"] = {k: v for k, v in state["ids"].items() if v >= cutoff}
 
 
-def save(state: State, path: str = DEFAULT_PATH) -> None:
+def save(state: State, path: str = config.STATE_PATH) -> None:
     d = os.path.dirname(path)
     if d:
         os.makedirs(d, exist_ok=True)

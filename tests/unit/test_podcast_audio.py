@@ -5,15 +5,9 @@ key or binary is real."""
 import pytest
 
 import src.tasks.podcast.audio as audio
+from src import config
 from src.clients.cloud_tts import AudioError
-from src.tasks.podcast.audio import (
-    MAX_TURN_BYTES,
-    MONTH_CHAR_BUDGET,
-    MP3_BITRATE,
-    VOICES,
-    _turns,
-    synthesize,
-)
+from src.tasks.podcast.audio import _turns, synthesize
 
 _TRANSCRIPT = (
     "<Person1>Hello and welcome to the show.</Person1>\n"
@@ -90,7 +84,9 @@ def test_synthesize_maps_each_speaker_to_its_registered_voice(monkeypatch):
     turn, _, _ = _install(monkeypatch)
     synthesize(_TRANSCRIPT, _OUT, ledger={})
 
-    assert turn.calls == [(text, VOICES[speaker]) for speaker, text in _turns(_TRANSCRIPT)]
+    assert turn.calls == [
+        (text, config.TTS_VOICES[speaker]) for speaker, text in _turns(_TRANSCRIPT)
+    ]
 
 
 def test_synthesize_hands_ffmpeg_the_turn_payloads_in_order(monkeypatch):
@@ -108,8 +104,8 @@ def test_synthesize_encodes_mono_pcm_at_the_pinned_bitrate(monkeypatch):
     argv = ffmpeg.argv
     assert argv[0] == "ffmpeg"
     assert argv[-1] == _OUT
-    rate = str(audio.cloud_tts.PCM_RATE_HZ)
-    for pair in (["-f", "s16le"], ["-ar", rate], ["-ac", "1"], ["-b:a", MP3_BITRATE]):
+    rate = str(config.TTS_PCM_RATE_HZ)
+    for pair in (["-f", "s16le"], ["-ar", rate], ["-ac", "1"], ["-b:a", config.TTS_MP3_BITRATE]):
         index = argv.index(pair[0])
         assert argv[index : index + 2] == pair
 
@@ -131,7 +127,7 @@ def test_synthesize_propagates_a_turn_failure(monkeypatch):
         ),
         pytest.param(_TRANSCRIPT, None, False, "ffmpeg", id="no_ffmpeg_binary"),
         pytest.param(
-            f"<Person1>{'x' * (MAX_TURN_BYTES + 1)}</Person1>",
+            f"<Person1>{'x' * (config.TTS_MAX_TURN_BYTES + 1)}</Person1>",
             None,
             True,
             "bytes",
@@ -154,7 +150,7 @@ def test_synthesize_meters_the_spoken_characters(monkeypatch):
 
 
 def test_synthesize_warns_but_proceeds_past_the_month_budget(monkeypatch, caplog):
-    _, ffmpeg, _ = _install(monkeypatch, totals=[MONTH_CHAR_BUDGET + 1])
+    _, ffmpeg, _ = _install(monkeypatch, totals=[config.TTS_MONTH_CHAR_BUDGET + 1])
 
     with caplog.at_level("WARNING"):
         assert synthesize(_TRANSCRIPT, _OUT, ledger={}) == _OUT
@@ -163,7 +159,7 @@ def test_synthesize_warns_but_proceeds_past_the_month_budget(monkeypatch, caplog
 
 
 def test_synthesize_stays_silent_under_the_month_budget(monkeypatch, caplog):
-    _install(monkeypatch, totals=[MONTH_CHAR_BUDGET])
+    _install(monkeypatch, totals=[config.TTS_MONTH_CHAR_BUDGET])
 
     with caplog.at_level("WARNING"):
         synthesize(_TRANSCRIPT, _OUT, ledger={})

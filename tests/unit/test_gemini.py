@@ -5,6 +5,7 @@ import pytest
 from google.genai import errors as genai_errors
 
 import src.clients.gemini as gemini
+from src import config
 from src.core import ledger as ledger_mod
 from src.core.errors import AuthError, ExternalError, QuotaExhausted
 
@@ -90,7 +91,7 @@ def _isolate(monkeypatch, tmp_path):
     monkeypatch.setattr(gemini.time, "sleep", lambda _s: None)
     monkeypatch.setattr(gemini, "_CLIENT", None)
     monkeypatch.setattr(gemini, "_NEXT_DISPATCH", {})
-    monkeypatch.delenv(gemini.KEY_LABEL, raising=False)
+    monkeypatch.delenv(config.GEMINI_KEY_LABEL, raising=False)
 
 
 # ===== Primitive =====
@@ -101,19 +102,19 @@ def _isolate(monkeypatch, tmp_path):
 def test_generate_returns_the_sdk_response(monkeypatch):
     response = _FakeGeminiResponse("an answer")
     _fake_google(monkeypatch, [response])
-    model = gemini.TEXT_MODELS[0]
+    model = config.GEMINI_TEXT_MODELS[0]
 
     assert gemini.generate(model, "hi", _config(), ledger=ledger_mod.load()) is response
 
 
 def test_generate_sends_the_model_contents_and_config(monkeypatch):
     models = _fake_google(monkeypatch, [_FakeGeminiResponse("ok")])
-    model = gemini.TEXT_MODELS[1]
-    config = _config(max_output_tokens=321)
+    model = config.GEMINI_TEXT_MODELS[1]
+    gen_config = _config(max_output_tokens=321)
 
-    gemini.generate(model, "the prompt", config, ledger=ledger_mod.load())
+    gemini.generate(model, "the prompt", gen_config, ledger=ledger_mod.load())
 
-    assert models.calls == [{"model": model.id, "contents": "the prompt", "config": config}]
+    assert models.calls == [{"model": model.id, "contents": "the prompt", "config": gen_config}]
 
 
 def test_generate_raises_auth_error_without_a_key(monkeypatch):
@@ -121,8 +122,8 @@ def test_generate_raises_auth_error_without_a_key(monkeypatch):
     monkeypatch.setattr(gemini.genai, "Client", lambda **kw: calls.append(kw))
     ledger = ledger_mod.load()
 
-    with pytest.raises(AuthError, match=gemini.KEY_LABEL):
-        gemini.generate(gemini.TEXT_MODELS[0], "hi", _config(), ledger=ledger)
+    with pytest.raises(AuthError, match=config.GEMINI_KEY_LABEL):
+        gemini.generate(config.GEMINI_TEXT_MODELS[0], "hi", _config(), ledger=ledger)
 
     assert calls == []
     assert ledger == {}
@@ -141,7 +142,7 @@ def test_generate_types_sdk_failures(monkeypatch, error, expected):
     _fake_google(monkeypatch, [error])
 
     with pytest.raises(expected) as ei:
-        gemini.generate(gemini.TEXT_MODELS[0], "hi", _config(), ledger=ledger_mod.load())
+        gemini.generate(config.GEMINI_TEXT_MODELS[0], "hi", _config(), ledger=ledger_mod.load())
 
     assert ei.value.cause is error
 
@@ -160,7 +161,7 @@ def test_generate_types_sdk_failures(monkeypatch, error, expected):
 def test_generate_consumes_budget_at_dispatch(monkeypatch, script, expected_dispatches):
     """A dispatched request is spent even when it fails — the provider may have counted it."""
     models = _fake_google(monkeypatch, script)
-    model = gemini.TEXT_MODELS[0]
+    model = config.GEMINI_TEXT_MODELS[0]
     ledger = ledger_mod.load()
 
     try:
@@ -174,7 +175,7 @@ def test_generate_consumes_budget_at_dispatch(monkeypatch, script, expected_disp
 
 def test_generate_writes_the_dispatch_through_to_disk(monkeypatch):
     _fake_google(monkeypatch, [_api_error(429, _DAY_QUOTA)])
-    model = gemini.TEXT_MODELS[0]
+    model = config.GEMINI_TEXT_MODELS[0]
 
     with pytest.raises(QuotaExhausted):
         gemini.generate(model, "hi", _config(), ledger=ledger_mod.load())
@@ -189,7 +190,7 @@ def test_generate_writes_the_dispatch_through_to_disk(monkeypatch):
 
 def test_generate_day_quota_retires_the_model_immediately(monkeypatch):
     models = _fake_google(monkeypatch, [_api_error(429, _DAY_QUOTA)])
-    model = gemini.TEXT_MODELS[0]
+    model = config.GEMINI_TEXT_MODELS[0]
     ledger = ledger_mod.load()
 
     with pytest.raises(QuotaExhausted, match=model.id):
@@ -204,7 +205,7 @@ def test_generate_retires_a_model_the_api_does_not_know(monkeypatch):
     its pacing delay and a failed request again. No id in the table is verified against a live
     API, so this is the expected fate of a wrong one."""
     models = _fake_google(monkeypatch, [_api_error(404), _FakeGeminiResponse("ok")])
-    model = gemini.TEXT_MODELS[0]
+    model = config.GEMINI_TEXT_MODELS[0]
     ledger = ledger_mod.load()
 
     with pytest.raises(ExternalError):
@@ -217,21 +218,21 @@ def test_generate_retires_a_model_the_api_does_not_know(monkeypatch):
 @pytest.mark.parametrize("payload", [_MINUTE_QUOTA, _UNSCOPED_QUOTA], ids=["minute", "unscoped"])
 def test_generate_retries_a_transient_429_then_retires_the_model(monkeypatch, payload):
     models = _fake_google(monkeypatch, [_api_error(429, payload)])
-    model = gemini.TEXT_MODELS[0]
+    model = config.GEMINI_TEXT_MODELS[0]
     ledger = ledger_mod.load()
 
     with pytest.raises(QuotaExhausted):
         gemini.generate(model, "hi", _config(), ledger=ledger)
 
-    assert len(models.calls) == gemini._RATE_LIMIT_RETRIES
-    assert ledger[model.id]["requests"] == gemini._RATE_LIMIT_RETRIES
+    assert len(models.calls) == config.RATE_LIMIT_RETRIES
+    assert ledger[model.id]["requests"] == config.RATE_LIMIT_RETRIES
 
 
 def test_generate_succeeds_after_a_minute_quota_retry(monkeypatch):
     models = _fake_google(
         monkeypatch, [_api_error(429, _MINUTE_QUOTA), _FakeGeminiResponse("second try")]
     )
-    model = gemini.TEXT_MODELS[0]
+    model = config.GEMINI_TEXT_MODELS[0]
 
     response = gemini.generate(model, "hi", _config(), ledger=ledger_mod.load())
 
@@ -241,27 +242,27 @@ def test_generate_succeeds_after_a_minute_quota_retry(monkeypatch):
 
 def test_generate_backoff_doubles_and_caps(monkeypatch):
     retries = 7  # enough attempts for the doubling sequence to actually hit the cap
-    monkeypatch.setattr(gemini, "_RATE_LIMIT_RETRIES", retries)
+    monkeypatch.setattr(config, "RATE_LIMIT_RETRIES", retries)
     _fake_google(monkeypatch, [_api_error(429, _MINUTE_QUOTA)])
     monkeypatch.setattr(gemini, "_pace", lambda *_a: None)  # pacing sleeps have their own tests
     sleeps: list[float] = []
     monkeypatch.setattr(gemini.time, "sleep", lambda s: sleeps.append(s))
 
     with pytest.raises(QuotaExhausted):
-        gemini.generate(gemini.TEXT_MODELS[0], "hi", _config(), ledger=ledger_mod.load())
+        gemini.generate(config.GEMINI_TEXT_MODELS[0], "hi", _config(), ledger=ledger_mod.load())
 
     expected = []
-    backoff = gemini._BACKOFF_START_S
+    backoff = config.BACKOFF_START_S
     for _ in range(retries - 1):  # one sleep per retried attempt, none after the last
         expected.append(backoff)
-        backoff = min(backoff * 2, gemini._BACKOFF_CAP_S)
+        backoff = min(backoff * 2, config.BACKOFF_CAP_S)
     assert sleeps == expected
 
 
 # ----- proactive pacing -----
 
 
-@pytest.mark.parametrize("model", gemini.TEXT_MODELS, ids=lambda m: m.id)
+@pytest.mark.parametrize("model", config.GEMINI_TEXT_MODELS, ids=lambda m: m.id)
 def test_generate_paces_consecutive_calls_to_the_same_model(monkeypatch, model):
     """Spacing comes from the row's own rpm, so a model with a wider allowance waits less."""
     clock = _fake_clock(monkeypatch)
@@ -277,7 +278,7 @@ def test_generate_paces_consecutive_calls_to_the_same_model(monkeypatch, model):
 def test_generate_paces_on_token_volume_when_it_dominates(monkeypatch):
     clock = _fake_clock(monkeypatch)
     _fake_google(monkeypatch, [_FakeGeminiResponse("ok")])
-    model = gemini.TEXT_MODELS[0]
+    model = config.GEMINI_TEXT_MODELS[0]
     contents = "x" * (model.tpm * 4)  # a full minute of tokens by the len//4 estimate
     ledger = ledger_mod.load()
 
@@ -292,7 +293,7 @@ def test_generate_does_not_pace_across_different_models(monkeypatch):
     _fake_google(monkeypatch, [_FakeGeminiResponse("ok")])
     ledger = ledger_mod.load()
 
-    for model in gemini.TEXT_MODELS:
+    for model in config.GEMINI_TEXT_MODELS:
         gemini.generate(model, "hi", _config(), ledger=ledger)
 
     assert clock["t"] == 0
@@ -329,7 +330,7 @@ def test_call_hands_the_system_prompt_and_max_tokens_to_the_model(monkeypatch):
 
 def test_call_skips_models_the_ledger_has_retired(monkeypatch):
     models = _fake_google(monkeypatch, [_FakeGeminiResponse("ok")])
-    first, second = gemini.TEXT_MODELS[0], gemini.TEXT_MODELS[1]
+    first, second = config.GEMINI_TEXT_MODELS[0], config.GEMINI_TEXT_MODELS[1]
     ledger = ledger_mod.load()
     ledger_mod.mark_exhausted(ledger, first.id)
 
@@ -339,7 +340,7 @@ def test_call_skips_models_the_ledger_has_retired(monkeypatch):
 
 def test_call_skips_models_that_spent_their_daily_budget(monkeypatch):
     models = _fake_google(monkeypatch, [_FakeGeminiResponse("ok")])
-    first, second = gemini.TEXT_MODELS[0], gemini.TEXT_MODELS[1]
+    first, second = config.GEMINI_TEXT_MODELS[0], config.GEMINI_TEXT_MODELS[1]
     ledger = ledger_mod.load()
     for _ in range(first.rpd):
         ledger_mod.consume(ledger, first.id)
@@ -358,7 +359,7 @@ def test_call_skips_models_that_spent_their_daily_budget(monkeypatch):
     ],
 )
 def test_call_advances_to_the_next_model(monkeypatch, failure):
-    first, second = gemini.TEXT_MODELS[0], gemini.TEXT_MODELS[1]
+    first, second = config.GEMINI_TEXT_MODELS[0], config.GEMINI_TEXT_MODELS[1]
     models = _fake_google(
         monkeypatch, [{first.id: failure, second.id: _FakeGeminiResponse("second model")}]
     )
@@ -370,7 +371,7 @@ def test_call_advances_to_the_next_model(monkeypatch, failure):
 def test_call_returns_empty_when_every_model_is_spent(monkeypatch):
     models = _fake_google(monkeypatch, [_FakeGeminiResponse("ok")])
     ledger = ledger_mod.load()
-    for model in gemini.TEXT_MODELS:
+    for model in config.GEMINI_TEXT_MODELS:
         ledger_mod.mark_exhausted(ledger, model.id)
 
     assert gemini.call("s", "u", None, ledger=ledger) == ""

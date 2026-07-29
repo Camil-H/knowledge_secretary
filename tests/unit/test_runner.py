@@ -12,10 +12,11 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from src import config
 from src.core.errors import AuthError
 from src.core.models import Context, Item
 from src.tasks import runner
-from src.tasks.runner import LOOKBACK_HOURS, gather, run_source_task
+from src.tasks.runner import gather, run_source_task
 
 
 class _FakeRegistry:
@@ -283,9 +284,9 @@ def test_run_source_task_since_is_derived_from_lookback_hours_constant():
         call=lambda *a, **k: "",
         logger=logging.getLogger("test"),
     )
-    before = datetime.now(UTC) - timedelta(hours=LOOKBACK_HOURS)
+    before = datetime.now(UTC) - timedelta(hours=config.LOOKBACK_HOURS)
     run_source_task(ctx, [_spec("k")], lambda ctx, items: "unused", "Subject")
-    after = datetime.now(UTC) - timedelta(hours=LOOKBACK_HOURS)
+    after = datetime.now(UTC) - timedelta(hours=config.LOOKBACK_HOURS)
 
     assert before <= captured["since"] <= after
 

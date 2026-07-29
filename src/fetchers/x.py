@@ -5,13 +5,13 @@ import logging
 import re
 import subprocess
 
+from src import config
 from src.core.errors import AuthError, ExternalError
 
 logger = logging.getLogger(__name__)
 
 _CLI = "twitter"
 _LIST_KEYS = ("tweets", "data", "results")
-_DEFAULT_LIMIT = 20
 # high-signal only — generic words like "session"/"cookie"/"expired" also show up in
 # unrelated network/timeout failures and would misclassify them as auth
 _AUTH_MARKERS = (
@@ -37,7 +37,7 @@ class UnexpectedXFormat(ExternalError):
 # == Fetch ====================================================================
 
 
-def recent_tweets(handle: str, *, limit: int = _DEFAULT_LIMIT) -> list[dict]:
+def recent_tweets(handle: str, *, limit: int = config.X_TWEET_LIMIT) -> list[dict]:
     """Recent tweets via `twitter user-posts <handle> --max N --json`; [] on failure
     (including a malformed handle, so one bad config entry doesn't sink the source)."""
     normalized = handle.removeprefix("@")

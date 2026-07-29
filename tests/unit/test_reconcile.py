@@ -5,15 +5,10 @@ import json
 
 import pytest
 
+from src import config
 from src.core.ledger import TTS_KEY
 from src.delivery import reconcile
-from src.delivery.reconcile import (
-    LEDGER_PATH,
-    main,
-    merge_history_entry,
-    merge_ledger,
-    merge_state,
-)
+from src.delivery.reconcile import main, merge_history_entry, merge_ledger, merge_state
 
 # ----- merge_history_entry -----
 
@@ -203,11 +198,11 @@ def test_main_unions_conflicted_history_file(monkeypatch, tmp_path):
 def test_main_merges_a_conflicted_ledger(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     (tmp_path / "state").mkdir()
-    monkeypatch.setattr(reconcile, "_conflicted_paths", lambda: [LEDGER_PATH])
+    monkeypatch.setattr(reconcile, "_conflicted_paths", lambda: [config.LEDGER_PATH])
     stages = {1: _ledger(1), 2: _ledger(4), 3: _ledger(6)}
     monkeypatch.setattr(reconcile, "_blob", lambda stage, _p: stages.get(stage))
     monkeypatch.setattr(reconcile.subprocess, "run", lambda argv, **k: None)
 
     assert main() == 0
-    written = json.loads((tmp_path / LEDGER_PATH).read_text())
+    written = json.loads((tmp_path / config.LEDGER_PATH).read_text())
     assert written[_MODEL]["requests"] == 9

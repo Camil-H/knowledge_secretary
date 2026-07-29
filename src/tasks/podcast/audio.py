@@ -11,6 +11,7 @@ import logging
 import shutil
 import subprocess
 
+from src import config
 from src.clients import cloud_tts
 from src.clients.cloud_tts import AudioError
 from src.core import ledger as ledger_mod
@@ -18,13 +19,6 @@ from src.tasks.podcast.transcript import TURN_PATTERN
 
 logger = logging.getLogger(__name__)
 
-VOICES: dict[str, str] = {
-    "Person1": "en-US-Chirp3-HD-Iapetus",
-    "Person2": "en-US-Chirp3-HD-Laomedeia",
-}
-MP3_BITRATE = "32k"
-MAX_TURN_BYTES = 4500
-MONTH_CHAR_BUDGET = 1_000_000
 _STDERR_TAIL_CHARS = 400
 
 
@@ -42,7 +36,9 @@ def synthesize(transcript: str, out_path: str, *, ledger: ledger_mod.Ledger) -> 
     _meter(ledger, turns)
 
     logger.info("🚀 podcast audio: %d turns via cloud tts", len(turns))
-    pcm = b"".join(cloud_tts.synthesize_turn(text, VOICES[speaker]) for speaker, text in turns)
+    pcm = b"".join(
+        cloud_tts.synthesize_turn(text, config.TTS_VOICES[speaker]) for speaker, text in turns
+    )
     _encode_mp3(pcm, out_path)
     logger.info("✅ podcast audio: %s from %d pcm bytes", out_path, len(pcm))
     return out_path
@@ -62,9 +58,9 @@ def _turns(transcript: str) -> list[tuple[str, str]]:
         if not text:
             continue
         size = len(text.encode())
-        if size > MAX_TURN_BYTES:
+        if size > config.TTS_MAX_TURN_BYTES:
             raise AudioError(
-                cloud_tts.SOURCE, detail=f"turn of {size} bytes exceeds {MAX_TURN_BYTES}"
+                cloud_tts.SOURCE, detail=f"turn of {size} bytes exceeds {config.TTS_MAX_TURN_BYTES}"
             )
         turns.append((match.group(1), text))
     return turns
@@ -77,14 +73,14 @@ def _meter(ledger: ledger_mod.Ledger, turns: list[tuple[str, str]]) -> None:
     costs the day's episode."""
     chars = sum(len(text) for _, text in turns)
     month_total = ledger_mod.consume_tts_chars(ledger, chars)
-    if month_total > MONTH_CHAR_BUDGET:
+    if month_total > config.TTS_MONTH_CHAR_BUDGET:
         logger.warning(
             "⚠️ podcast audio: cloud tts free tier exceeded this month (%d chars)", month_total
         )
 
 
 def _encode_mp3(pcm: bytes, out_path: str) -> None:
-    """Encode raw mono PCM to an mp3 at MP3_BITRATE; raises AudioError if ffmpeg can't."""
+    """Encode raw mono PCM to an mp3 at the configured bitrate; AudioError if ffmpeg can't."""
     if not shutil.which("ffmpeg"):
         raise AudioError(cloud_tts.SOURCE, detail="ffmpeg not on PATH")
     proc = subprocess.run(
@@ -94,13 +90,13 @@ def _encode_mp3(pcm: bytes, out_path: str) -> None:
             "-f",
             "s16le",
             "-ar",
-            str(cloud_tts.PCM_RATE_HZ),
+            str(config.TTS_PCM_RATE_HZ),
             "-ac",
             "1",
             "-i",
             "pipe:0",
             "-b:a",
-            MP3_BITRATE,
+            config.TTS_MP3_BITRATE,
             out_path,
         ],
         input=pcm,

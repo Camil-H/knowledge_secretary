@@ -5,9 +5,11 @@ import logging
 
 import pytest
 
+from src import config
 from src.clients import gemini
 from src.core import ledger as ledger_mod
 from src.core.errors import AuthError, ExternalError, QuotaExhausted
+from src.core.models import ModelLimit
 from src.tasks.podcast import content_generator
 from src.tasks.podcast.content_generator import research
 
@@ -62,7 +64,7 @@ def _stub_primitive(monkeypatch, *responses):
 
 
 def _search_models():
-    return [m for m in gemini.TEXT_MODELS if m.search]
+    return [m for m in config.GEMINI_TEXT_MODELS if m.search]
 
 
 # ----- research -----
@@ -126,9 +128,9 @@ def test_research_skips_a_model_that_spent_its_daily_budget(monkeypatch):
 def test_research_never_tries_a_model_that_cannot_ground(monkeypatch):
     """The roster carries a high-quota model without grounding; handing it the search tool
     would fail the request, so the fallback must not reach it."""
-    plain = gemini.ModelLimit("no-search", rpd=500, rpm=15, tpm=250_000, search=False)
-    grounded = gemini.ModelLimit("with-search", rpd=20, rpm=5, tpm=250_000, search=True)
-    monkeypatch.setattr(content_generator.gemini, "TEXT_MODELS", [plain, grounded])
+    plain = ModelLimit("no-search", rpd=500, rpm=15, tpm=250_000, search=False)
+    grounded = ModelLimit("with-search", rpd=20, rpm=5, tpm=250_000, search=True)
+    monkeypatch.setattr(config, "GEMINI_TEXT_MODELS", [plain, grounded])
     calls = _stub_primitive(monkeypatch, _Response("an overview"))
 
     research("PROTACs")

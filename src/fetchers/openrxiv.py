@@ -5,11 +5,11 @@ from datetime import UTC, datetime
 
 import httpx
 
+from src import config
+
 logger = logging.getLogger(__name__)
 
 _API = "https://api.biorxiv.org/details/{server}/{frm}/{to}/{cursor}/json"
-_HTTP_TIMEOUT_S = 30
-_MAX_PAGES = 20  # ~600 preprints; caps a busy window so one source can't stall the run
 
 
 def recent(server: str, categories: list[str], since: datetime) -> list[dict]:
@@ -22,12 +22,12 @@ def recent(server: str, categories: list[str], since: datetime) -> list[dict]:
     wanted = {c.lower() for c in categories}
     out: list[dict] = []
     cursor = 0
-    for _ in range(_MAX_PAGES):
+    for _ in range(config.OPENRXIV_MAX_PAGES):
         url = _API.format(
             server=server, frm=f"{since:%Y-%m-%d}", to=f"{today:%Y-%m-%d}", cursor=cursor
         )
         try:
-            payload = httpx.get(url, timeout=_HTTP_TIMEOUT_S).json()
+            payload = httpx.get(url, timeout=config.HTTP_TIMEOUT_S).json()
         except (httpx.HTTPError, ValueError) as e:  # unreachable or unparseable
             logger.warning("⚠️ %s degraded: %s", server, e)
             break
@@ -38,7 +38,9 @@ def recent(server: str, categories: list[str], since: datetime) -> list[dict]:
         if not batch or cursor >= total:
             break
     else:
-        logger.warning("⚠️ %s: hit page cap %d; window may be truncated", server, _MAX_PAGES)
+        logger.warning(
+            "⚠️ %s: hit page cap %d; window may be truncated", server, config.OPENRXIV_MAX_PAGES
+        )
     return out
 
 

@@ -4,13 +4,13 @@ video's transcript, render grouped by section."""
 from datetime import UTC, datetime
 from pathlib import Path
 
+from src import config
 from src.core import sources_loader
 from src.core.models import Context, Item, Result, SourceSpec
 from src.core.registry import tasks
 from src.tasks.runner import run_source_task
 
 PROMPT = (Path(__file__).parent / "prompt.md").read_text()
-TRANSCRIPT_CHAR_LIMIT = 12000
 _NO_TRANSCRIPT = ["- (no transcript available)"]
 SOURCES: list[SourceSpec] = sources_loader.load(Path(__file__).parent, []) or []
 
@@ -54,7 +54,7 @@ def _summarize(ctx: Context, item: Item) -> list[str]:
     user = (
         f"Title: {item.title}\n"
         f"Channel: {item.meta.get('channel', '')}\n"
-        f"Transcript:\n{item.text[:TRANSCRIPT_CHAR_LIMIT]}"
+        f"Transcript:\n{item.text[: config.YOUTUBE_TRANSCRIPT_CHAR_LIMIT]}"
     )
     raw = ctx.call(system=PROMPT, user=user)
     return [line for line in raw.splitlines() if line.strip()]

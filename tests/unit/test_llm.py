@@ -3,6 +3,7 @@ and the ledger path is confined via chdir — no real request, key or wait."""
 
 import pytest
 
+from src import config
 from src.clients import gemini, llm, openrouter
 from src.core.errors import AuthError, ExternalError
 
@@ -45,8 +46,8 @@ def _isolate(monkeypatch, tmp_path):
     left over — an unset key is how the degradation tests reach the openrouter tier."""
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(gemini, "_CLIENT", None)
-    monkeypatch.delenv(gemini.KEY_LABEL, raising=False)
-    monkeypatch.setenv(openrouter.KEY_LABEL, "or-key")
+    monkeypatch.delenv(config.GEMINI_KEY_LABEL, raising=False)
+    monkeypatch.setenv(config.OPENROUTER_KEY_LABEL, "or-key")
 
 
 # ===== Cascade =====

@@ -3,13 +3,11 @@ from datetime import UTC, datetime
 
 import pytest
 
+from src import config
 from src.core.models import Context, Item
 from src.tasks.newsletter.task import (
     EDITOR_PROMPT,
-    ITEM_CHAR_FLOOR,
-    ITEM_CHAR_LIMIT,
     SYNTHESIS_PROMPT,
-    TOTAL_CHAR_BUDGET,
     _editor_input,
     _per_item_budget,
     _produce,
@@ -87,25 +85,33 @@ def test_run_empty_gather_skips_the_editor_call():
 def test_produce_quiet_day_one_call_with_full_items():
     rec = _Recorder()
     # Few enough that each item's share is capped at the full per-item limit.
-    n = TOTAL_CHAR_BUDGET // ITEM_CHAR_LIMIT
-    items = [_item(f"rss:{i}", "x" * (ITEM_CHAR_LIMIT * 2), title=f"T{i}") for i in range(n)]
+    n = config.NEWSLETTER_TOTAL_CHAR_BUDGET // config.NEWSLETTER_ITEM_CHAR_LIMIT
+    items = [
+        _item(f"rss:{i}", "x" * (config.NEWSLETTER_ITEM_CHAR_LIMIT * 2), title=f"T{i}")
+        for i in range(n)
+    ]
 
     out = _produce(_ctx(items, rec), items)
 
     assert out == "# out 1"
     assert len(rec.calls) == 1
     assert rec.calls[0]["system"] == EDITOR_PROMPT
-    assert _per_item_budget(n) == ITEM_CHAR_LIMIT
-    assert rec.calls[0]["user"].count("x") == ITEM_CHAR_LIMIT * n  # full budget per item
+    assert _per_item_budget(n) == config.NEWSLETTER_ITEM_CHAR_LIMIT
+    # full budget per item
+    assert rec.calls[0]["user"].count("x") == config.NEWSLETTER_ITEM_CHAR_LIMIT * n
 
 
 def test_produce_busy_day_one_call_trims_but_keeps_all_sources():
     rec = _Recorder()
     # Enough items to force a per-item share below the cap, but still one prompt.
-    n = TOTAL_CHAR_BUDGET // ITEM_CHAR_LIMIT + 1
+    n = config.NEWSLETTER_TOTAL_CHAR_BUDGET // config.NEWSLETTER_ITEM_CHAR_LIMIT + 1
     per_item = _per_item_budget(n)
-    assert ITEM_CHAR_FLOOR < per_item < ITEM_CHAR_LIMIT  # genuinely trimmed
-    items = [_item(f"rss:{i}", "x" * (ITEM_CHAR_LIMIT * 2), title=f"T{i}") for i in range(n)]
+    # genuinely trimmed
+    assert config.NEWSLETTER_ITEM_CHAR_FLOOR < per_item < config.NEWSLETTER_ITEM_CHAR_LIMIT
+    items = [
+        _item(f"rss:{i}", "x" * (config.NEWSLETTER_ITEM_CHAR_LIMIT * 2), title=f"T{i}")
+        for i in range(n)
+    ]
 
     _produce(_ctx(items, rec), items)
 
@@ -119,7 +125,7 @@ def test_produce_busy_day_one_call_trims_but_keeps_all_sources():
 def test_produce_extreme_volume_uses_map_reduce():
     rec = _Recorder()
     # Past the point where even the floor fits one prompt -> map-reduce.
-    n = TOTAL_CHAR_BUDGET // ITEM_CHAR_FLOOR + 1
+    n = config.NEWSLETTER_TOTAL_CHAR_BUDGET // config.NEWSLETTER_ITEM_CHAR_FLOOR + 1
     items = [_item(f"rss:{i}", f"body-{i}", title=f"T{i}") for i in range(n)]
 
     out = _produce(_ctx(items, rec), items)
@@ -140,18 +146,18 @@ def test_produce_extreme_volume_uses_map_reduce():
 
 
 def test_editor_input_groups_by_section_and_trims_bodies():
-    long_item = _item("rss:1", "x" * (ITEM_CHAR_LIMIT * 2), section="News")
+    long_item = _item("rss:1", "x" * (config.NEWSLETTER_ITEM_CHAR_LIMIT * 2), section="News")
     short_item = _item("rss:2", "short body", section="Blogs")
-    out = _editor_input([long_item, short_item], ITEM_CHAR_LIMIT)
+    out = _editor_input([long_item, short_item], config.NEWSLETTER_ITEM_CHAR_LIMIT)
 
     assert "## News" in out and "## Blogs" in out
     assert "http://u" in out and "short body" in out
-    assert out.count("x") == ITEM_CHAR_LIMIT  # long body trimmed to the budget
+    assert out.count("x") == config.NEWSLETTER_ITEM_CHAR_LIMIT  # long body trimmed to the budget
 
 
 @pytest.mark.parametrize("text", ["", "   ", "\t\n  \n"], ids=["empty", "spaces", "whitespace"])
 def test_editor_input_blank_text_renders_placeholder(text):
-    out = _editor_input([_item("rss:1", text)], ITEM_CHAR_LIMIT)
+    out = _editor_input([_item("rss:1", text)], config.NEWSLETTER_ITEM_CHAR_LIMIT)
 
     assert "(no content available)" in out
     assert out.split("\n")[-1] == "(no content available)"  # not an empty body line
