@@ -12,6 +12,7 @@ from google.genai import types
 
 from src.core import gemini
 from src.core import ledger as ledger_mod
+from src.core.errors import AuthError, ExternalError
 
 logger = logging.getLogger(__name__)
 
@@ -23,18 +24,34 @@ _MAX_LOGGED_SOURCES = 10
 
 
 def research(topic: str) -> str:
-    """A search-grounded overview of the topic; "" when the model returns no text.
+    """A search-grounded overview of the topic from the first grounding-capable model that
+    answers; "" when every candidate is spent, failing or empty.
 
-    Runs on the shared Gemini primitive, so it shares the day's ledger, pacing and error
-    typing. Raises what the primitive raises — the caller decides whether a failed episode
-    is tolerable."""
+    Only models flagged `search` are candidates — the rest cannot run the grounding tool, and
+    an ungrounded overview defeats the point of this step. Runs on the shared Gemini primitive,
+    so the day's ledger, pacing and error typing are the same as general text. AuthError
+    propagates: a credential failure is not something a later candidate recovers from."""
     config = types.GenerateContentConfig(
         tools=[types.Tool(google_search=types.GoogleSearch())],
         system_instruction=PROMPT,
     )
-    response = gemini.generate(gemini.TEXT_MODELS[0], topic, config, ledger=ledger_mod.load())
-    _log_sources(response)
-    return response.text or ""
+    ledger = ledger_mod.load()
+    for model in [m for m in gemini.TEXT_MODELS if m.search]:
+        if not ledger_mod.available(ledger, model.id, model.rpd):
+            continue
+        try:
+            response = gemini.generate(model, topic, config, ledger=ledger)
+        except AuthError:
+            raise
+        except ExternalError as e:
+            logger.warning("⚠️ research model=%s unavailable, next candidate: %s", model.id, e)
+            continue
+        _log_sources(response)
+        text = response.text
+        if text and text.strip():
+            return text
+        logger.warning("⚠️ research model=%s returned empty, next candidate", model.id)
+    return ""
 
 
 # == Helper Functions =========================================================

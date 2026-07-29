@@ -32,20 +32,25 @@ _AUTH_STATUSES = (_UNAUTHORIZED_STATUS, 403)
 
 @dataclass(frozen=True)
 class ModelLimit:
-    """An AI Studio model with its free-tier ceilings: requests/day, requests/min, tokens/min."""
+    """An AI Studio model with its free-tier ceilings — requests/day, requests/min, tokens/min —
+    and whether it can run the google_search grounding tool.
+
+    rpd is metered in the ledger; rpm/tpm drive proactive pacing. search is a hard gate, not a
+    preference: handing the tool to a model without it fails the request outright."""
 
     id: str
     rpd: int
     rpm: int
     tpm: int
+    search: bool
 
 
-# RPD is per model, so this table is a ~60 request/day pool. rpm/tpm drive proactive pacing;
-# the SDK exposes no quota fields, so nothing here is ever polled.
+# quality-descending, so the 500-rpd model is the safety net rather than the default
 TEXT_MODELS: list[ModelLimit] = [
-    ModelLimit("gemini-3.6-flash", rpd=20, rpm=5, tpm=250_000),
-    ModelLimit("gemini-3.6-flash-lite", rpd=20, rpm=5, tpm=250_000),
-    ModelLimit("gemini-3.1-flash", rpd=20, rpm=5, tpm=250_000),
+    ModelLimit("gemini-3.6-flash", rpd=20, rpm=5, tpm=250_000, search=True),
+    ModelLimit("gemini-3.5-flash", rpd=20, rpm=5, tpm=250_000, search=True),
+    ModelLimit("gemini-3.5-flash-lite", rpd=20, rpm=5, tpm=250_000, search=True),
+    ModelLimit("gemini-3.1-flash-lite", rpd=500, rpm=15, tpm=250_000, search=False),
 ]
 _EST_OUTPUT_TOKENS = 2048
 _QUOTA_SCOPE_MINUTE = "PerMinute"

@@ -203,7 +203,8 @@ def test_generate_day_quota_retires_the_model_immediately(monkeypatch):
 
 def test_generate_retires_a_model_the_api_does_not_know(monkeypatch):
     """An unknown model id is permanent: without retiring it, every later call in the day pays
-    its pacing delay and a failed request again. Two of the ids in the table are unverified."""
+    its pacing delay and a failed request again. No id in the table is verified against a live
+    API, so this is the expected fate of a wrong one."""
     models = _fake_google(monkeypatch, [_api_error(404), _FakeGeminiResponse("ok")])
     model = gemini.TEXT_MODELS[0]
     ledger = ledger_mod.load()
@@ -262,16 +263,17 @@ def test_generate_backoff_doubles_and_caps(monkeypatch):
 # ----- proactive pacing -----
 
 
-def test_generate_paces_consecutive_calls_to_the_same_model(monkeypatch):
+@pytest.mark.parametrize("model", gemini.TEXT_MODELS, ids=lambda m: m.id)
+def test_generate_paces_consecutive_calls_to_the_same_model(monkeypatch, model):
+    """Spacing comes from the row's own rpm, so a model with a wider allowance waits less."""
     clock = _fake_clock(monkeypatch)
     _fake_google(monkeypatch, [_FakeGeminiResponse("ok")])
-    model = gemini.TEXT_MODELS[0]
     ledger = ledger_mod.load()
 
     gemini.generate(model, "hi", _config(), ledger=ledger)
     gemini.generate(model, "hi", _config(), ledger=ledger)
 
-    assert clock["t"] >= 60 / model.rpm
+    assert clock["t"] == pytest.approx(60 / model.rpm)
 
 
 def test_generate_paces_on_token_volume_when_it_dominates(monkeypatch):
