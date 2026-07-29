@@ -28,7 +28,6 @@ def call(system: str, user: str, *, max_tokens: int | None = None) -> str:
     try:
         text = gemini.call(system, user, max_tokens, ledger=ledger)
     except AuthError as e:
-        # deliberate cross-tier degradation: one bad Google key must not down every product
         logger.warning("⚠️ llm google tier unavailable, degrading to openrouter: %s", e)
         text = ""
     return text or openrouter.call(system, user, max_tokens)

@@ -58,12 +58,10 @@ GEMINI_TEXT_MODELS: list[ModelLimit] = [
 # ----- OpenRouter -----
 
 OPENROUTER_KEY_LABEL = "OPENROUTER_API_KEY"
-OPENROUTER_FREE_LIMIT = 8
 # wall-clock cap for the whole cascade so a many-item run can't burn minutes on backoff sleep
 OPENROUTER_DEADLINE_S = 120.0
-OPENROUTER_EXCLUDE_IDS = ("lyria", "content-safety", "openrouter/free")
 
-OPENROUTER_PREFERRED_CONTEXT = [
+OPENROUTER_MODELS = [  # tried in order
     "openrouter/google/gemma-4-31b-it:free",
     "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free",
     "openrouter/google/gemma-4-26b-a4b-it:free",

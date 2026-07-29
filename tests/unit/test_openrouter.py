@@ -1,7 +1,6 @@
 """The OpenRouter tier: its model catalog, one chat completion, and the deadline-bounded loop
 over the ranked candidates. httpx and sleep are faked — no real request, key or wait."""
 
-import httpx
 import pytest
 
 import src.clients.openrouter as openrouter
@@ -53,39 +52,11 @@ def _completing(text: str):
     return _complete
 
 
-_MODELS = {
-    "data": [
-        {
-            "id": "big-ctx",
-            "pricing": {"prompt": "0", "completion": "0"},
-            "context_length": 200000,
-        },
-        {
-            "id": "small-ctx",
-            "pricing": {"prompt": "0", "completion": "0"},
-            "context_length": 32000,
-        },
-        {
-            "id": "paid",
-            "pricing": {"prompt": "0.001", "completion": "0.002"},
-            "context_length": 1000000,
-        },
-    ]
-}
-
-
-def _patch_models(monkeypatch):
-    monkeypatch.setattr(openrouter.httpx, "get", lambda *a, **k: _FakeResp(_MODELS))
-
-
 @pytest.fixture(autouse=True)
 def _isolate(monkeypatch):
-    """No sleeps and no catalog memoized between tests."""
+    """No sleeps, and a key present so the auth guard is not what fails."""
     monkeypatch.setattr(openrouter.time, "sleep", lambda _s: None)
     monkeypatch.setenv(config.OPENROUTER_KEY_LABEL, "or-key")
-    openrouter._reset_model_cache()
-    yield
-    openrouter._reset_model_cache()
 
 
 # ===== Tier =====
@@ -94,7 +65,7 @@ def _isolate(monkeypatch):
 
 
 def test_call_retries_the_same_model_on_rate_limit(monkeypatch):
-    monkeypatch.setattr(openrouter, "models", lambda: ["openrouter/a:free"])
+    monkeypatch.setattr(config, "OPENROUTER_MODELS", ["openrouter/a:free"])
     n = {"i": 0}
 
     def _complete(model, messages, max_tokens):
@@ -109,7 +80,7 @@ def test_call_retries_the_same_model_on_rate_limit(monkeypatch):
 
 
 def test_call_falls_through_to_the_next_model_on_other_error(monkeypatch):
-    monkeypatch.setattr(openrouter, "models", lambda: ["openrouter/a:free", "openrouter/b:free"])
+    monkeypatch.setattr(config, "OPENROUTER_MODELS", ["openrouter/a:free", "openrouter/b:free"])
 
     def _complete(model, messages, max_tokens):
         if model == "openrouter/a:free":
@@ -120,27 +91,8 @@ def test_call_falls_through_to_the_next_model_on_other_error(monkeypatch):
     assert openrouter.call("s", "u", None) == "second"
 
 
-def test_models_stands_in_the_curated_list_when_the_catalog_is_unreachable(monkeypatch):
-    monkeypatch.setattr(openrouter.httpx, "get", _raiser(httpx.HTTPError("boom")))
-    assert openrouter.models() == config.OPENROUTER_PREFERRED_CONTEXT
-
-
-def test_call_walks_the_curated_list_when_the_catalog_is_unreachable(monkeypatch):
-    """A dead catalog must not reduce the tier to a single hardcoded id."""
-    monkeypatch.setattr(openrouter.httpx, "get", _raiser(httpx.HTTPError("boom")))
-    tried = []
-
-    def _complete(model, messages, max_tokens):
-        tried.append(model)
-        return "ok" if len(tried) == 2 else ""
-
-    monkeypatch.setattr(openrouter, "complete", _complete)
-    assert openrouter.call("s", "u", None) == "ok"
-    assert tried == config.OPENROUTER_PREFERRED_CONTEXT[:2]
-
-
 def test_call_raises_auth_error_immediately(monkeypatch):
-    monkeypatch.setattr(openrouter, "models", lambda: ["openrouter/a:free", "openrouter/b:free"])
+    monkeypatch.setattr(config, "OPENROUTER_MODELS", ["openrouter/a:free", "openrouter/b:free"])
     tried = []
 
     def _complete(model, messages, max_tokens):
@@ -154,7 +106,7 @@ def test_call_raises_auth_error_immediately(monkeypatch):
 
 
 def test_call_external_error_carries_the_last_exception_as_cause(monkeypatch):
-    monkeypatch.setattr(openrouter, "models", lambda: ["openrouter/a:free"])
+    monkeypatch.setattr(config, "OPENROUTER_MODELS", ["openrouter/a:free"])
     boom = ValueError("nope")
     monkeypatch.setattr(openrouter, "complete", _raiser(boom))
 
@@ -171,7 +123,7 @@ def test_call_external_error_carries_the_last_exception_as_cause(monkeypatch):
     ],
 )
 def test_call_persistent_rate_limit_exhausts_retries(monkeypatch, candidates, expect_next_model):
-    monkeypatch.setattr(openrouter, "models", lambda: candidates)
+    monkeypatch.setattr(config, "OPENROUTER_MODELS", candidates)
     calls = {"a": 0}
 
     def _complete(model, messages, max_tokens):
@@ -192,7 +144,7 @@ def test_call_persistent_rate_limit_exhausts_retries(monkeypatch, candidates, ex
 
 
 def test_call_backoff_doubles_and_caps(monkeypatch):
-    monkeypatch.setattr(openrouter, "models", lambda: ["openrouter/a:free"])
+    monkeypatch.setattr(config, "OPENROUTER_MODELS", ["openrouter/a:free"])
     retries = 7
     monkeypatch.setattr(config, "RATE_LIMIT_RETRIES", retries)
     sleeps: list[float] = []
@@ -216,8 +168,8 @@ def test_call_backoff_doubles_and_caps(monkeypatch):
 def test_call_abandons_the_cascade_once_the_deadline_is_exceeded(monkeypatch):
     _fake_clock(monkeypatch)
     monkeypatch.setattr(config, "OPENROUTER_DEADLINE_S", 5.0)
-    candidates = [f"openrouter/m{i}:free" for i in range(config.OPENROUTER_FREE_LIMIT)]
-    monkeypatch.setattr(openrouter, "models", lambda: candidates)
+    candidates = [f"openrouter/m{i}:free" for i in range(4)]
+    monkeypatch.setattr(config, "OPENROUTER_MODELS", candidates)
     tried = []
 
     def _complete(model, messages, max_tokens):
@@ -237,7 +189,7 @@ def test_call_abandons_the_cascade_once_the_deadline_is_exceeded(monkeypatch):
 
 @pytest.mark.parametrize("empty_content", ["", "   ", "\n\t "])
 def test_call_falls_through_on_empty_or_whitespace_content(monkeypatch, empty_content):
-    monkeypatch.setattr(openrouter, "models", lambda: ["openrouter/a:free", "openrouter/b:free"])
+    monkeypatch.setattr(config, "OPENROUTER_MODELS", ["openrouter/a:free", "openrouter/b:free"])
 
     def _complete(model, messages, max_tokens):
         return empty_content if model == "openrouter/a:free" else "second"
@@ -247,7 +199,7 @@ def test_call_falls_through_on_empty_or_whitespace_content(monkeypatch, empty_co
 
 
 def test_call_raises_when_all_models_return_empty(monkeypatch):
-    monkeypatch.setattr(openrouter, "models", lambda: ["openrouter/a:free", "openrouter/b:free"])
+    monkeypatch.setattr(config, "OPENROUTER_MODELS", ["openrouter/a:free", "openrouter/b:free"])
     monkeypatch.setattr(openrouter, "complete", _completing("   "))
     with pytest.raises(ExternalError, match="all models failed"):
         openrouter.call("s", "u", None)
@@ -329,142 +281,6 @@ def test_complete_raises_auth_error_without_a_key(monkeypatch):
 
     with pytest.raises(AuthError, match=config.OPENROUTER_KEY_LABEL):
         openrouter.complete("openrouter/a:free", [], None)
-
-
-# ===== Model resolution =====
-
-
-def test_free_filter_excludes_paid(monkeypatch):
-    _patch_models(monkeypatch)
-    assert all("paid" not in m for m in openrouter._free_models())
-
-
-@pytest.mark.parametrize(
-    "bad",
-    [
-        {"id": "google/lyria-3-pro-preview", "context_length": 1000000},
-        {"id": "nvidia/x-content-safety:free", "context_length": 1000000},
-        {"id": "openrouter/free", "context_length": 1000000},
-        {
-            "id": "x/music:free",
-            "context_length": 1000000,
-            "architecture": {"output_modalities": ["audio"]},
-        },
-    ],
-    ids=["music", "guardrail", "router", "audio-output"],
-)
-def test_free_filter_excludes_non_text_writers(monkeypatch, bad):
-    bad = {**bad, "pricing": {"prompt": "0", "completion": "0"}}
-    good = {
-        "id": "good/writer",
-        "pricing": {"prompt": "0", "completion": "0"},
-        "context_length": 1000,
-    }
-    monkeypatch.setattr(openrouter.httpx, "get", lambda *a, **k: _FakeResp({"data": [bad, good]}))
-    # the non-writer ranks first by its 1M context, but must be filtered out entirely
-    assert openrouter._free_models() == ["openrouter/good/writer"]
-
-
-def test_free_models_ranks_by_context(monkeypatch):
-    _patch_models(monkeypatch)
-    assert openrouter._free_models() == ["openrouter/big-ctx", "openrouter/small-ctx"]
-
-
-def test_free_models_rank_key_handles_a_missing_context_length(monkeypatch):
-    edge = {
-        "data": [
-            {"id": "no-context", "pricing": {"prompt": "0", "completion": "0"}},
-            {
-                "id": "has-context",
-                "pricing": {"prompt": "0", "completion": "0"},
-                "context_length": 5000,
-            },
-        ]
-    }
-    monkeypatch.setattr(openrouter.httpx, "get", lambda *a, **k: _FakeResp(edge))
-    assert openrouter._free_models()[0] == "openrouter/has-context"
-
-
-def test_models_prefers_curated_ids_present_in_live_list(monkeypatch):
-    preferred_first, preferred_second = (
-        config.OPENROUTER_PREFERRED_CONTEXT[0],
-        (config.OPENROUTER_PREFERRED_CONTEXT[1]),
-    )
-    catalog = {
-        "data": [
-            {
-                "id": "big-ctx",
-                "pricing": {"prompt": "0", "completion": "0"},
-                "context_length": 200000,
-            },
-            {
-                "id": preferred_second.removeprefix("openrouter/"),
-                "pricing": {"prompt": "0", "completion": "0"},
-                "context_length": 500,  # would rank last on live context ranking
-            },
-            {
-                "id": preferred_first.removeprefix("openrouter/"),
-                "pricing": {"prompt": "0", "completion": "0"},
-                "context_length": 100,  # would rank last on live context ranking
-            },
-        ]
-    }
-    monkeypatch.setattr(openrouter.httpx, "get", lambda *a, **k: _FakeResp(catalog))
-
-    result = openrouter.models()
-
-    assert result[:2] == [preferred_first, preferred_second]
-    assert result[2] == "openrouter/big-ctx"
-
-
-def test_models_skips_absent_preferred_ids_without_crashing(monkeypatch):
-    _patch_models(monkeypatch)  # none of OPENROUTER_PREFERRED_CONTEXT's ids are present
-    assert openrouter.models() == ["openrouter/big-ctx", "openrouter/small-ctx"]
-
-
-# ----- catalog cache + degradation -----
-
-
-def test_free_models_memoizes_the_catalog(monkeypatch):
-    calls = {"n": 0}
-
-    def _get(*_a, **_k):
-        calls["n"] += 1
-        return _FakeResp(_MODELS)
-
-    monkeypatch.setattr(openrouter.httpx, "get", _get)
-
-    first = openrouter._free_models()
-    assert openrouter._free_models() == first
-    assert calls["n"] == 1
-
-
-def test_free_models_does_not_cache_a_failed_fetch(monkeypatch):
-    calls = {"n": 0}
-
-    def _get(*_a, **_k):
-        calls["n"] += 1
-        if calls["n"] == 1:
-            raise httpx.HTTPError("boom")
-        return _FakeResp(_MODELS)
-
-    monkeypatch.setattr(openrouter.httpx, "get", _get)
-
-    assert openrouter._free_models() == []
-    assert openrouter._free_models() != []
-    assert calls["n"] == 2
-
-
-@pytest.mark.parametrize(
-    "get_stub",
-    [
-        pytest.param(_raiser(httpx.HTTPError("boom")), id="http_error"),
-        pytest.param(lambda *a, **k: _FakeResp({"unexpected": []}), id="missing_data_key"),
-    ],
-)
-def test_free_models_degrades_to_empty(monkeypatch, get_stub):
-    monkeypatch.setattr(openrouter.httpx, "get", get_stub)
-    assert openrouter._free_models() == []
 
 
 # ===== Helper Functions =====

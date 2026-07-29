@@ -62,8 +62,6 @@ def generate(
             )
         except genai_errors.APIError as e:
             if e.code == config.NOT_FOUND_STATUS:
-                # a model id that does not exist would otherwise be re-paced and re-dispatched
-                # on every call for the rest of the day
                 ledger_mod.mark_exhausted(ledger, model.id)
                 raise ExternalError(SOURCE, cause=e) from e
             if e.code != config.RATE_LIMIT_STATUS:

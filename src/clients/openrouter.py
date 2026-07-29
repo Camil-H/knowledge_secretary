@@ -1,6 +1,6 @@
 # src/clients/openrouter.py
-"""OpenRouter transport: the live zero-cost model catalog, one chat completion, and the
-deadline-bounded tier loop over the ranked candidates.
+"""OpenRouter transport: one chat completion, and the deadline-bounded tier loop over
+config.OPENROUTER_MODELS.
 
 Its key is independent of the Google one on purpose, so this tier still answers when the
 AI Studio credential is broken.
@@ -9,7 +9,6 @@ AI Studio credential is broken.
 import logging
 import os
 import time
-from typing import Any
 
 import httpx
 
@@ -18,13 +17,9 @@ from src.core.errors import AuthError, ExternalError
 
 logger = logging.getLogger(__name__)
 
-# One entry from the OpenRouter /models catalog; only a few keys are read.
-type ModelRecord = dict[str, Any]
-
 SOURCE = "openrouter"
 _CASCADE_SOURCE = "llm"
 
-MODELS_URL = "https://openrouter.ai/api/v1/models"
 COMPLETIONS_URL = "https://openrouter.ai/api/v1/chat/completions"
 _PREFIX = "openrouter/"
 _AUTH_PHRASES = ("no user or org", "invalid api key", "unauthorized")
@@ -50,7 +45,7 @@ def call(system: str, user: str, max_tokens: int | None) -> str:
     auth failure raises immediately, other errors fall through, all-fail raises ExternalError.
     A wall-clock deadline caps total time so the cascade is abandoned rather than walking
     every model x retry."""
-    candidates = models()
+    candidates = config.OPENROUTER_MODELS
     messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
     deadline = time.monotonic() + config.OPENROUTER_DEADLINE_S
     last_err: Exception | None = None
@@ -119,71 +114,7 @@ def complete(model: str, messages: list[dict[str, str]], max_tokens: int | None)
     return message.get("content") or ""
 
 
-# == Model resolution =========================================================
-
-_MODEL_CACHE: list[str] = []
-
-
-def _reset_model_cache() -> None:
-    """Clear the memoized live ranking (test-only escape hatch)."""
-    _MODEL_CACHE.clear()
-
-
-def models() -> list[str]:
-    """Zero-cost models, context-ranked, with the curated preferred ids leading.
-
-    A preferred id currently unavailable for free is silently skipped. When the catalog cannot
-    be fetched the curated list stands in unranked, so an unreachable catalog costs ranking
-    rather than the whole tier."""
-    live = _free_models()
-    if not live:
-        return list(config.OPENROUTER_PREFERRED_CONTEXT)
-    live_set = set(live)
-    ordered_preferred = [m for m in config.OPENROUTER_PREFERRED_CONTEXT if m in live_set]
-    preferred_set = set(ordered_preferred)
-    return ordered_preferred + [m for m in live if m not in preferred_set]
-
-
-def _free_models(*, limit: int = config.OPENROUTER_FREE_LIMIT) -> list[str]:
-    """Live-fetch zero-cost OpenRouter models, ranked by context length ([] on failure).
-
-    Memoized per process; a failed fetch is not cached, so a later call can retry."""
-    if _MODEL_CACHE:
-        return _MODEL_CACHE
-
-    try:
-        catalog = httpx.get(MODELS_URL, timeout=config.HTTP_TIMEOUT_S).json()
-        data: list[ModelRecord] = catalog["data"]
-    except (httpx.HTTPError, ValueError, KeyError) as e:
-        logger.warning(
-            "⚠️ openrouter model list degraded: %s status=%s",
-            type(e).__name__,
-            getattr(e, "status_code", None),
-        )
-        return []
-
-    free = [
-        m
-        for m in data
-        if str(m.get("pricing", {}).get("prompt")) == "0"
-        and str(m.get("pricing", {}).get("completion")) == "0"
-        and _writes_text(m)
-    ]
-    free.sort(key=lambda m: m.get("context_length") or 0, reverse=True)
-    _MODEL_CACHE[:] = [f"{_PREFIX}{m['id']}" for m in free[:limit]]
-    return _MODEL_CACHE
-
-
 # == Helper Functions =========================================================
-
-
-def _writes_text(model: ModelRecord) -> bool:
-    """Exclude free ids that pass the price filter but aren't general text writers
-    (music/guardrail/router models, or non-text output)."""
-    if any(bad in model.get("id", "") for bad in config.OPENROUTER_EXCLUDE_IDS):
-        return False
-    out = (model.get("architecture") or {}).get("output_modalities")
-    return not out or "text" in out
 
 
 def _is_rate_limit(e: Exception) -> bool:
