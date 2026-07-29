@@ -50,9 +50,9 @@ GEMINI_TEXT_MODELS: list[ModelLimit] = [
 # ----- OpenRouter -----
 
 OPENROUTER_KEY_LABEL = "OPENROUTER_API_KEY"
-OPENROUTER_FREE_LIMIT = int(os.environ.get("LLM_FREE_LIMIT", "8"))
+OPENROUTER_FREE_LIMIT = 8
 # wall-clock cap for the whole cascade so a many-item run can't burn minutes on backoff sleep
-OPENROUTER_DEADLINE_S = float(os.environ.get("LLM_DEADLINE_S", "120"))
+OPENROUTER_DEADLINE_S = 120.0
 OPENROUTER_FALLBACK_MODEL = "openrouter/google/gemma-4-31b-it:free"
 OPENROUTER_EXCLUDE_IDS = ("lyria", "content-safety", "openrouter/free")
 
@@ -114,7 +114,7 @@ TRANSCRIPT_PART_BUDGETS: dict[str, PartBudget] = {
 TTS_KEY_LABEL = "GOOGLE_CLOUD_TTS_KEY"
 TTS_LANGUAGE_CODE = "en-US"
 TTS_PCM_RATE_HZ = 24_000
-TTS_RETRIES = int(os.environ.get("TTS_RETRIES", "3"))
+TTS_RETRIES = 3
 TTS_MAX_TURN_BYTES = 4500
 TTS_MONTH_CHAR_BUDGET = 1_000_000
 TTS_MP3_BITRATE = "32k"
