@@ -20,16 +20,13 @@ _NOTICES_KEY = "_notices"  # transient: gather appends, run_source_task drains b
 def gather(specs: list[SourceSpec], state: State, since: datetime) -> list[Item]:
     """NEW items (is_new) published >= since, enriched per spec; crashing sources skipped.
 
-    Fetches run concurrently on a bounded pool; filtering, dedup and enrichment then run in
-    spec order on this thread, keeping state single-threaded and output order deterministic."""
-    gathered: list[Item] = []
+    Fetches run concurrently on a bounded pool, then enrichment does too — both are per-item
+    network waits. Filtering and dedup stay on this thread, keeping state single-threaded, and
+    every phase is collected in submission order so the output follows spec order."""
+    pending: list[tuple[Item, list[str]]] = []
 
-    def _fetch(spec: SourceSpec) -> list[Item]:
-        return sources.get(spec["kind"])(spec, since, state)
-
-    workers = min(config.MAX_FETCH_WORKERS, len(specs)) or 1
-    with ThreadPoolExecutor(max_workers=workers) as pool:
-        futures = [pool.submit(_fetch, spec) for spec in specs]
+    with ThreadPoolExecutor(max_workers=_worker_count(len(specs))) as pool:
+        futures = [pool.submit(_fetch_source_items, spec, since, state) for spec in specs]
 
     for spec, future in zip(specs, futures, strict=True):
         try:
@@ -50,9 +47,7 @@ def gather(specs: list[SourceSpec], state: State, since: datetime) -> list[Item]
             if item.published < since:
                 stale += 1
                 continue
-            for name in spec.get("enrich", []):
-                item = enrichers.get(name)(item)
-            gathered.append(item)
+            pending.append((item, spec.get("enrich", [])))
             kept += 1
         # the breakdown is what separates a source that returned nothing (fetched=0, i.e.
         # look at the fetcher) from one whose items were all already published or too old
@@ -64,7 +59,7 @@ def gather(specs: list[SourceSpec], state: State, since: datetime) -> list[Item]
             seen,
             stale,
         )
-    return gathered
+    return _enrich_concurrently(pending)
 
 
 def run_source_task(
@@ -82,3 +77,34 @@ def run_source_task(
     return Result(
         subject=subject, markdown=markdown, notices=notices, consumed=[it.id for it in items]
     )
+
+
+# == Helper Functions =========================================================
+
+
+def _fetch_source_items(spec: SourceSpec, since: datetime, state: State) -> list[Item]:
+    return sources.get(spec["kind"])(spec, since, state)
+
+
+def _enrich_concurrently(pending: list[tuple[Item, list[str]]]) -> list[Item]:
+    """Each item enriched by its own spec's enrichers, returned in the order handed in."""
+    if not pending:
+        return []
+    with ThreadPoolExecutor(max_workers=_worker_count(len(pending))) as pool:
+        futures = [pool.submit(_enrich_item, item, names) for item, names in pending]
+    return [future.result() for future in futures]
+
+
+def _enrich_item(item: Item, names: list[str]) -> Item:
+    """A failing enricher is tolerated: the item stays in the digest with whatever text it
+    already had, which is what every enricher degrades to on its own bad days anyway."""
+    for name in names:
+        try:
+            item = enrichers.get(name)(item)
+        except Exception:
+            logger.exception("❌ gather: enricher %s failed on %s", name, item.id)
+    return item
+
+
+def _worker_count(jobs: int) -> int:
+    return min(config.MAX_FETCH_WORKERS, jobs) or 1

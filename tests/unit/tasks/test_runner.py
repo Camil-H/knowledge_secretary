@@ -54,10 +54,12 @@ def _fetcher(items: list[Item]):
 
 
 def _raiser(exc: Exception):
-    def _fetch(spec, since, state):
+    """Stands in for either a fetcher or an enricher, hence the loose signature."""
+
+    def _raise(*_args):
         raise exc
 
-    return _fetch
+    return _raise
 
 
 # ----- gather: dedup + lookback window -----
@@ -171,6 +173,78 @@ def test_gather_applies_enrichers_in_spec_order(monkeypatch):
     assert len(result) == 1
     # non-commutative: spec order append_z->upper gives "AZ"; reversed would give "Az"
     assert result[0].text == "AZ"
+
+
+def _blocked_enricher(signal: threading.Event):
+    """Enricher that finishes only once another item's enricher has signalled; run
+    sequentially the wait times out instead."""
+
+    def _enrich(item: Item) -> Item:
+        if not signal.wait(timeout=5):
+            raise TimeoutError("enrichment never overlapped")
+        return replace(item, text="blocked")
+
+    return _enrich
+
+
+def _signalling_enricher(signal: threading.Event):
+    def _enrich(item: Item) -> Item:
+        signal.set()
+        return replace(item, text="signalled")
+
+    return _enrich
+
+
+def test_gather_enriches_concurrently_and_returns_items_in_spec_order(monkeypatch):
+    since = datetime.now(UTC) - timedelta(hours=1)
+    first, second = _item("blocked:1"), _item("signal:1")
+    monkeypatch.setattr(
+        runner,
+        "sources",
+        _FakeRegistry({"a": _fetcher([first]), "b": _fetcher([second])}),
+    )
+    signal = threading.Event()
+    monkeypatch.setattr(
+        runner,
+        "enrichers",
+        _FakeRegistry(
+            {"blocked": _blocked_enricher(signal), "signalling": _signalling_enricher(signal)}
+        ),
+    )
+    state = {"ids": {}, "kv": {}}
+    specs = [
+        _spec("a_src", kind="a", enrich=["blocked"]),
+        _spec("b_src", kind="b", enrich=["signalling"]),
+    ]
+
+    result = gather(specs, state, since)
+
+    # the first item's enricher could only finish after the second's, yet output order
+    # is still spec order rather than completion order
+    assert [it.id for it in result] == ["blocked:1", "signal:1"]
+    assert [it.text for it in result] == ["blocked", "signalled"]
+
+
+def test_gather_enricher_crash_keeps_the_item_unenriched_and_logs(monkeypatch, caplog):
+    since = datetime.now(UTC) - timedelta(hours=1)
+    monkeypatch.setattr(runner, "sources", _FakeRegistry({"rss": _fetcher([_item("rss:1")])}))
+    monkeypatch.setattr(
+        runner,
+        "enrichers",
+        _FakeRegistry(
+            {
+                "boom": _raiser(RuntimeError("enricher boom")),
+                "upper": lambda it: replace(it, text=it.text.upper()),
+            }
+        ),
+    )
+    state = {"ids": {}, "kv": {}}
+
+    with caplog.at_level(logging.ERROR, logger="src.tasks.runner"):
+        result = gather([_spec("k", enrich=["boom", "upper"])], state, since)
+
+    assert [it.text for it in result] == ["BODY"]  # later enrichers still run
+    assert "enricher boom" in caplog.text
 
 
 # ----- gather: per-source isolation -----
