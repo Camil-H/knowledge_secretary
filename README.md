@@ -1,24 +1,20 @@
 # Knowledge Secretary
 
-A $0, fully-automated daily digest. Once a day, via GitHub Actions, it:
+A $0, fully-automated daily digest, run by GitHub Actions and published to GitHub Pages:
 
-1. **Newsletter** — assembles an industry newsletter from blogs, papers/preprints (PubMed, bioRxiv), and X accounts.
-2. **YouTube** — summarizes new uploads from configured channels within a daily time window.
-3. **Podcast** — generates a long, technical two-host podcast on the next topic from a queue (each topic used once), published to the static site with the audio embedded as a player.
+1. **Newsletter** — new items from your blogs, papers/preprints (PubMed, bioRxiv) and X accounts, written up and grouped into sections you define.
+2. **YouTube** — new uploads from your channels, summarized from their transcripts.
+3. **Podcast** — a long two-host episode on the next topic from a queue, researched with a search-grounded model, published with an audio player.
 
-Runs on free tiers: every text call prefers Google AI Studio's free Gemini tier (a per-day request ledger in `state/llm_ledger.json` tracks what is left) and falls back to OpenRouter's `:free` models; the podcast's source material comes from the first free-tier Gemini Flash model that can run Google Search grounding and still has quota (one request per episode); the podcast audio uses Google Cloud TTS (a monthly free quota of 1M characters covers a daily episode of ~33-35 minutes); plus free data sources and GitHub Actions on a public repo (unlimited minutes).
+Free tiers throughout: text prefers Google AI Studio's Gemini models and falls back to OpenRouter's `:free` ones, and audio uses Google Cloud TTS, whose 1M characters a month covers a daily episode of ~35 minutes.
 
 ## How it works
 
-The three products are independent daily tasks that share one shape: **gather → summarize → publish**.
+Three independent daily tasks sharing one shape: **gather → summarize → publish**. Each reads a `sources.yaml` and writes through a plain-Markdown prompt, so adapting the digest to another field is editing config and prose rather than code.
 
-- **Newsletter** — pulls new items from your blogs, journals and preprints (PubMed, bioRxiv), and X accounts, then an LLM writes them up, grouped into sections you define.
-- **YouTube** — finds new uploads from your channels within the day's window and summarizes each from its transcript, falling back to the video description when no transcript is available.
-- **Podcast** — takes the next topic from a queue, researches it with a search-grounded model, and generates a long two-host episode from that material, published with an embedded audio player. A topic is marked aired only once an episode exists, so a failed run retries it rather than skipping it.
+Each task records output to `history/` and remembers what it has seen, so nothing repeats. Publishing is a second phase that renders the last `RETENTION_DAYS` of history into one static page — splitting the two lets the podcast and newsletter jobs publish in either order without clobbering each other. Items are marked seen only after a successful publish, and a podcast topic is marked aired only once its episode exists, so a failed run retries rather than skipping.
 
-What each product *reads* is source data you control — one `sources.yaml` per task. How each product *writes* is driven by a plain-Markdown prompt per task. So adapting the digest to a different field is editing config and prose, not code: swap the sources, rewrite the prompts, rename the sections.
-
-Each task records its output to `history/` and records what it has already seen so nothing repeats. Publishing is a second phase: it renders the last 7 days of that history — newest first, older days collapsed — into a single static page on GitHub Pages. Splitting the two is what lets the podcast job and the newsletter+YouTube job publish in either order without overwriting each other's cards. Items are marked seen only after a successful publish, so a failed run never drops content.
+Per-day LLM request quotas are metered locally in `state/llm_ledger.json`.
 
 ## Run
 
@@ -28,53 +24,34 @@ uv run python -m src.run [newsletter|youtube|podcast|all]
 uv run python -m src.delivery.site   # render history/ -> public/index.html
 ```
 
-`.github/workflows/daily.yml` runs the tasks on a daily schedule; `.github/workflows/ci.yml` runs ruff, ty, and pytest.
+`.github/workflows/daily.yml` runs the tasks daily; `ci.yml` runs ruff, ty and pytest.
 
 ## Configuration
 
-Every framework knob lives in `src/config.py`, in two parts. **Yours to set** is what a fork changes on day one: `SITE_TITLE`, `SITE_SUBTITLE`, and `TTS_LANGUAGE_CODE` with the matching `TTS_VOICES`. **Defaults** is everything that already works — the shared HTTP timeout and retry/backoff bounds, the Gemini model table (`GEMINI_TEXT_MODELS` — each row's limits, and its `search` flag, which decides whether the podcast's research may draw on it), the OpenRouter candidates (`OPENROUTER_MODELS`), episode length (`TRANSCRIPT_PARTS`, `TRANSCRIPT_PART_BUDGETS`), the TTS character budget, and the single `RETENTION_DAYS` window that governs how much history the site renders, how long a podcast release is hosted and how long an id stays "seen". One knob reads an env var when one is set — `LLM_RATE_LIMIT_RETRIES` — and the rest are edited in place. What is deliberately *not* there stays next to the code that owns it: the prompt files, the `<Person1>` turn pattern, and the wire literals each provider dictates. Per-task sources live in each task's `sources.yaml` (below). The only runtime inputs are secrets, set as GitHub Actions repository secrets:
+`src/config.py` holds every knob in two parts: **Yours to set** (site title and subtitle, TTS language and voices) and **Defaults**, which already work. Prompts, patterns and provider wire literals deliberately stay next to the code that uses them.
 
 | Secret | Purpose |
 | --- | --- |
-| `OPENROUTER_API_KEY` | the fallback text tier for the newsletter, YouTube, and the podcast transcript, using free `:free` models. An independent credential, so a broken Google key degrades here instead of downing every product. A one-time $10 OpenRouter top-up raises the free cap to 1,000 req/day (20 RPM). Required. |
-| `GOOGLE_AI_STUDIO_KEY` | an **AI Studio** key: the preferred text tier for all three products, and the podcast's grounded research (a Gemini Flash model + Google Search). **Required for the podcast** — without it there is no source material and no episode is produced. Must belong to the same project where the Generative Language API is enabled, and is a different key from `GOOGLE_CLOUD_TTS_KEY`. Free-tier limits are per-model: the roster is four models, three of them at 5 RPM / 250k TPM / 20 requests per day and the last at 15 RPM / 250k TPM / 500 requests per day as the safety net. The ledger paces requests against those limits; an episode's research spends one request, on one of the three that support Search grounding. |
-| `GOOGLE_CLOUD_TTS_KEY` | podcast text-to-speech (Google Cloud Text-to-Speech). Must be a **GCP API key with the Cloud Text-to-Speech API enabled**, not a Google AI Studio key. **Required for the podcast** — without it there is no audio. |
-| `PAGES_DEPLOY_TOKEN` | PAT with write access to the Pages repo (`Camil-H/camil-h.github.io`) so the workflow can publish the site cross-repo. Required. |
-| `TWITTER_AUTH_TOKEN`, `TWITTER_CT0` | X/Twitter session tokens for the `twitter-cli` X source (optional; degrades to nothing if absent). |
+| `GOOGLE_AI_STUDIO_KEY` | Preferred text tier, and the podcast's grounded research. **Required for the podcast** — no key, no source material, no episode. |
+| `GOOGLE_CLOUD_TTS_KEY` | Podcast audio. A **GCP key with the Cloud Text-to-Speech API enabled**. **Required for the podcast.** |
+| `OPENROUTER_API_KEY` | Fallback text tier on `:free` models. An independent credential, so a broken Google key degrades here instead of downing all three products. Required. |
+| `PAGES_DEPLOY_TOKEN` | PAT with write access to the Pages repo, for cross-repo publishing. Required. |
+| `TWITTER_AUTH_TOKEN`, `TWITTER_CT0` | X session tokens for the optional X source; degrades to nothing if absent. |
 
-Both Google keys are project-scoped, and the failure mode when they are crossed is confusing: a `403 … API_KEY_SERVICE_BLOCKED` or "Gemini API has not been used in project *N*" means the key belongs to a project where the Generative Language API is not enabled — enabling it elsewhere will not help. The error names the key's project *number*; compare it against your AI Studio project:
 
-```sh
-gcloud projects describe <ai-studio-project-id> --format='value(projectNumber)'
-```
+## Make it your own
 
-A mismatch means `GOOGLE_AI_STUDIO_KEY` holds the wrong key (typically the `GOOGLE_CLOUD_TTS_KEY` one).
+The committed sources and topics are the owner's, kept only so the repo runs out of the box.
 
-The site publishes to `camilharoune.com/knowledge_secretary/` — a subpath of the owner's personal site, deployed with `keep_files` so it never clobbers the homepage.
-
-### Make it your own
-
-This repo is a template: the committed data is one example (the owner's blogs/channels/topics), kept only so it runs out of the box. Everything personal is a `sources.yaml` entry, a workflow value, or a branding constant. Fork it, then work down this checklist.
-
-**1. Sources — what it reads.** Edit each `src/tasks/<task>/sources.yaml`:
-- `newsletter/sources.yaml` — RSS feed URLs, PubMed queries, bioRxiv categories, X handles, and the `section:` names. Newsletter and YouTube files are lists of source-spec dicts (kinds: `feed`, `pubmed`, `biorxiv`, `twitter`, `yt_channel`).
-- `youtube/sources.yaml` — channel IDs and their sections.
-- `podcast/sources.yaml` — the topic queue (a list of strings, consumed one per run).
-- If you rename sections, also update the section vocabulary in `src/tasks/newsletter/prompt.md`.
-
-**2. Secrets.** Set the repository secrets in the table above.
-
-**3. Publishing target.** Set the repository variables `PAGES_REPOSITORY` (`owner/repo`) and `PAGES_DESTINATION_DIR` to your own Pages repo/subpath — both jobs in `.github/workflows/daily.yml` pass them through to `.github/actions/publish`, which falls back to the owner's (`Camil-H/camil-h.github.io`, `knowledge_secretary`) if unset. Also set `PAGES_DEPLOY_TOKEN` (below). `keep_files: true` in `.github/actions/publish/action.yml` assumes you publish into a subpath of a larger site; drop it if the Pages repo is dedicated to this project. Podcast MP3s are hosted as GitHub Release assets of your own fork (needs `permissions: contents: write`, already set) — no change needed. The local build dir is `OUT_DIR` in `src/config.py`.
-
-**4. Branding & editorial voice.** Site title/subtitle, and the podcast language and voices: the "Yours to set" section at the top of `src/config.py`. Per-task subject lines: `src/tasks/*/task.py`. Podcast host roles: `src/tasks/podcast/transcript_prompt.md`. The editorial framing (currently biotech/pharma) lives in the prompts — `src/tasks/newsletter/prompt.md`, `src/tasks/youtube/prompt.md`, `src/tasks/podcast/transcript_prompt.md`, and `src/tasks/podcast/research_prompt.md`. Update the `LICENSE` copyright line too.
-
-**5. Schedule.** Cron times are in `.github/workflows/daily.yml` (UTC). The job `if:` guards key off the **exact** cron strings, so if you change a time you must update its matching `github.event.schedule == '...'` condition.
-
-**6. Start clean.** Delete `state/seen.json` (dedup state + the owner's podcast-queue progress) and `history/*.json` (rendered digests from prior runs) so your first run starts fresh.
+1. **Sources.** Edit each `src/tasks/<task>/sources.yaml`: feeds, journals, and X handles for the newsletter; channel IDs for YouTube; the topic queue for the podcast. Renaming a section means updating the vocabulary in `newsletter/prompt.md` too.
+2. **Secrets and publishing.** Set the secrets above, plus the repository variables `PAGES_REPOSITORY` and `PAGES_DESTINATION_DIR` — both fall back to the owner's. Drop `keep_files: true` from `.github/actions/publish/action.yml` if your Pages repo is dedicated to this project.
+3. **Voice.** Branding in config's "Yours to set"; editorial framing in the prompt markdown under `src/tasks/`. Update the `LICENSE` copyright line.
+4. **Schedule.** Cron times live in `daily.yml`, and each job's `if:` guard matches the **exact** cron string — change a time and you must change its guard.
+5. **Start clean.** Delete `state/*.json` and `history/*.json` so the first run starts fresh.
 
 ## Contributing
 
-Personal project. Pull requests are welcome but are reviewed and require maintainer approval before merging.
+Personal project. Pull requests are welcome but require maintainer approval before merging.
 
 ## License
 
