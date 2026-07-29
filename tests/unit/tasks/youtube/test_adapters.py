@@ -39,7 +39,7 @@ def test_yt_channel_maps_videos_to_items(monkeypatch):
         adapters.yt, "channel_videos", lambda channel_id: {"channel": "ChanX", "videos": videos}
     )
 
-    items = yt_channel(_SPEC, _SINCE, state={})
+    items = yt_channel(_SPEC, _SINCE)
 
     assert [i.id for i in items] == ["yt:A", "yt:B"]
     assert [i.meta for i in items] == [{"channel": "ChanX"}, {"channel": "ChanX"}]
@@ -55,7 +55,7 @@ def test_yt_channel_skips_videos_with_no_published_date(monkeypatch):
         adapters.yt, "channel_videos", lambda channel_id: {"channel": "ChanX", "videos": videos}
     )
 
-    items = yt_channel(_SPEC, _SINCE, state={})
+    items = yt_channel(_SPEC, _SINCE)
 
     assert [i.id for i in items] == ["yt:B"]
 
@@ -69,7 +69,7 @@ def test_yt_channel_passes_channel_id_from_spec(monkeypatch):
 
     monkeypatch.setattr(adapters.yt, "channel_videos", _fake)
 
-    yt_channel(_SPEC, _SINCE, state={})
+    yt_channel(_SPEC, _SINCE)
 
     assert seen["channel_id"] == "UC_test"
 

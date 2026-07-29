@@ -26,7 +26,7 @@ def gather(specs: list[SourceSpec], state: State, since: datetime) -> list[Item]
     pending: list[tuple[Item, list[str]]] = []
 
     with ThreadPoolExecutor(max_workers=_worker_count(len(specs))) as pool:
-        futures = [pool.submit(_fetch_source_items, spec, since, state) for spec in specs]
+        futures = [pool.submit(_fetch_source_items, spec, since) for spec in specs]
 
     for spec, future in zip(specs, futures, strict=True):
         try:
@@ -82,8 +82,8 @@ def run_source_task(
 # == Helper Functions =========================================================
 
 
-def _fetch_source_items(spec: SourceSpec, since: datetime, state: State) -> list[Item]:
-    return sources.get(spec["kind"])(spec, since, state)
+def _fetch_source_items(spec: SourceSpec, since: datetime) -> list[Item]:
+    return sources.get(spec["kind"])(spec, since)
 
 
 def _enrich_concurrently(pending: list[tuple[Item, list[str]]]) -> list[Item]:

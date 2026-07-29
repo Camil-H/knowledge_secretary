@@ -50,7 +50,7 @@ def test_feed_maps_entries_and_skips_unpublished(monkeypatch):
     ]
     monkeypatch.setattr(adapters.rss, "fetch", lambda _url: {"entries": entries})
 
-    out = feed(_spec(url="http://feed"), _SINCE, {})
+    out = feed(_spec(url="http://feed"), _SINCE)
 
     assert [i.id for i in out] == ["rss:e1"]  # published-None entry skipped
     item = out[0]
@@ -70,7 +70,7 @@ def test_pubmed_source_maps_and_forwards_queries_since(monkeypatch):
 
     monkeypatch.setattr(adapters.pubmed, "search_recent", _search_recent)
 
-    out = pubmed_source(_spec(queries=["q1", "q2"]), _SINCE, {})
+    out = pubmed_source(_spec(queries=["q1", "q2"]), _SINCE)
 
     assert seen == {"queries": ["q1", "q2"], "since": _SINCE}
     item = out[0]
@@ -91,7 +91,7 @@ def test_biorxiv_source_maps_doi_url_and_abstract(monkeypatch):
 
     monkeypatch.setattr(adapters.openrxiv, "recent", _recent)
 
-    out = biorxiv_source(_spec(categories=["cs.AI"]), _SINCE, {})
+    out = biorxiv_source(_spec(categories=["cs.AI"]), _SINCE)
 
     assert seen == {"server": "biorxiv", "categories": ["cs.AI"], "since": _SINCE}
     item = out[0]
@@ -109,7 +109,7 @@ def test_medrxiv_source_routes_to_the_medrxiv_server_and_namespaces_ids(monkeypa
 
     monkeypatch.setattr(adapters.openrxiv, "recent", _recent)
 
-    out = medrxiv_source(_spec(categories=["oncology"]), _SINCE, {})
+    out = medrxiv_source(_spec(categories=["oncology"]), _SINCE)
 
     assert seen["server"] == "medrxiv"
     assert out[0].id == "medrxiv:10.2/xyz"
@@ -135,7 +135,7 @@ def test_twitter_iterates_every_handle(monkeypatch):
 
     monkeypatch.setattr(adapters.x, "recent_tweets", _recent_tweets)
 
-    out = twitter(_spec(handles=["h1", "h2"]), _SINCE, {})
+    out = twitter(_spec(handles=["h1", "h2"]), _SINCE)
 
     assert sorted(calls) == ["h1", "h2"]
     assert [i.id for i in out] == ["x:h11", "x:h21"]
@@ -156,7 +156,7 @@ def test_twitter_fetches_handles_concurrently_keeping_handle_order(monkeypatch):
 
     monkeypatch.setattr(adapters.x, "recent_tweets", _recent_tweets)
 
-    out = twitter(_spec(handles=["h1", "h2"]), _SINCE, {})
+    out = twitter(_spec(handles=["h1", "h2"]), _SINCE)
 
     assert [i.id for i in out] == ["x:h11", "x:h21"]
 
@@ -166,7 +166,7 @@ def test_twitter_handle_that_degraded_to_empty_leaves_the_others(monkeypatch):
         adapters.x, "recent_tweets", lambda handle: [] if handle == "dead" else _tweets_for(handle)
     )
 
-    out = twitter(_spec(handles=["dead", "alive"]), _SINCE, {})
+    out = twitter(_spec(handles=["dead", "alive"]), _SINCE)
 
     assert [i.id for i in out] == ["x:alive1"]
 
@@ -174,7 +174,7 @@ def test_twitter_handle_that_degraded_to_empty_leaves_the_others(monkeypatch):
 def test_twitter_without_handles_fetches_nothing(monkeypatch):
     monkeypatch.setattr(adapters.x, "recent_tweets", _unreachable_fetch)
 
-    assert twitter(_spec(), _SINCE, {}) == []
+    assert twitter(_spec(), _SINCE) == []
 
 
 def test_twitter_propagates_an_auth_failure_from_any_handle(monkeypatch):
@@ -188,7 +188,7 @@ def test_twitter_propagates_an_auth_failure_from_any_handle(monkeypatch):
     monkeypatch.setattr(adapters.x, "recent_tweets", _recent_tweets)
 
     with pytest.raises(AuthError) as ei:
-        twitter(_spec(handles=["h1", "h2"]), _SINCE, {})
+        twitter(_spec(handles=["h1", "h2"]), _SINCE)
 
     assert ei.value is boom
 

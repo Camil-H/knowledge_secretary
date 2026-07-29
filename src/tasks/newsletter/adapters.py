@@ -5,7 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 
 from src import config
-from src.core.models import Item, SourceSpec, State
+from src.core.models import Item, SourceSpec
 from src.core.registry import enrichers, sources
 from src.fetchers import openrxiv, pubmed, rss, url, x
 
@@ -13,7 +13,7 @@ from src.fetchers import openrxiv, pubmed, rss, url, x
 
 
 @sources.register("feed")
-def feed(spec: SourceSpec, since: datetime, state: State) -> list[Item]:
+def feed(spec: SourceSpec, since: datetime) -> list[Item]:
     """Plain RSS/Atom feed (blogs, news sites, journal TOCs, agency feeds)."""
     items = []
     for e in rss.fetch(spec["url"])["entries"]:
@@ -34,7 +34,7 @@ def feed(spec: SourceSpec, since: datetime, state: State) -> list[Item]:
 
 
 @sources.register("pubmed")
-def pubmed_source(spec: SourceSpec, since: datetime, state: State) -> list[Item]:
+def pubmed_source(spec: SourceSpec, since: datetime) -> list[Item]:
     return [
         Item(
             id="pubmed:" + r["pmid"],
@@ -50,17 +50,17 @@ def pubmed_source(spec: SourceSpec, since: datetime, state: State) -> list[Item]
 
 
 @sources.register("biorxiv")
-def biorxiv_source(spec: SourceSpec, since: datetime, state: State) -> list[Item]:
+def biorxiv_source(spec: SourceSpec, since: datetime) -> list[Item]:
     return _preprint_items("biorxiv", spec, since)
 
 
 @sources.register("medrxiv")
-def medrxiv_source(spec: SourceSpec, since: datetime, state: State) -> list[Item]:
+def medrxiv_source(spec: SourceSpec, since: datetime) -> list[Item]:
     return _preprint_items("medrxiv", spec, since)
 
 
 @sources.register("twitter")
-def twitter(spec: SourceSpec, since: datetime, state: State) -> list[Item]:
+def twitter(spec: SourceSpec, since: datetime) -> list[Item]:
     """Every configured handle's recent tweets, in handle order. Each handle is its own
     twitter-cli subprocess, so they run on a bounded pool instead of one after another."""
     handles = spec.get("handles", [])

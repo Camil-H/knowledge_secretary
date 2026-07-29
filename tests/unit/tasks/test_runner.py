@@ -50,7 +50,7 @@ def _spec(key: str, *, kind: str = "rss", enrich: list[str] | None = None) -> di
 
 
 def _fetcher(items: list[Item]):
-    return lambda spec, since, state: items
+    return lambda spec, since: items
 
 
 def _raiser(exc: Exception):
@@ -316,7 +316,7 @@ def _barrier_fetcher(barrier: threading.Barrier, items: list[Item]):
     """Fetcher that returns only once a second fetch reaches the barrier concurrently;
     run sequentially the first .wait() would time out and break the barrier."""
 
-    def _fetch(spec, since, state):
+    def _fetch(spec, since):
         barrier.wait()
         return items
 
