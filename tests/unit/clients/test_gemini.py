@@ -1,6 +1,8 @@
 """The Google AI Studio primitive and the tier loop over its model table. The genai client,
 the ledger path (via chdir) and sleep are all faked — no real request, key or wait."""
 
+import logging
+
 import pytest
 from google.genai import errors as genai_errors
 
@@ -316,6 +318,65 @@ def test_quota_scope(payload, expected):
 
 # ===== Tier =====
 
+# ----- first_completion -----
+
+
+@pytest.mark.parametrize(
+    "failure, expected",
+    [
+        pytest.param(_api_error(500), "unavailable", id="external_error"),
+        pytest.param(_api_error(429, _DAY_QUOTA), "unavailable", id="quota_exhausted"),
+        pytest.param(_FakeGeminiResponse(""), "returned empty", id="empty_text"),
+    ],
+)
+def test_first_completion_names_the_callers_cascade_in_its_warnings(
+    monkeypatch, caplog, failure, expected
+):
+    """Both cascades log from this module, so the label is what tells their lines apart."""
+    model = config.GEMINI_TEXT_MODELS[0]
+    _fake_google(monkeypatch, [failure])
+
+    with caplog.at_level(logging.WARNING, logger=gemini.logger.name):
+        gemini.first_completion([model], "u", _config(), ledger=ledger_mod.load(), label="a-label")
+
+    assert [
+        r.getMessage()
+        for r in caplog.records
+        if f"a-label model={model.id}" in r.getMessage() and expected in r.getMessage()
+    ]
+
+
+def test_first_completion_hands_every_response_to_on_response(monkeypatch):
+    """The hook reads grounding metadata, which the responses skipped as empty carry too."""
+    first, second = config.GEMINI_TEXT_MODELS[:2]
+    empty, answer = _FakeGeminiResponse(""), _FakeGeminiResponse("an answer")
+    _fake_google(monkeypatch, [{first.id: empty, second.id: answer}])
+    seen: list[object] = []
+
+    text = gemini.first_completion(
+        [first, second],
+        "u",
+        _config(),
+        ledger=ledger_mod.load(),
+        label="a-label",
+        on_response=seen.append,
+    )
+
+    assert text == "an answer"
+    assert seen == [empty, answer]
+
+
+def test_first_completion_tries_only_the_models_it_is_given(monkeypatch):
+    models = _fake_google(monkeypatch, [_FakeGeminiResponse("ok")])
+    chosen = config.GEMINI_TEXT_MODELS[-1]
+
+    gemini.first_completion([chosen], "u", _config(), ledger=ledger_mod.load(), label="a-label")
+
+    assert models.models_tried == [chosen.id]
+
+
+# ----- call -----
+
 
 def test_call_hands_the_system_prompt_and_max_tokens_to_the_model(monkeypatch):
     models = _fake_google(monkeypatch, [_FakeGeminiResponse("ok")])
@@ -326,6 +387,17 @@ def test_call_hands_the_system_prompt_and_max_tokens_to_the_model(monkeypatch):
     assert call["contents"] == "the user text"
     assert call["config"].system_instruction == "the system prompt"
     assert call["config"].max_output_tokens == 1234
+
+
+def test_call_attaches_no_tool(monkeypatch):
+    """Grounded search belongs to podcast research alone. This is the newsletter, youtube and
+    transcript path, and a tool leaking into it would put a billed web search behind every item
+    of every run without changing any visible output."""
+    models = _fake_google(monkeypatch, [_FakeGeminiResponse("ok")])
+
+    gemini.call("s", "u", None, ledger=ledger_mod.load())
+
+    assert models.calls[0]["config"].tools is None
 
 
 def test_call_skips_models_the_ledger_has_retired(monkeypatch):

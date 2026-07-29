@@ -9,6 +9,7 @@ the only truth about what is left.
 import logging
 import os
 import time
+from collections.abc import Callable
 
 from google import genai
 from google.genai import errors as genai_errors
@@ -22,6 +23,7 @@ from src.core.models import ModelLimit
 logger = logging.getLogger(__name__)
 
 SOURCE = "google-ai-studio"
+TEXT_LABEL = "llm google"
 
 _QUOTA_SCOPE_MINUTE = "PerMinute"
 _QUOTA_SCOPE_DAY = "PerDay"
@@ -116,26 +118,51 @@ def _quota_scope(e: genai_errors.APIError) -> str | None:
 # == Tier =====================================================================
 
 
-def call(system: str, user: str, max_tokens: int | None, *, ledger: ledger_mod.Ledger) -> str:
-    """First non-empty completion from the model table; "" when every model is spent, failing
+def first_completion(
+    models: list[ModelLimit],
+    contents: str,
+    gen_config: types.GenerateContentConfig,
+    *,
+    ledger: ledger_mod.Ledger,
+    label: str,
+    on_response: Callable[[types.GenerateContentResponse], None] | None = None,
+) -> str:
+    """First non-empty text from `models` in order; "" when every candidate is spent, failing
     or empty.
 
-    AuthError propagates — the cross-tier decision belongs to the cascade in src/clients/llm.py."""
-    gen_config = types.GenerateContentConfig(
-        system_instruction=system, max_output_tokens=max_tokens
-    )
-    for model in config.GEMINI_TEXT_MODELS:
+    The sole owner of the tier policy — which candidates the ledger still allows, what a failure
+    costs the run, and when the cascade is dry — so a change to it reaches every caller. Callers
+    differ only in their model subset, their `label` (which names the cascade in the warnings)
+    and `on_response`, a hook for reading the raw response before its text is taken.
+
+    QuotaExhausted arrives as an ExternalError subclass and is tolerated with it. AuthError
+    propagates — the cross-tier decision belongs to the cascade in src/clients/llm.py."""
+    for model in models:
         if not ledger_mod.available(ledger, model.id, model.rpd):
             continue
         try:
-            response = generate(model, user, gen_config, ledger=ledger)
+            response = generate(model, contents, gen_config, ledger=ledger)
         except AuthError:
             raise
         except ExternalError as e:
-            logger.warning("⚠️ llm google model=%s unavailable, next candidate: %s", model.id, e)
+            logger.warning("⚠️ %s model=%s unavailable, next candidate: %s", label, model.id, e)
             continue
+        if on_response is not None:
+            on_response(response)
         text = response.text
         if text and text.strip():
             return text
-        logger.warning("⚠️ llm google model=%s returned empty, next candidate", model.id)
+        logger.warning("⚠️ %s model=%s returned empty, next candidate", label, model.id)
     return ""
+
+
+def call(system: str, user: str, max_tokens: int | None, *, ledger: ledger_mod.Ledger) -> str:
+    """First non-empty completion from the general text model table.
+
+    Plain generation with no grounding tool — search is podcast research's alone."""
+    gen_config = types.GenerateContentConfig(
+        system_instruction=system, max_output_tokens=max_tokens
+    )
+    return first_completion(
+        config.GEMINI_TEXT_MODELS, user, gen_config, ledger=ledger, label=TEXT_LABEL
+    )

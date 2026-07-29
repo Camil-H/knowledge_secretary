@@ -13,11 +13,11 @@ from google.genai import types
 from src import config
 from src.clients import gemini
 from src.core import ledger as ledger_mod
-from src.core.errors import AuthError, ExternalError
 
 logger = logging.getLogger(__name__)
 
 PROMPT = (Path(__file__).parent / "research_prompt.md").read_text()
+_LABEL = "research"
 _MAX_LOGGED_SOURCES = 10
 
 
@@ -29,30 +29,22 @@ def research(topic: str) -> str:
     answers; "" when every candidate is spent, failing or empty.
 
     Only models flagged `search` are candidates — the rest cannot run the grounding tool, and
-    an ungrounded overview defeats the point of this step. Runs on the shared Gemini primitive,
-    so the day's ledger, pacing and error typing are the same as general text. AuthError
-    propagates: a credential failure is not something a later candidate recovers from."""
+    an ungrounded overview defeats the point of this step. This is the one place a search tool is
+    attached; the tier cascade, ledger, pacing and error typing are the shared Gemini ones, so
+    AuthError propagates here too: a credential failure is not something a later candidate
+    recovers from."""
     gen_config = types.GenerateContentConfig(
         tools=[types.Tool(google_search=types.GoogleSearch())],
         system_instruction=PROMPT,
     )
-    ledger = ledger_mod.load()
-    for model in [m for m in config.GEMINI_TEXT_MODELS if m.search]:
-        if not ledger_mod.available(ledger, model.id, model.rpd):
-            continue
-        try:
-            response = gemini.generate(model, topic, gen_config, ledger=ledger)
-        except AuthError:
-            raise
-        except ExternalError as e:
-            logger.warning("⚠️ research model=%s unavailable, next candidate: %s", model.id, e)
-            continue
-        _log_sources(response)
-        text = response.text
-        if text and text.strip():
-            return text
-        logger.warning("⚠️ research model=%s returned empty, next candidate", model.id)
-    return ""
+    return gemini.first_completion(
+        [m for m in config.GEMINI_TEXT_MODELS if m.search],
+        topic,
+        gen_config,
+        ledger=ledger_mod.load(),
+        label=_LABEL,
+        on_response=_log_sources,
+    )
 
 
 # == Helper Functions =========================================================
