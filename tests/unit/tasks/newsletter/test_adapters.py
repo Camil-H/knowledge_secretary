@@ -1,9 +1,11 @@
 """Newsletter source adapters + enrichers. Fetcher collaborators are stubbed."""
 
+import threading
 from datetime import UTC, datetime
 
 import pytest
 
+from src.core.errors import AuthError
 from src.core.models import Item
 from src.fetchers import x
 from src.tasks.newsletter import adapters
@@ -116,20 +118,79 @@ def test_medrxiv_source_routes_to_the_medrxiv_server_and_namespaces_ids(monkeypa
 # ----- twitter -----
 
 
+def _unreachable_fetch(handle: str) -> list[dict]:
+    raise AssertionError(f"no handle should have been fetched, got {handle}")
+
+
+def _tweets_for(handle: str) -> list[dict]:
+    return [{"id": f"{handle}1", "createdAtISO": "2024-01-01T00:00:00Z", "text": "hi"}]
+
+
 def test_twitter_iterates_every_handle(monkeypatch):
     calls = []
 
     def _recent_tweets(handle):
         calls.append(handle)
-        return [{"id": f"{handle}1", "createdAtISO": "2024-01-01T00:00:00Z", "text": "hi"}]
+        return _tweets_for(handle)
 
     monkeypatch.setattr(adapters.x, "recent_tweets", _recent_tweets)
 
     out = twitter(_spec(handles=["h1", "h2"]), _SINCE, {})
 
-    assert calls == ["h1", "h2"]
+    assert sorted(calls) == ["h1", "h2"]
     assert [i.id for i in out] == ["x:h11", "x:h21"]
     assert {i.meta["handle"] for i in out} == {"h1", "h2"}
+
+
+def test_twitter_fetches_handles_concurrently_keeping_handle_order(monkeypatch):
+    signal = threading.Event()
+
+    def _recent_tweets(handle):
+        # h1 can only finish once h2 has run, so a sequential walk would time out here
+        if handle == "h1":
+            if not signal.wait(timeout=5):
+                raise TimeoutError("handle fetches never overlapped")
+        else:
+            signal.set()
+        return _tweets_for(handle)
+
+    monkeypatch.setattr(adapters.x, "recent_tweets", _recent_tweets)
+
+    out = twitter(_spec(handles=["h1", "h2"]), _SINCE, {})
+
+    assert [i.id for i in out] == ["x:h11", "x:h21"]
+
+
+def test_twitter_handle_that_degraded_to_empty_leaves_the_others(monkeypatch):
+    monkeypatch.setattr(
+        adapters.x, "recent_tweets", lambda handle: [] if handle == "dead" else _tweets_for(handle)
+    )
+
+    out = twitter(_spec(handles=["dead", "alive"]), _SINCE, {})
+
+    assert [i.id for i in out] == ["x:alive1"]
+
+
+def test_twitter_without_handles_fetches_nothing(monkeypatch):
+    monkeypatch.setattr(adapters.x, "recent_tweets", _unreachable_fetch)
+
+    assert twitter(_spec(), _SINCE, {}) == []
+
+
+def test_twitter_propagates_an_auth_failure_from_any_handle(monkeypatch):
+    boom = AuthError("x", detail="creds expired")
+
+    def _recent_tweets(handle):
+        if handle == "h2":
+            raise boom
+        return _tweets_for(handle)
+
+    monkeypatch.setattr(adapters.x, "recent_tweets", _recent_tweets)
+
+    with pytest.raises(AuthError) as ei:
+        twitter(_spec(handles=["h1", "h2"]), _SINCE, {})
+
+    assert ei.value is boom
 
 
 # == Enrichers ================================================================

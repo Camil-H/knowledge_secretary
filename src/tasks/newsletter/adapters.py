@@ -1,8 +1,10 @@
 """Newsletter source adapters + enrichers — thin mappers over src/fetchers.
 Kinds: feed/pubmed/biorxiv/medrxiv/twitter. Enricher: article_text."""
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 
+from src import config
 from src.core.models import Item, SourceSpec, State
 from src.core.registry import enrichers, sources
 from src.fetchers import openrxiv, pubmed, rss, url, x
@@ -59,10 +61,17 @@ def medrxiv_source(spec: SourceSpec, since: datetime, state: State) -> list[Item
 
 @sources.register("twitter")
 def twitter(spec: SourceSpec, since: datetime, state: State) -> list[Item]:
+    """Every configured handle's recent tweets, in handle order. Each handle is its own
+    twitter-cli subprocess, so they run on a bounded pool instead of one after another."""
+    handles = spec.get("handles", [])
+    if not handles:
+        return []
+    with ThreadPoolExecutor(max_workers=min(config.MAX_FETCH_WORKERS, len(handles))) as pool:
+        futures = [pool.submit(x.recent_tweets, handle) for handle in handles]
     return [
         _tweet_item(tweet, spec, handle)
-        for handle in spec.get("handles", [])
-        for tweet in x.recent_tweets(handle)
+        for handle, future in zip(handles, futures, strict=True)
+        for tweet in future.result()
     ]
 
 
