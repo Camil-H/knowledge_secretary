@@ -79,16 +79,25 @@ def test_call_retries_the_same_model_on_rate_limit(monkeypatch):
     assert n["i"] == 2
 
 
-def test_call_falls_through_to_the_next_model_on_other_error(monkeypatch):
+@pytest.mark.parametrize(
+    "error",
+    [ValueError("boom"), _StatusErr("rate limit reached", status_code=402)],
+    ids=["untyped", "non_transient_status_naming_a_rate_limit"],
+)
+def test_call_falls_through_to_the_next_model_on_other_error(monkeypatch, error):
+    """A status outside TRANSIENT_STATUSES moves on rather than retrying, whatever its body says."""
     monkeypatch.setattr(config, "OPENROUTER_MODELS", ["openrouter/a:free", "openrouter/b:free"])
+    tried = []
 
     def _complete(model, messages, max_tokens):
+        tried.append(model)
         if model == "openrouter/a:free":
-            raise ValueError("boom")
+            raise error
         return "second"
 
     monkeypatch.setattr(openrouter, "complete", _complete)
     assert openrouter.call("s", "u", None) == "second"
+    assert tried == ["openrouter/a:free", "openrouter/b:free"]
 
 
 def test_call_raises_auth_error_immediately(monkeypatch):
@@ -97,12 +106,26 @@ def test_call_raises_auth_error_immediately(monkeypatch):
 
     def _complete(model, messages, max_tokens):
         tried.append(model)
-        raise ValueError("No user or org id found in auth cookie")
+        raise _StatusErr("unauthorized", status_code=401)
 
     monkeypatch.setattr(openrouter, "complete", _complete)
     with pytest.raises(AuthError):
         openrouter.call("s", "u", None)
     assert tried == ["openrouter/a:free"]
+
+
+def test_call_does_not_read_auth_intent_from_the_message(monkeypatch):
+    """A 401 is a 401; an untyped error whose text mentions credentials is just a failed
+    candidate, where the old phrase list would have raised AuthError and stopped the cascade."""
+    monkeypatch.setattr(config, "OPENROUTER_MODELS", ["openrouter/a:free", "openrouter/b:free"])
+
+    def _complete(model, messages, max_tokens):
+        if model == "openrouter/a:free":
+            raise ValueError("No user or org id found in auth cookie")
+        return "second"
+
+    monkeypatch.setattr(openrouter, "complete", _complete)
+    assert openrouter.call("s", "u", None) == "second"
 
 
 def test_call_external_error_carries_the_last_exception_as_cause(monkeypatch):
@@ -249,22 +272,14 @@ def test_complete_returns_empty_on_a_textless_response(monkeypatch, payload):
     assert openrouter.complete("openrouter/a:free", [], None) == ""
 
 
-@pytest.mark.parametrize(
-    "status, body, expected",
-    [
-        pytest.param(429, '{"error": "rate limit"}', openrouter._is_rate_limit, id="rate_limited"),
-        pytest.param(401, '{"error": "unauthorized"}', openrouter._is_auth, id="unauthorized"),
-        pytest.param(
-            402, '{"error": "rate limit reached"}', openrouter._is_rate_limit, id="body_only"
-        ),
-    ],
-)
-def test_complete_raises_a_classifiable_error(monkeypatch, status, body, expected):
-    _capture_post(monkeypatch, _FakeResp(None, status_code=status, text=body))
+@pytest.mark.parametrize("status", [429, 401, 402, 503], ids=str)
+def test_complete_raises_an_error_carrying_the_status(monkeypatch, status):
+    """The tier classifies on status_code alone, so surfacing it is complete()'s contract."""
+    _capture_post(monkeypatch, _FakeResp(None, status_code=status, text='{"error": "rate limit"}'))
 
     with pytest.raises(openrouter.OpenRouterError) as ei:
         openrouter.complete("openrouter/a:free", [], None)
-    assert expected(ei.value)
+    assert ei.value.status_code == status
 
 
 def test_complete_truncates_the_error_body(monkeypatch):
@@ -281,38 +296,3 @@ def test_complete_raises_auth_error_without_a_key(monkeypatch):
 
     with pytest.raises(AuthError, match=config.OPENROUTER_KEY_LABEL):
         openrouter.complete("openrouter/a:free", [], None)
-
-
-# ===== Helper Functions =====
-
-
-@pytest.mark.parametrize(
-    "exc, expected",
-    [
-        pytest.param(_StatusErr("boom", status_code=429), True, id="status_code_429"),
-        pytest.param(ValueError("Rate limit exceeded, try later"), True, id="message_substring"),
-        pytest.param(ValueError("totally unrelated"), False, id="negative"),
-    ],
-)
-def test_is_rate_limit(exc, expected):
-    assert openrouter._is_rate_limit(exc) is expected
-
-
-@pytest.mark.parametrize(
-    "exc, expected",
-    [
-        pytest.param(_StatusErr("boom", status_code=401), True, id="status_code_401"),
-        pytest.param(
-            ValueError("No user or org id found in auth cookie"),
-            True,
-            id="no_user_or_org_substring",
-        ),
-        pytest.param(ValueError("invalid API key provided"), True, id="invalid_api_key"),
-        pytest.param(ValueError("totally unrelated"), False, id="negative"),
-        pytest.param(
-            ValueError("Unknown author, please retry"), False, id="author_substring_not_auth"
-        ),
-    ],
-)
-def test_is_auth(exc, expected):
-    assert openrouter._is_auth(exc) is expected

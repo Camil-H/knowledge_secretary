@@ -22,7 +22,6 @@ _CASCADE_SOURCE = "llm"
 
 COMPLETIONS_URL = "https://openrouter.ai/api/v1/chat/completions"
 _PREFIX = "openrouter/"
-_AUTH_PHRASES = ("no user or org", "invalid api key", "unauthorized")
 _MAX_ERROR_BODY_CHARS = 300
 
 
@@ -41,8 +40,9 @@ class OpenRouterError(Exception):
 
 
 def call(system: str, user: str, max_tokens: int | None) -> str:
-    """First non-empty OpenRouter completion: 429 retries the same model with backoff, an
-    auth failure raises immediately, other errors fall through, all-fail raises ExternalError.
+    """First non-empty OpenRouter completion: a transient status retries the same model with
+    backoff, a 401 raises immediately, anything else falls through to the next candidate, and
+    all-fail raises ExternalError.
     A wall-clock deadline caps total time so the cascade is abandoned rather than walking
     every model x retry."""
     candidates = config.OPENROUTER_MODELS
@@ -69,13 +69,17 @@ def call(system: str, user: str, max_tokens: int | None) -> str:
                 raise
             except Exception as e:
                 last_err = e
-                if _is_auth(e):
+                status = getattr(e, "status_code", None)
+                if status == config.UNAUTHORIZED_STATUS:
                     raise AuthError(SOURCE, cause=e) from e
-                if _is_rate_limit(e) and attempt < config.RATE_LIMIT_RETRIES - 1:
+                retriable = status in config.TRANSIENT_STATUSES
+                if retriable and attempt < config.RATE_LIMIT_RETRIES - 1:
                     remaining = deadline - time.monotonic()
                     if remaining <= 0:
                         break  # outer deadline guard abandons the cascade next iteration
-                    logger.warning("⚠️ llm model=%s rate-limited; backoff %ss", model, backoff)
+                    logger.warning(
+                        "⚠️ llm model=%s refused (%s); backoff %ss", model, status, backoff
+                    )
                     time.sleep(min(backoff, remaining))
                     backoff = min(backoff * 2, config.BACKOFF_CAP_S)
                     continue
@@ -83,7 +87,7 @@ def call(system: str, user: str, max_tokens: int | None) -> str:
                     "⚠️ llm model=%s unavailable, next candidate: %s status=%s",
                     model,
                     type(e).__name__,
-                    getattr(e, "status_code", None),
+                    status,
                 )
                 break
 
@@ -112,21 +116,3 @@ def complete(model: str, messages: list[dict[str, str]], max_tokens: int | None)
     choices = response.json().get("choices") or []
     message = choices[0].get("message", {}) if choices else {}
     return message.get("content") or ""
-
-
-# == Helper Functions =========================================================
-
-
-def _is_rate_limit(e: Exception) -> bool:
-    """True for 429 / rate-limit responses from OpenRouter."""
-    if getattr(e, "status_code", None) == config.RATE_LIMIT_STATUS:
-        return True
-    return "rate limit" in str(e).lower()
-
-
-def _is_auth(e: Exception) -> bool:
-    """True for credential / 401 failures from OpenRouter."""
-    if getattr(e, "status_code", None) == config.UNAUTHORIZED_STATUS:
-        return True
-    msg = str(e).lower()
-    return any(phrase in msg for phrase in _AUTH_PHRASES)
