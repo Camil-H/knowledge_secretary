@@ -55,8 +55,6 @@ OPENROUTER_FREE_LIMIT = 8
 OPENROUTER_DEADLINE_S = 120.0
 OPENROUTER_EXCLUDE_IDS = ("lyria", "content-safety", "openrouter/free")
 
-# Curated known-good free models, best first. Layered on top of the live ranking in
-# openrouter.models(): a preferred id absent from the current live list is simply skipped.
 OPENROUTER_PREFERRED_CONTEXT = [
     "openrouter/google/gemma-4-31b-it:free",
     "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free",
@@ -75,8 +73,6 @@ MAX_FETCH_WORKERS = 8
 
 # == Newsletter ===============================================================
 
-# Per-source caps. They live here because the newsletter is the only task whose sources.yaml
-# uses these kinds; the fetchers themselves are generic.
 PUBMED_RETMAX = 30
 OPENRXIV_MAX_PAGES = 20  # ~600 preprints; caps a busy window so one source can't stall the run
 X_TWEET_LIMIT = 20
@@ -126,11 +122,8 @@ TTS_VOICES: dict[str, str] = {
 }
 
 
-# == Retention ================================================================
+# == Data Retention ================================================================
 
-# One window for everything that expires together: how many days of history the site renders and
-# keeps, how long a podcast release is hosted, and how long an id stays "seen". These must agree —
-# ids expiring before their history card would let an item be re-fetched and published twice.
 RETENTION_DAYS = 7
 
 
@@ -142,9 +135,7 @@ LEDGER_PATH = "state/llm_ledger.json"
 
 # == Delivery =================================================================
 
-SITE_TITLE = os.environ.get("SITE_TITLE", "Knowledge Secretary")
-SITE_SUBTITLE = os.environ.get(
-    "SITE_SUBTITLE", "Daily newsletter, YouTube digest, and technical podcast"
-)
+SITE_TITLE = "Knowledge Secretary"
+SITE_SUBTITLE = "Daily newsletter, YouTube digest, and technical podcast"
 HISTORY_DIR = "history"
 OUT_DIR = "public"
