@@ -8,6 +8,7 @@ underneath is genuinely exercised.
 
 import json
 import os
+import re
 from datetime import UTC, datetime
 
 import pytest
@@ -107,6 +108,12 @@ def _install_newsletter_fakes(monkeypatch, *, markdown: str = "# Daily News\n\nB
     monkeypatch.setattr(llm, "call", lambda system, user, max_tokens=None: markdown)
 
 
+def _youtube_reply(user: str, bullet: str) -> str:
+    """The batched per-video block shape the youtube task parses, one `bullet` per video."""
+    ids = re.findall(r"^\[VIDEO (\S+)\]$", user, re.MULTILINE)
+    return "\n\n".join(f"[VIDEO {vid}]\n{bullet}" for vid in ids)
+
+
 def _install_youtube_fakes(monkeypatch, *, bullet: str = "- key point"):
     monkeypatch.setattr(
         youtube_task,
@@ -138,7 +145,9 @@ def _install_youtube_fakes(monkeypatch, *, bullet: str = "- key point"):
         },
     )
     monkeypatch.setattr(yt, "transcript", lambda vid: "transcript text")
-    monkeypatch.setattr(llm, "call", lambda system, user, max_tokens=None: bullet)
+    monkeypatch.setattr(
+        llm, "call", lambda system, user, max_tokens=None: _youtube_reply(user, bullet)
+    )
 
 
 def _install_podcast_fakes(monkeypatch, tmp_path, *, topic: str = "My Topic"):
@@ -181,7 +190,7 @@ def _install_all_llm(monkeypatch, *, newsletter_markdown: str, youtube_bullet: s
     def _call(system, user, max_tokens=None):
         if system == newsletter_task.EDITOR_PROMPT:
             return newsletter_markdown
-        return youtube_bullet
+        return _youtube_reply(user, youtube_bullet)
 
     monkeypatch.setattr(llm, "call", _call)
 

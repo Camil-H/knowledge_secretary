@@ -1,4 +1,5 @@
 import logging
+import re
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -6,7 +7,14 @@ import pytest
 from src import config
 from src.core.models import Context, Item
 from src.tasks.youtube import task as youtube_task
-from src.tasks.youtube.task import PROMPT, _render, _section_order, _summarize, run
+from src.tasks.youtube.task import (
+    PROMPT,
+    _batch_input,
+    _parse_blocks,
+    _render,
+    _section_order,
+    run,
+)
 
 _TEST_SPEC = {
     "key": "yt_x",
@@ -45,59 +53,142 @@ def _ctx(items, call):
     )
 
 
+def _ids_in(user):
+    return re.findall(r"^\[VIDEO (\S+)\]$", user, re.MULTILINE)
+
+
+def _blocks(ids):
+    return "\n\n".join(f"[VIDEO {vid}]\n- {vid} b1\n- {vid} b2\n- {vid} b3" for vid in ids)
+
+
+class _Call:
+    """Stubbed ctx.call, replying with one well-formed block per video id it was handed."""
+
+    def __init__(self, reply=_blocks):
+        self.calls = []
+        self._reply = reply
+
+    def __call__(self, system, user, max_tokens=None):
+        self.calls.append({"system": system, "user": user})
+        return self._reply(_ids_in(user))
+
+
 def test_run_summarizes_new_videos_and_consumes_all():
     videos = [_video("yt:A"), _video("yt:B")]
-    result = run(_ctx(videos, lambda system, user, max_tokens=None: "- b1\n- b2\n- b3"))
+    result = run(_ctx(videos, _Call()))
 
     assert set(result.consumed) == {"yt:A", "yt:B"}  # dedup already scoped "new"; consume all
     assert "- Pure Science" in result.markdown
     assert "Vid yt:A" in result.markdown and "Vid yt:B" in result.markdown
-    assert "- b1" in result.markdown
+    assert "- yt:A b1" in result.markdown and "- yt:B b1" in result.markdown
 
 
-def test_run_video_without_transcript_gets_note():
-    result = run(_ctx([_video("yt:C", text="")], lambda *a, **k: "unused"))
+def test_run_video_without_transcript_gets_note_without_a_call():
+    call = _Call()
+    result = run(_ctx([_video("yt:C", text="")], call))
+
     assert "(no transcript available)" in result.markdown
     assert result.consumed == ["yt:C"]
+    assert call.calls == []
 
 
 def test_run_no_new_videos_blank_markdown():
-    result = run(_ctx([], lambda *a, **k: "x"))
+    result = run(_ctx([], _Call()))
     assert result.markdown == ""
     assert result.consumed == []
 
 
-# ----- _summarize -----
+# ----- Batching -----
 
 
-def test_summarize_composes_request_with_truncated_transcript():
-    seen = {}
+def test_run_groups_videos_into_batches_of_config_size():
+    size = config.YOUTUBE_BATCH_SIZE
+    videos = [_video(f"yt:{n}") for n in range(size * 2 + 1)]
+    call = _Call()
 
-    def _call(system, user, max_tokens=None):
-        seen["system"] = system
-        seen["user"] = user
-        return "- b1"
+    result = run(_ctx(videos, call))
 
+    assert len(call.calls) == 3
+    assert [len(_ids_in(c["user"])) for c in call.calls] == [size, size, 1]
+    assert all(c["system"] == PROMPT for c in call.calls)
+    for video in videos:
+        assert f"- {video.id} b1" in result.markdown
+
+
+def test_run_missing_block_degrades_only_its_own_video():
+    videos = [_video("yt:A"), _video("yt:B"), _video("yt:C")]
+    dropped = "yt:B"
+
+    result = run(_ctx(videos, _Call(lambda ids: _blocks([i for i in ids if i != dropped]))))
+
+    assert "- yt:A b1" in result.markdown and "- yt:C b1" in result.markdown
+    assert result.markdown.count("(summary unavailable)") == 1
+    assert f"- {dropped} b1" not in result.markdown
+
+
+def test_run_mislabeled_block_is_dropped_not_attributed_elsewhere():
+    videos = [_video("yt:A"), _video("yt:B")]
+
+    def _reply(ids):
+        return f"[VIDEO {ids[0]}]\n- yt:A b1\n\n[VIDEO yt:GARBLED]\n- stray bullet"
+
+    result = run(_ctx(videos, _Call(_reply)))
+
+    assert "- yt:A b1" in result.markdown
+    assert "stray bullet" not in result.markdown
+    assert result.markdown.count("(summary unavailable)") == 1
+
+
+# ----- _batch_input -----
+
+
+def test_batch_input_heads_each_video_with_its_id_and_truncates_the_transcript():
     long_text = "x" * (config.YOUTUBE_TRANSCRIPT_CHAR_LIMIT * 2)
-    item = _video("yt:A", text=long_text)
-    item.title = "Some Title"
-    item.meta = {"channel": "Some Channel"}
+    first = _video("yt:A", text=long_text)
+    first.title = "Some Title"
+    first.meta = {"channel": "Some Channel"}
 
-    _summarize(_ctx([], _call), item)
+    user = _batch_input((first, _video("yt:B", text="short body")))
 
-    assert seen["system"] == PROMPT
-    assert "Title: Some Title" in seen["user"]
-    assert "Channel: Some Channel" in seen["user"]
-    assert f"Transcript:\n{long_text[: config.YOUTUBE_TRANSCRIPT_CHAR_LIMIT]}" in seen["user"]
-    # sanity: truncation actually bites
+    assert _ids_in(user) == ["yt:A", "yt:B"]
+    assert "Title: Some Title" in user
+    assert "Channel: Some Channel" in user
+    assert f"Transcript:\n{long_text[: config.YOUTUBE_TRANSCRIPT_CHAR_LIMIT]}" in user
     assert long_text[: config.YOUTUBE_TRANSCRIPT_CHAR_LIMIT] != long_text
-    assert seen["user"].count("x") == config.YOUTUBE_TRANSCRIPT_CHAR_LIMIT
+    assert user.count("x") == config.YOUTUBE_TRANSCRIPT_CHAR_LIMIT
 
 
-def test_summarize_filters_blank_lines_from_reply():
-    raw = "- b1\n\n   \n- b2\n\t\n- b3"
-    result = _summarize(_ctx([], lambda system, user, max_tokens=None: raw), _video("yt:A"))
-    assert result == ["- b1", "- b2", "- b3"]
+# ----- _parse_blocks -----
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        (
+            "[VIDEO yt:A]\n- a1\n- a2\n\n[VIDEO yt:B]\n- b1",
+            {"yt:A": ["- a1", "- a2"], "yt:B": ["- b1"]},
+        ),
+        ("**[VIDEO yt:A]**\n- a1\n\n## VIDEO yt:B\n   - b1", {"yt:A": ["- a1"], "yt:B": ["- b1"]}),
+        ("[VIDEO yt:A]\n\n  \n- a1\n\t\n- a2", {"yt:A": ["- a1", "- a2"]}),
+        ("- a1\n- a2", {}),
+        ("[VIDEO yt:Z]\n- z1", {}),
+        ("[VIDEO yt:A]\n- a1\n[VIDEO yt:Z]\n- z1", {"yt:A": ["- a1"]}),
+        ("[VIDEO yt:A]\n[VIDEO yt:B]\n- b1", {"yt:B": ["- b1"]}),
+        ("", {}),
+    ],
+    ids=[
+        "two-blocks",
+        "decorated-headers",
+        "blank-lines",
+        "no-header",
+        "unknown-id-only",
+        "unknown-id-after-known",
+        "empty-block",
+        "empty-reply",
+    ],
+)
+def test_parse_blocks_keys_bullets_by_requested_id(raw, expected):
+    assert _parse_blocks(raw, {"yt:A", "yt:B"}) == expected
 
 
 # ----- _section_order -----

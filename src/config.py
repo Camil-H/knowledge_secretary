@@ -111,6 +111,9 @@ NEWSLETTER_ITEM_CHAR_FLOOR = 1000
 # ----- YouTube -----
 
 YOUTUBE_TRANSCRIPT_CHAR_LIMIT = 12000
+# Videos per summarization call. 5 × 12k chars ≈ 15k tokens, far under the 250k TPM ceiling, and
+# it cuts both the request count and the rpm pacing sleep by five.
+YOUTUBE_BATCH_SIZE = 5
 
 # ----- Podcast: transcript -----
 
