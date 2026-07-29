@@ -11,7 +11,6 @@ import logging
 
 from src.clients import gemini, openrouter
 from src.core import ledger as ledger_mod
-from src.core.errors import AuthError
 
 logger = logging.getLogger(__name__)
 
@@ -22,12 +21,13 @@ logger = logging.getLogger(__name__)
 def call(system: str, user: str, *, max_tokens: int | None = None) -> str:
     """First non-empty completion from the Google tier, then the OpenRouter tier.
 
-    All tiers dry raises ExternalError. An OpenRouter auth failure propagates as AuthError;
-    a Google one does not, because OpenRouter is an independent credential."""
+    Any Google-side failure degrades to OpenRouter, which is an independent credential.
+    OpenRouter's own failures propagate — it is the last tier, so there is nothing left to
+    fall back to and the caller decides what a dry cascade means."""
     ledger = ledger_mod.load()
     try:
         text = gemini.call(system, user, max_tokens, ledger=ledger)
-    except AuthError as e:
+    except Exception as e:
         logger.warning("⚠️ llm google tier unavailable, degrading to openrouter: %s", e)
         text = ""
     return text or openrouter.call(system, user, max_tokens)

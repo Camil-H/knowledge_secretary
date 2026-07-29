@@ -107,3 +107,12 @@ def test_call_raises_when_every_tier_is_dry(monkeypatch):
 
     with pytest.raises(ExternalError, match="all models failed"):
         llm.call("s", "u")
+
+
+def test_call_degrades_to_openrouter_on_any_google_side_failure(monkeypatch):
+    """Only AuthError used to degrade, so a ledger write or pacing failure skipped OpenRouter
+    even though its credential was fine."""
+    monkeypatch.setattr(llm.gemini, "call", _raiser(OSError("state/ is read-only")))
+    _fake_openrouter(monkeypatch)
+
+    assert llm.call("s", "u") == "from openrouter"
