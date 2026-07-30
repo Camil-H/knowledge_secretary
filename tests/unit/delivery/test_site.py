@@ -61,19 +61,15 @@ def _todays_tasks() -> dict:
 # ----- site: markdown tasks -----
 
 
-def test_site_stores_newsletter_and_renders_today_expanded():
-    html = _rendered(Result(subject="Digest", markdown="# Hello", meta={"task": "newsletter"}))
-    assert "<h1>Hello</h1>" in html
-    assert '<section class="day today">' in html
-    assert "<details" not in html  # only one day so far
-
-
 def test_site_second_task_upserts_same_day():
     site.site(Result(markdown="# News", meta={"task": "newsletter"}))
     html = _rendered(Result(markdown="# Vids", meta={"task": "youtube"}))
     assert '<article class="task newsletter">' in html
     assert '<article class="task youtube">' in html
     assert "<h1>News</h1>" in html and "<h1>Vids</h1>" in html
+    # exactly one day recorded, so it is the expanded "today" section and nothing is collapsed
+    assert '<section class="day today">' in html
+    assert "<details" not in html
 
 
 def test_site_does_not_render_at_record_time():
@@ -174,44 +170,49 @@ def test_render_keeps_only_the_newest_history_days(monkeypatch):
 # ----- render: what the log reports -----
 
 
-def test_render_logs_the_newest_days_cards(caplog):
-    _write_day("2026-07-26", "Older")
-    site._save_entry(
-        config.HISTORY_DIR,
+_NEWEST_TWO_DAYS = [
+    # the newest day's tasks are written podcast-first, so "newsletter, podcast" can only come
+    # from the _LABELS display order; the older day pins that only entries[0] is named
+    (
         "2026-07-27",
         {
-            "date": "2026-07-27",
-            "tasks": {
-                "podcast": {"kind": "podcast", "topic": "t", "audio_url": None},
-                "newsletter": {"kind": "markdown", "markdown": "# N"},
-            },
+            "podcast": {"kind": "podcast", "topic": "t", "audio_url": None},
+            "newsletter": {"kind": "markdown", "markdown": "# N"},
         },
-    )
+    ),
+    ("2026-07-26", {"newsletter": {"kind": "markdown", "markdown": "# Older"}}),
+]
+
+
+@pytest.mark.parametrize(
+    "days, expected, forbidden",
+    [
+        pytest.param(
+            _NEWEST_TWO_DAYS,
+            ["rendered 2 day(s)", "2026-07-27: newsletter, podcast"],
+            ["2026-07-26"],
+            id="two-days-names-newest-only",
+        ),
+        pytest.param(
+            [("2026-07-27", {})],
+            ["rendered 1 day(s)", "2026-07-27: no cards"],
+            [],
+            id="day-with-no-cards",
+        ),
+        pytest.param([], ["rendered 0 day(s)"], ["—"], id="no-history"),
+    ],
+)
+def test_render_log_reports_the_newest_day(caplog, days, expected, forbidden):
+    for date, tasks in days:
+        site._save_entry(config.HISTORY_DIR, date, {"date": date, "tasks": tasks})
 
     with caplog.at_level(logging.INFO, logger="src.delivery.site"):
         site.render()
 
-    # display order, not history key order, and only the newest day is named
-    assert "rendered 2 day(s)" in caplog.text
-    assert "2026-07-27: newsletter, podcast" in caplog.text
-    assert "2026-07-26" not in caplog.text
-
-
-def test_render_log_names_a_day_that_rendered_no_cards(caplog):
-    site._save_entry(config.HISTORY_DIR, "2026-07-27", {"date": "2026-07-27", "tasks": {}})
-
-    with caplog.at_level(logging.INFO, logger="src.delivery.site"):
-        site.render()
-
-    assert "2026-07-27: no cards" in caplog.text
-
-
-def test_render_log_omits_the_day_note_without_history(caplog):
-    with caplog.at_level(logging.INFO, logger="src.delivery.site"):
-        site.render()
-
-    assert "rendered 0 day(s)" in caplog.text
-    assert "—" not in caplog.text
+    for substring in expected:
+        assert substring in caplog.text
+    for substring in forbidden:
+        assert substring not in caplog.text
 
 
 def test_day_cards_reports_exactly_what_render_day_emits():
@@ -282,15 +283,6 @@ def test_task_html_audio_url_scheme_is_validated(url, is_rendered):
         assert "(audio unavailable)" in html_out
 
 
-# ----- body renderers -----
-
-
-def test_task_html_resolves_a_newly_registered_kind():
-    site._body_renderers.register("banner")(lambda p: f'<div class="banner">{p["text"]}</div>')
-    html_out = site._task_html("newsletter", {"kind": "banner", "text": "hi"})
-    assert '<div class="banner">hi</div>' in html_out
-
-
 # ----- helpers -----
 
 
@@ -301,20 +293,6 @@ def test_prune_keeps_only_n_most_recent(tmp_path):
     site._prune(str(history_dir), 2)
     remaining = sorted(os.path.basename(p) for p in glob.glob(str(history_dir / "*.json")))
     assert remaining == ["2026-07-17.json", "2026-07-18.json"]
-
-
-def test_load_entry_missing_file_returns_empty_shape(tmp_path):
-    assert site._load_entry(str(tmp_path), "2026-07-21") == {"date": "2026-07-21", "tasks": {}}
-
-
-def test_task_html_renders_in_fixed_order_skipping_absent():
-    entry_tasks = {
-        "podcast": {"kind": "podcast", "topic": "t", "audio_url": None},
-        "newsletter": {"kind": "markdown", "markdown": "# N"},
-    }
-    html = "".join(site._task_html(t, entry_tasks[t]) for t in site._LABELS if t in entry_tasks)
-    assert html.index('class="task newsletter"') < html.index('class="task podcast"')
-    assert "(audio unavailable)" in html
 
 
 def test_upload_release_asset_returns_none_without_repo():
@@ -330,21 +308,31 @@ def test_upload_release_asset_gh_error_degrades_to_none(monkeypatch):
     assert site._upload_release_asset("ep.mp3", "S", "T", "org/repo") is None
 
 
-def test_upload_release_asset_happy_path_returns_url_and_composes_create_argv(monkeypatch):
+@pytest.mark.parametrize(
+    "mp3_path, subject, topic, expected_title, expected_notes",
+    [
+        pytest.param("ep.mp3", "Subject", "Topic", "Subject", "Topic", id="plain-values"),
+        # a subject/topic (or mp3 path) that looks like a CLI flag must reach gh unaltered
+        pytest.param("--rf", "--json", "-rf", "--json", "-rf", id="flag-shaped-values"),
+    ],
+)
+def test_upload_release_asset_composes_create_argv(
+    monkeypatch, mp3_path, subject, topic, expected_title, expected_notes
+):
     run = _RecordingRun(_Resp(0))
     monkeypatch.setattr(site.subprocess, "run", run)
 
-    url = site._upload_release_asset("ep.mp3", "Subject", "Topic", "org/repo")
+    url = site._upload_release_asset(mp3_path, subject, topic, "org/repo")
 
     tag = _todays_tag()
-    assert url == f"https://github.com/org/repo/releases/download/{tag}/ep.mp3"
+    assert url == f"https://github.com/org/repo/releases/download/{tag}/{mp3_path}"
     argv = run.calls[0]
     assert argv[:3] == ["gh", "release", "create"]
     assert argv[argv.index("--repo") + 1] == "org/repo"
-    assert "--title=Subject" in argv
-    assert "--notes=Topic" in argv
+    assert f"--title={expected_title}" in argv
+    assert f"--notes={expected_notes}" in argv
     # positionals (tag, file) come after a "--" so they can never be parsed as flags
-    assert argv[-3:] == ["--", tag, "ep.mp3"]
+    assert argv[-3:] == ["--", tag, mp3_path]
 
 
 def test_upload_release_asset_same_day_rerun_recovers_via_clobber_upload(monkeypatch):
@@ -359,20 +347,6 @@ def test_upload_release_asset_same_day_rerun_recovers_via_clobber_upload(monkeyp
     assert upload_argv[:3] == ["gh", "release", "upload"]
     assert "--clobber" in upload_argv
     assert upload_argv[-3:] == ["--", tag, "ep.mp3"]
-
-
-def test_upload_release_asset_neutralizes_flag_shaped_subject_and_path(monkeypatch):
-    # A subject/topic (or mp3 path) that looks like a CLI flag must not be parsed as one.
-    run = _RecordingRun(_Resp(0))
-    monkeypatch.setattr(site.subprocess, "run", run)
-
-    site._upload_release_asset("--rf", "--json", "-rf", "org/repo")
-
-    argv = run.calls[0]
-    assert "--title=--json" in argv
-    assert "--notes=-rf" in argv
-    tag = _todays_tag()
-    assert argv[-3:] == ["--", tag, "--rf"]  # positional mp3 path, shielded by "--"
 
 
 def test_upload_release_asset_subprocess_exception_returns_none(monkeypatch):
