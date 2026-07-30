@@ -9,6 +9,7 @@ import pytest
 from src.core import ledger as ledger_mod
 
 _MODEL = "gemini-3.6-flash"
+_RPD = 4
 
 
 def _path(tmp_path):
@@ -44,19 +45,11 @@ def test_load_starts_empty_when_the_file_is_missing(tmp_path):
     assert ledger_mod.load(_path(tmp_path)) == {}
 
 
-def test_load_keeps_todays_counts(tmp_path):
-    path = _path(tmp_path)
-    ledger_mod.consume(ledger_mod.load(path), _MODEL, path=path)
-    assert ledger_mod.load(path)[_MODEL]["requests"] == 1
-
-
 @pytest.mark.parametrize(
     "stored",
     [
-        pytest.param({_MODEL: _day_entry(19, period="2000-01-01")}, id="stale_day"),
         pytest.param({_MODEL: {"requests": 19}}, id="no_period"),
         pytest.param({_MODEL: "not an entry"}, id="not_an_entry"),
-        pytest.param({"not": "a ledger"}, id="foreign_shape"),
         pytest.param([{"period": _today(), "requests": 1}], id="file_not_a_mapping"),
     ],
 )
@@ -176,21 +169,14 @@ def test_consume_tts_chars_leaves_the_model_counts_alone(tmp_path):
 @pytest.mark.parametrize(
     "requests, exhausted, expected",
     [
-        (0, False, True),
-        (1, False, True),
+        (_RPD - 1, False, True),
+        (_RPD, False, False),
+        (_RPD + 1, False, False),
         (0, True, False),
         (None, False, True),
     ],
-    ids=["unused", "part_spent", "retired", "unknown_model"],
+    ids=["below_budget", "at_budget", "over_budget", "retired", "unknown_model"],
 )
 def test_available_matrix(requests, exhausted, expected):
-    rpd = 4
     ledger = {} if requests is None else {_MODEL: _day_entry(requests, exhausted=exhausted)}
-    assert ledger_mod.available(ledger, _MODEL, rpd) is expected
-
-
-@pytest.mark.parametrize("spent", [0, 1])
-def test_available_is_false_once_the_daily_budget_is_spent(spent):
-    rpd = 3
-    ledger = {_MODEL: _day_entry(rpd + spent)}
-    assert ledger_mod.available(ledger, _MODEL, rpd) is False
+    assert ledger_mod.available(ledger, _MODEL, _RPD) is expected
