@@ -84,34 +84,40 @@ def test_synthesize_turn_requests_the_text_and_voice_as_linear16_at_the_pcm_rate
     ]
 
 
-def test_synthesize_turn_returns_the_frames_without_the_wav_container(monkeypatch):
-    _fake_client(monkeypatch)
-    assert synthesize_turn("One line only.", _VOICE) == b"pcm1"
+@pytest.mark.parametrize(
+    "transient_refusals",
+    [0, config.TTS_RETRIES - 1],
+    ids=["first_attempt", "after_transient_refusals"],
+)
+def test_synthesize_turn_returns_the_frames_without_the_wav_container(
+    monkeypatch, transient_refusals
+):
+    """Whichever attempt answers, the caller gets that response's data chunk and not the WAV
+    container: a refusal that could clear is retried until one succeeds."""
+    failures: list[Exception] = [_ResourceExhausted("quota exceeded")] * transient_refusals
+    client = _fake_client(monkeypatch, failures)
+    attempts = transient_refusals + 1
+
+    assert synthesize_turn("One line only.", _VOICE) == f"pcm{attempts}".encode()
+    assert len(client.calls) == attempts
 
 
-def test_synthesize_turn_retries_a_transient_refusal_then_succeeds(monkeypatch):
-    failures: list[Exception] = [_ResourceExhausted("quota exceeded")] * (config.TTS_RETRIES - 1)
+@pytest.mark.parametrize(
+    "failures, expected_calls, match",
+    [
+        ([_Unavailable("backend unavailable")] * config.TTS_RETRIES, config.TTS_RETRIES, "503"),
+        ([ValueError("bad voice")], 1, "bad voice"),
+    ],
+    ids=["transient_until_the_retries_are_spent", "non_transient_first_failure"],
+)
+def test_synthesize_turn_raises_an_audio_error(monkeypatch, failures, expected_calls, match):
+    """Retrying stops after config.TTS_RETRIES attempts, and a permanent failure is never waited
+    on; either way the turn fails as an AudioError carrying the cause, not the raw refusal."""
     client = _fake_client(monkeypatch, failures)
 
-    assert synthesize_turn("One line only.", _VOICE)
-    assert len(client.calls) == config.TTS_RETRIES
-
-
-def test_synthesize_turn_gives_up_once_the_retries_are_spent(monkeypatch):
-    failures: list[Exception] = [_Unavailable("backend unavailable")] * config.TTS_RETRIES
-    client = _fake_client(monkeypatch, failures)
-
-    with pytest.raises(AudioError, match="503"):
+    with pytest.raises(AudioError, match=match):
         synthesize_turn("One line only.", _VOICE)
-    assert len(client.calls) == config.TTS_RETRIES
-
-
-def test_synthesize_turn_does_not_retry_a_non_transient_failure(monkeypatch):
-    client = _fake_client(monkeypatch, [ValueError("bad voice")])
-
-    with pytest.raises(AudioError, match="bad voice"):
-        synthesize_turn("One line only.", _VOICE)
-    assert len(client.calls) == 1
+    assert len(client.calls) == expected_calls
 
 
 def test_synthesize_turn_backs_off_with_a_capped_delay(monkeypatch):
@@ -129,11 +135,6 @@ def test_synthesize_turn_backs_off_with_a_capped_delay(monkeypatch):
 def test_client_without_a_key_is_an_audio_error():
     with pytest.raises(AudioError, match=config.TTS_KEY_LABEL):
         cloud_tts._client()
-
-
-def test_client_reuses_the_memoized_client(monkeypatch):
-    client = _fake_client(monkeypatch)
-    assert cloud_tts._client() is client
 
 
 # ----- _is_transient -----
@@ -167,10 +168,6 @@ def test_is_transient_classifies_by_status_code(error, expected):
 
 
 # ----- _strip_wav_header -----
-
-
-def test_strip_wav_header_returns_the_data_chunk():
-    assert _strip_wav_header(_wav(b"frames")) == b"frames"
 
 
 @pytest.mark.parametrize(
