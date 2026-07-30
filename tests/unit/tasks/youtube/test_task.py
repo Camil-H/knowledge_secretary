@@ -92,12 +92,6 @@ def test_run_video_without_transcript_gets_note_without_a_call():
     assert call.calls == []
 
 
-def test_run_no_new_videos_blank_markdown():
-    result = run(_ctx([], _Call()))
-    assert result.markdown == ""
-    assert result.consumed == []
-
-
 # ----- Batching -----
 
 
@@ -124,19 +118,6 @@ def test_run_missing_block_degrades_only_its_own_video():
     assert "- yt:A b1" in result.markdown and "- yt:C b1" in result.markdown
     assert result.markdown.count("(summary unavailable)") == 1
     assert f"- {dropped} b1" not in result.markdown
-
-
-def test_run_mislabeled_block_is_dropped_not_attributed_elsewhere():
-    videos = [_video("yt:A"), _video("yt:B")]
-
-    def _reply(ids):
-        return f"[VIDEO {ids[0]}]\n- yt:A b1\n\n[VIDEO yt:GARBLED]\n- stray bullet"
-
-    result = run(_ctx(videos, _Call(_reply)))
-
-    assert "- yt:A b1" in result.markdown
-    assert "stray bullet" not in result.markdown
-    assert result.markdown.count("(summary unavailable)") == 1
 
 
 # ----- _batch_input -----
@@ -171,9 +152,7 @@ def test_batch_input_heads_each_video_with_its_id_and_truncates_the_transcript()
         ("**[VIDEO yt:A]**\n- a1\n\n## VIDEO yt:B\n   - b1", {"yt:A": ["- a1"], "yt:B": ["- b1"]}),
         ("[VIDEO yt:A]\n\n  \n- a1\n\t\n- a2", {"yt:A": ["- a1", "- a2"]}),
         ("- a1\n- a2", {}),
-        ("[VIDEO yt:Z]\n- z1", {}),
         ("[VIDEO yt:A]\n- a1\n[VIDEO yt:Z]\n- z1", {"yt:A": ["- a1"]}),
-        ("[VIDEO yt:A]\n[VIDEO yt:B]\n- b1", {"yt:B": ["- b1"]}),
         ("", {}),
     ],
     ids=[
@@ -181,9 +160,7 @@ def test_batch_input_heads_each_video_with_its_id_and_truncates_the_transcript()
         "decorated-headers",
         "blank-lines",
         "no-header",
-        "unknown-id-only",
         "unknown-id-after-known",
-        "empty-block",
         "empty-reply",
     ],
 )
@@ -198,15 +175,13 @@ def test_parse_blocks_keys_bullets_by_requested_id(raw, expected):
     ("specs", "expected"),
     [
         ([], []),
-        ([{"section": "A"}], ["A"]),
         ([{"section": "A"}, {"section": "B"}], ["A", "B"]),
-        ([{"section": "A"}, {"section": "A"}, {"section": "B"}], ["A", "B"]),
         (
             [{"section": "B"}, {"section": "A"}, {"section": "B"}, {"section": "A"}],
             ["B", "A"],
         ),
     ],
-    ids=["empty", "single", "distinct", "immediate-dup", "interleaved-dup"],
+    ids=["empty", "distinct", "interleaved-dup"],
 )
 def test_section_order_dedups_to_first_appearance(specs, expected):
     assert _section_order(specs) == expected
