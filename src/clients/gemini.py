@@ -140,17 +140,20 @@ def call(
     costs the run, and when the cascade is dry. QuotaExhausted arrives as an ExternalError
     subclass and is tolerated with it. AuthError propagates — the cross-tier decision belongs to
     the cascade in src/clients/llm.py."""
-    models = config.GEMINI_TEXT_MODELS
-    if search:
-        models = [m for m in models if m.search]
+    candidates = [
+        m
+        for m in config.GEMINI_TEXT_MODELS
+        if (m.search or not search) and ledger_mod.available(ledger, m.id, m.rpd)
+    ]
+    if not candidates:
+        logger.warning("⚠️ llm google search=%s: no candidate left in today's ledger", search)
+        return ""
     gen_config = types.GenerateContentConfig(
         system_instruction=system,
         max_output_tokens=max_tokens,
         tools=[types.Tool(google_search=types.GoogleSearch())] if search else None,
     )
-    for model in models:
-        if not ledger_mod.available(ledger, model.id, model.rpd):
-            continue
+    for model in candidates:
         try:
             response = generate(model, user, gen_config, ledger=ledger)
         except AuthError:

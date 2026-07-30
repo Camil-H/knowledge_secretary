@@ -420,14 +420,19 @@ def test_call_propagates_an_auth_error_instead_of_advancing(monkeypatch):
     assert models.models_tried == [first.id]
 
 
-def test_call_returns_empty_when_every_model_is_spent(monkeypatch):
+def test_call_returns_empty_and_says_why_when_every_model_is_spent(monkeypatch, caplog):
+    """Otherwise the whole tier is skipped in silence: no dispatch line, no failure line, and a
+    task that never reached the API reads exactly like one that was never asked to."""
     models = _fake_google(monkeypatch, [_FakeGeminiResponse("ok")])
     ledger = ledger_mod.load()
     for model in config.GEMINI_TEXT_MODELS:
         ledger_mod.mark_exhausted(ledger, model.id)
 
-    assert gemini.call("s", "u", None, ledger=ledger) == ""
+    with caplog.at_level(logging.WARNING, logger=gemini.logger.name):
+        assert gemini.call("s", "u", None, ledger=ledger) == ""
+
     assert models.calls == []
+    assert any("no candidate" in r.getMessage() for r in caplog.records)
 
 
 @pytest.mark.parametrize(
