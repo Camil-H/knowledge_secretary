@@ -409,6 +409,21 @@ def test_call_advances_to_the_next_model(monkeypatch, failure):
     assert models.models_tried[-1] == second.id
 
 
+def test_call_propagates_an_auth_error_instead_of_advancing(monkeypatch):
+    """A credential failure fails every model identically, so advancing would spend four models'
+    pacing and retries per call before giving up. Raising is what lets llm.call degrade to the
+    OpenRouter tier, which is the incident this cascade exists to survive."""
+    first, second = config.GEMINI_TEXT_MODELS[0], config.GEMINI_TEXT_MODELS[1]
+    models = _fake_google(
+        monkeypatch,
+        [{first.id: _api_error(401), second.id: _FakeGeminiResponse("must not be reached")}],
+    )
+
+    with pytest.raises(AuthError):
+        gemini.call("s", "u", None, ledger=ledger_mod.load())
+    assert models.models_tried == [first.id]
+
+
 def test_call_returns_empty_when_every_model_is_spent(monkeypatch):
     models = _fake_google(monkeypatch, [_FakeGeminiResponse("ok")])
     ledger = ledger_mod.load()
