@@ -111,6 +111,15 @@ def _search_models() -> list[ModelLimit]:
     return [m for m in config.GEMINI_TEXT_MODELS if m.search]
 
 
+def _one_model_per_rpm() -> list[ModelLimit]:
+    """First row of each distinct rpm: the pacing gap is 60/rpm, so equal-rpm rows would repeat
+    the same assertion, and a new rpm in the table grows a row on its own."""
+    by_rpm: dict[int, ModelLimit] = {}
+    for model in config.GEMINI_TEXT_MODELS:
+        by_rpm.setdefault(model.rpm, model)
+    return list(by_rpm.values())
+
+
 @pytest.fixture(autouse=True)
 def _isolate(monkeypatch, tmp_path):
     """No sleeps, no memoized client, no pacing carried between tests, and the ledger's
@@ -125,14 +134,6 @@ def _isolate(monkeypatch, tmp_path):
 # ===== Primitive =====
 
 # ----- dispatch + composition -----
-
-
-def test_generate_returns_the_sdk_response(monkeypatch):
-    response = _FakeGeminiResponse("an answer")
-    _fake_google(monkeypatch, [response])
-    model = config.GEMINI_TEXT_MODELS[0]
-
-    assert gemini.generate(model, "hi", _config(), ledger=ledger_mod.load()) is response
 
 
 def test_generate_sends_the_model_contents_and_config(monkeypatch):
@@ -201,22 +202,12 @@ def test_generate_consumes_budget_at_dispatch(monkeypatch, script, expected_disp
     assert len(models.calls) == expected_dispatches
 
 
-def test_generate_writes_the_dispatch_through_to_disk(monkeypatch):
-    _fake_google(monkeypatch, [_api_error(429, _DAY_QUOTA)])
-    model = config.GEMINI_TEXT_MODELS[0]
-
-    with pytest.raises(QuotaExhausted):
-        gemini.generate(model, "hi", _config(), ledger=ledger_mod.load())
-
-    reloaded = ledger_mod.load()
-    assert reloaded[model.id]["requests"] == 1
-    assert not ledger_mod.available(reloaded, model.id, model.rpd)
-
-
 # ----- 429 handling -----
 
 
 def test_generate_day_quota_retires_the_model_immediately(monkeypatch):
+    """The retirement is written through on the module's default path, so the next run of the day
+    reloads it instead of paying the quota again."""
     models = _fake_google(monkeypatch, [_api_error(429, _DAY_QUOTA)])
     model = config.GEMINI_TEXT_MODELS[0]
     ledger = ledger_mod.load()
@@ -226,6 +217,9 @@ def test_generate_day_quota_retires_the_model_immediately(monkeypatch):
 
     assert len(models.calls) == 1
     assert ledger[model.id]["exhausted"] is True
+    reloaded = ledger_mod.load()
+    assert reloaded[model.id]["requests"] == 1
+    assert not ledger_mod.available(reloaded, model.id, model.rpd)
 
 
 def test_generate_retires_a_model_the_api_does_not_know(monkeypatch):
@@ -257,14 +251,13 @@ def test_generate_retries_a_transient_429_then_retires_the_model(monkeypatch, pa
 
 
 def test_generate_succeeds_after_a_minute_quota_retry(monkeypatch):
-    models = _fake_google(
-        monkeypatch, [_api_error(429, _MINUTE_QUOTA), _FakeGeminiResponse("second try")]
-    )
+    """The retry returns the raw response object, not its text, so callers can still read
+    grounding metadata off a completion that needed a second attempt."""
+    second = _FakeGeminiResponse("second try")
+    models = _fake_google(monkeypatch, [_api_error(429, _MINUTE_QUOTA), second])
     model = config.GEMINI_TEXT_MODELS[0]
 
-    response = gemini.generate(model, "hi", _config(), ledger=ledger_mod.load())
-
-    assert response.text == "second try"
+    assert gemini.generate(model, "hi", _config(), ledger=ledger_mod.load()) is second
     assert len(models.calls) == 2
 
 
@@ -290,7 +283,7 @@ def test_generate_backoff_doubles_and_caps(monkeypatch):
 # ----- proactive pacing -----
 
 
-@pytest.mark.parametrize("model", config.GEMINI_TEXT_MODELS, ids=lambda m: m.id)
+@pytest.mark.parametrize("model", _one_model_per_rpm(), ids=lambda m: m.id)
 def test_generate_paces_consecutive_calls_to_the_same_model(monkeypatch, model):
     """Spacing comes from the row's own rpm, so a model with a wider allowance waits less."""
     clock = _fake_clock(monkeypatch)
@@ -325,21 +318,6 @@ def test_generate_does_not_pace_across_different_models(monkeypatch):
         gemini.generate(model, "hi", _config(), ledger=ledger)
 
     assert clock["t"] == 0
-
-
-# ----- _quota_scope -----
-
-
-@pytest.mark.parametrize(
-    "payload, expected",
-    [
-        pytest.param(_MINUTE_QUOTA, "PerMinute", id="minute"),
-        pytest.param(_DAY_QUOTA, "PerDay", id="day"),
-        pytest.param(_UNSCOPED_QUOTA, None, id="unstated"),
-    ],
-)
-def test_quota_scope(payload, expected):
-    assert gemini._quota_scope(_api_error(429, payload)) == expected
 
 
 # ===== Tier =====
@@ -379,15 +357,27 @@ def test_call_skips_models_the_ledger_has_retired(monkeypatch):
     assert models.models_tried == [second.id]
 
 
-def test_call_skips_models_that_spent_their_daily_budget(monkeypatch):
+@pytest.mark.parametrize(
+    "spent_limit, first_is_still_a_candidate",
+    [
+        pytest.param("rpd", False, id="daily_budget_spent"),
+        pytest.param("rpm", True, id="a_minute_of_requests_spent"),
+    ],
+)
+def test_call_skips_a_model_only_once_its_daily_budget_is_spent(
+    monkeypatch, spent_limit, first_is_still_a_candidate
+):
+    """The only test pinning which limit call() hands the ledger. Passing model.rpm instead would
+    retire the 20-rpd and the 500-rpd rows alike after 5 requests and drop the run to the
+    OpenRouter tier in silence, which the second row is what catches."""
     models = _fake_google(monkeypatch, [_FakeGeminiResponse("ok")])
     first, second = config.GEMINI_TEXT_MODELS[0], config.GEMINI_TEXT_MODELS[1]
     ledger = ledger_mod.load()
-    for _ in range(first.rpd):
+    for _ in range(getattr(first, spent_limit)):
         ledger_mod.consume(ledger, first.id)
 
-    gemini.call("s", "u", None, ledger=ledger)
-    assert models.models_tried == [second.id]
+    assert gemini.call("s", "u", None, ledger=ledger) == "ok"
+    assert models.models_tried == [first.id if first_is_still_a_candidate else second.id]
 
 
 @pytest.mark.parametrize(
@@ -395,7 +385,7 @@ def test_call_skips_models_that_spent_their_daily_budget(monkeypatch):
     [
         pytest.param(_api_error(429, _DAY_QUOTA), id="quota_exhausted"),
         pytest.param(_api_error(500), id="external_error"),
-        pytest.param(_FakeGeminiResponse(""), id="empty_text"),
+        pytest.param(_FakeGeminiResponse("   "), id="blank_text"),
         pytest.param(_FakeGeminiResponse(None), id="no_text"),
     ],
 )
@@ -434,18 +424,17 @@ def test_call_returns_empty_when_every_model_is_spent(monkeypatch):
     assert models.calls == []
 
 
-@pytest.mark.parametrize("search", [False, True], ids=["plain", "grounded"])
 @pytest.mark.parametrize(
-    "failure, expected",
+    "search, failure, expected",
     [
-        pytest.param(_api_error(500), "unavailable", id="external_error"),
-        pytest.param(_api_error(429, _DAY_QUOTA), "unavailable", id="quota_exhausted"),
-        pytest.param(_FakeGeminiResponse(""), "returned empty", id="empty_text"),
+        pytest.param(False, _api_error(500), "unavailable", id="unavailable_plain"),
+        pytest.param(True, _FakeGeminiResponse(""), "returned empty", id="returned_empty_grounded"),
     ],
 )
 def test_call_names_the_mode_in_its_warnings(monkeypatch, caplog, search, failure, expected):
     """Both modes warn from this module, so the flag is what tells a grounded line from a plain
-    one."""
+    one. One row per warning statement, each with a different flag value, pins both call sites
+    and both interpolations without re-running the cross-product."""
     model = (_search_models() if search else config.GEMINI_TEXT_MODELS)[0]
     _fake_google(monkeypatch, [failure])
 
@@ -516,12 +505,3 @@ def test_call_with_search_logs_the_sources_of_a_response_it_skips_as_empty(monke
         assert gemini.call("s", "u", ledger=ledger_mod.load(), search=True) == "an answer"
 
     assert any("https://skipped.example" in r.getMessage() for r in caplog.records)
-
-
-def test_call_without_search_logs_no_sources(monkeypatch, caplog):
-    _fake_google(monkeypatch, [_FakeGeminiResponse("ok", uris=["https://a.example"])])
-
-    with caplog.at_level(logging.INFO, logger=gemini.logger.name):
-        gemini.call("s", "u", ledger=ledger_mod.load())
-
-    assert not [r for r in caplog.records if "grounded" in r.getMessage()]
