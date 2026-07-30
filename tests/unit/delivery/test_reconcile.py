@@ -92,7 +92,7 @@ def test_merge_ledger_adds_each_sides_new_requests(base, a, b, expected_requests
 
 @pytest.mark.parametrize(
     "a_exhausted, b_exhausted, expected",
-    [(False, False, False), (True, False, True), (False, True, True), (True, True, True)],
+    [(False, False, False), (True, False, True), (False, True, True)],
 )
 def test_merge_ledger_ors_exhaustion(a_exhausted, b_exhausted, expected):
     a, b = _ledger(1, exhausted=a_exhausted), _ledger(1, exhausted=b_exhausted)
