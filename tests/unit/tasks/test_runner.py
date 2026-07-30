@@ -5,7 +5,6 @@ run_source_task() is driven through a faked ctx.gather, so gather()'s own logic 
 out of scope for those tests."""
 
 import logging
-import re
 import threading
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
@@ -62,51 +61,22 @@ def _raiser(exc: Exception):
     return _raise
 
 
-# ----- gather: dedup + lookback window -----
-
-
-def test_gather_filters_out_already_seen_items(monkeypatch):
-    since = datetime.now(UTC) - timedelta(hours=1)
-    seen = _item("rss:seen")
-    new = _item("rss:new")
-    monkeypatch.setattr(runner, "sources", _FakeRegistry({"rss": _fetcher([seen, new])}))
-    state = {"ids": {"rss:seen": "2026-01-01"}, "kv": {}}
-
-    result = gather([_spec("k")], state, since)
-
-    assert result == [new]
-
-
-def test_gather_drops_new_item_published_before_since(monkeypatch):
-    since = datetime.now(UTC) - timedelta(hours=1)
-    stale = _item("rss:stale", published=since - timedelta(hours=1))
-    fresh = _item("rss:fresh", published=since + timedelta(hours=1))
-    monkeypatch.setattr(runner, "sources", _FakeRegistry({"rss": _fetcher([stale, fresh])}))
-    state = {"ids": {}, "kv": {}}
-
-    result = gather([_spec("k")], state, since)
-
-    assert result == [fresh]
-
-
-# ----- gather: per-source log breakdown -----
+# ----- gather: dedup, lookback window, and the per-source breakdown -----
 
 
 @pytest.mark.parametrize(
-    "fetched_ids, seen_ids, stale_ids, expected",
+    "fetched_ids, seen_ids, stale_ids, expected_ids, expected_log",
     [
-        ([], [], [], "0 new of 0 fetched (0 seen, 0 outside window)"),
-        (["a", "b"], [], [], "2 new of 2 fetched (0 seen, 0 outside window)"),
-        (["a", "b"], ["a", "b"], [], "0 new of 2 fetched (2 seen, 0 outside window)"),
-        (["a", "b"], [], ["a", "b"], "0 new of 2 fetched (0 seen, 2 outside window)"),
-        (["a", "b", "c"], ["a"], ["b"], "1 new of 3 fetched (1 seen, 1 outside window)"),
+        ([], [], [], [], "0 new of 0 fetched (0 seen, 0 outside window)"),
+        (["a", "b"], [], [], ["a", "b"], "2 new of 2 fetched (0 seen, 0 outside window)"),
+        (["a", "b", "c"], ["a"], ["b"], ["c"], "1 new of 3 fetched (1 seen, 1 outside window)"),
         # an item both seen and stale is counted once, so the parts always sum to fetched
-        (["a"], ["a"], ["a"], "0 new of 1 fetched (1 seen, 0 outside window)"),
+        (["a"], ["a"], ["a"], [], "0 new of 1 fetched (1 seen, 0 outside window)"),
     ],
-    ids=["empty-source", "all-new", "all-seen", "all-stale", "mixed", "seen-and-stale"],
+    ids=["empty-source", "all-new", "mixed", "seen-and-stale"],
 )
-def test_gather_logs_why_a_source_yielded_what_it_did(
-    monkeypatch, caplog, fetched_ids, seen_ids, stale_ids, expected
+def test_gather_returns_new_items_in_window_and_logs_the_breakdown(
+    monkeypatch, caplog, fetched_ids, seen_ids, stale_ids, expected_ids, expected_log
 ):
     since = datetime.now(UTC) - timedelta(hours=1)
     items = [
@@ -122,31 +92,10 @@ def test_gather_logs_why_a_source_yielded_what_it_did(
     state = {"ids": dict.fromkeys(seen_ids, "2026-01-01"), "kv": {}}
 
     with caplog.at_level(logging.INFO, logger="src.tasks.runner"):
-        gather([_spec("src_key")], state, since)
+        result = gather([_spec("src_key")], state, since)
 
-    assert f"gather: src_key → {expected}" in caplog.text
-
-
-def test_gather_log_parts_sum_to_fetched(monkeypatch, caplog):
-    # the breakdown is only diagnostic if every fetched item lands in exactly one bucket
-    since = datetime.now(UTC) - timedelta(hours=1)
-    items = [
-        _item("new:1", published=since + timedelta(hours=1)),
-        _item("seen:1", published=since + timedelta(hours=1)),
-        _item("stale:1", published=since - timedelta(hours=1)),
-        _item("stale:2", published=since - timedelta(hours=1)),
-    ]
-    monkeypatch.setattr(runner, "sources", _FakeRegistry({"rss": _fetcher(items)}))
-    state = {"ids": {"seen:1": "2026-01-01"}, "kv": {}}
-
-    with caplog.at_level(logging.INFO, logger="src.tasks.runner"):
-        gather([_spec("k")], state, since)
-
-    match = re.search(r"(\d+) new of (\d+) fetched \((\d+) seen, (\d+) outside", caplog.text)
-    assert match, f"log line did not match the expected shape: {caplog.text}"
-    kept, fetched, seen, stale = (int(n) for n in match.groups())
-    assert fetched == len(items)
-    assert kept + seen + stale == fetched
+    assert [it.id for it in result] == expected_ids
+    assert f"gather: src_key → {expected_log}" in caplog.text
 
 
 # ----- gather: enrichment -----
@@ -368,28 +317,25 @@ def test_run_source_task_since_is_derived_from_lookback_hours_constant():
 # ----- run_source_task: produce + consume -----
 
 
-def test_run_source_task_empty_gather_skips_produce():
+@pytest.mark.parametrize(
+    "gathered_ids, produce_return, expected_markdown, expected_produce_calls",
+    [
+        ([], "should not be reached", "", 0),
+        (["a:1", "a:2"], "", "", 1),
+        (["a:1", "a:2"], "# Digest", "# Digest", 1),
+    ],
+    ids=["no-items-skips-produce", "items-produce-empty", "items-produce-markdown"],
+)
+def test_run_source_task_produces_from_items_and_consumes_every_gathered_id(
+    gathered_ids, produce_return, expected_markdown, expected_produce_calls
+):
+    items = [_item(item_id) for item_id in gathered_ids]
     calls = {"n": 0}
 
-    def _produce(ctx, items):
+    def _produce(ctx, produced_items):
         calls["n"] += 1
-        return "should not be reached"
+        return produce_return
 
-    ctx = Context(
-        state={"ids": {}, "kv": {}},
-        gather=lambda specs, since: [],
-        call=lambda *a, **k: "",
-        logger=logging.getLogger("test"),
-    )
-    result = run_source_task(ctx, [_spec("k")], _produce, "Subject")
-
-    assert calls["n"] == 0
-    assert result.markdown == ""
-    assert result.consumed == []
-
-
-def test_run_source_task_consumes_all_gathered_ids_even_when_produce_returns_empty():
-    items = [_item("a:1"), _item("a:2")]
     ctx = Context(
         state={"ids": {}, "kv": {}},
         gather=lambda specs, since: items,
@@ -397,10 +343,11 @@ def test_run_source_task_consumes_all_gathered_ids_even_when_produce_returns_emp
         logger=logging.getLogger("test"),
     )
 
-    result = run_source_task(ctx, [_spec("k")], lambda ctx, items: "", "Subject")
+    result = run_source_task(ctx, [_spec("k")], _produce, "Subject")
 
-    assert result.markdown == ""
-    assert set(result.consumed) == {"a:1", "a:2"}
+    assert calls["n"] == expected_produce_calls
+    assert result.markdown == expected_markdown
+    assert result.consumed == gathered_ids
 
 
 def test_run_source_task_drains_notices_from_state_into_result():
