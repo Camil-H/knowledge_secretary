@@ -238,16 +238,22 @@ def test_generate_retires_a_model_the_api_does_not_know(monkeypatch):
 
 
 @pytest.mark.parametrize("payload", [_MINUTE_QUOTA, _UNSCOPED_QUOTA], ids=["minute", "unscoped"])
-def test_generate_retries_a_transient_429_then_retires_the_model(monkeypatch, payload):
+def test_generate_retries_a_429_that_names_no_daily_quota_without_retiring(monkeypatch, payload):
+    """A 429 the API does not attribute to a spent daily quota — a burst, or an account-level
+    block like depleted prepay credits — must cost one run, not the rest of the day. Retiring on
+    it writes a verdict into the committed ledger that outlives the credential that caused it,
+    so a key fixed at noon still cannot be used until UTC midnight."""
     models = _fake_google(monkeypatch, [_api_error(429, payload)])
     model = config.GEMINI_TEXT_MODELS[0]
     ledger = ledger_mod.load()
 
-    with pytest.raises(QuotaExhausted):
+    with pytest.raises(ExternalError) as ei:
         gemini.generate(model, "hi", _config(), ledger=ledger)
 
+    assert not isinstance(ei.value, QuotaExhausted)
     assert len(models.calls) == config.RATE_LIMIT_RETRIES
     assert ledger[model.id]["requests"] == config.RATE_LIMIT_RETRIES
+    assert ledger_mod.available(ledger, model.id, model.rpd)
 
 
 def test_generate_succeeds_after_a_minute_quota_retry(monkeypatch):
@@ -269,7 +275,7 @@ def test_generate_backoff_doubles_and_caps(monkeypatch):
     sleeps: list[float] = []
     monkeypatch.setattr(gemini.time, "sleep", lambda s: sleeps.append(s))
 
-    with pytest.raises(QuotaExhausted):
+    with pytest.raises(ExternalError):
         gemini.generate(config.GEMINI_TEXT_MODELS[0], "hi", _config(), ledger=ledger_mod.load())
 
     expected = []

@@ -46,9 +46,10 @@ def generate(
     """One AI Studio completion, paced to the model's own rpm/tpm and counted in the ledger.
 
     The budget is spent at dispatch and never refunded — the provider may have counted an
-    attempt that failed for us. A per-minute 429 is retried with capped exponential backoff;
-    a per-day 429 (or one that outlives the retries) retires the model for the day and raises
-    QuotaExhausted. A 401/403 raises AuthError, anything else ExternalError; the raise is the
+    attempt that failed for us. Only a 429 that names a spent per-day quota retires the model
+    and raises QuotaExhausted; any other 429 is retried with capped exponential backoff and
+    then raises ExternalError, so a billing block or a burst costs one run rather than the rest
+    of the day. A 401/403 raises AuthError, anything else ExternalError; the raise is the
     terminal signal, so no failure is logged here.
 
     Returns the raw response, not its text, so callers can read grounding metadata."""
@@ -70,13 +71,15 @@ def generate(
                 if e.code in config.GEMINI_AUTH_STATUSES:
                     raise AuthError(SOURCE, cause=e) from e
                 raise ExternalError(SOURCE, cause=e) from e
-            if _quota_scope(e) != _QUOTA_SCOPE_DAY and attempt < config.RATE_LIMIT_RETRIES - 1:
+            if _quota_scope(e) == _QUOTA_SCOPE_DAY:
+                ledger_mod.mark_exhausted(ledger, model.id)
+                raise QuotaExhausted(model.id, cause=e) from e
+            if attempt < config.RATE_LIMIT_RETRIES - 1:
                 logger.warning("⚠️ llm google model=%s rate-limited; backoff %ss", model.id, backoff)
                 time.sleep(backoff)
                 backoff = min(backoff * 2, config.BACKOFF_CAP_S)
                 continue
-            ledger_mod.mark_exhausted(ledger, model.id)
-            raise QuotaExhausted(model.id, cause=e) from e
+            raise ExternalError(SOURCE, cause=e) from e
         except Exception as e:
             raise ExternalError(SOURCE, cause=e) from e
 
