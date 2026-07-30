@@ -77,11 +77,15 @@ GEMINI_KEY_LABEL = "GOOGLE_AI_STUDIO_KEY"
 GEMINI_AUTH_STATUSES = (UNAUTHORIZED_STATUS, FORBIDDEN_STATUS)
 GEMINI_EST_OUTPUT_TOKENS = 2048
 
-# quality-descending, so the 500-rpd model is the safety net rather than the default
+# Quality-descending, so the 500-rpd model is the safety net rather than the default. Only the
+# 2.5 rows may carry search: grounding is priced out of the free tier on every 3.x model, and
+# sending the tool to one is refused before the request reaches any per-model quota.
 GEMINI_TEXT_MODELS: list[ModelLimit] = [
-    ModelLimit("gemini-3.6-flash", rpd=20, rpm=5, tpm=250_000, search=True),
-    ModelLimit("gemini-3.5-flash", rpd=20, rpm=5, tpm=250_000, search=True),
-    ModelLimit("gemini-3.5-flash-lite", rpd=20, rpm=5, tpm=250_000, search=True),
+    ModelLimit("gemini-3.6-flash", rpd=20, rpm=5, tpm=250_000, search=False),
+    ModelLimit("gemini-3.5-flash", rpd=20, rpm=5, tpm=250_000, search=False),
+    ModelLimit("gemini-3.5-flash-lite", rpd=20, rpm=5, tpm=250_000, search=False),
+    ModelLimit("gemini-2.5-flash", rpd=20, rpm=5, tpm=250_000, search=True),
+    ModelLimit("gemini-2.5-flash-lite", rpd=20, rpm=10, tpm=250_000, search=True),
     ModelLimit("gemini-3.1-flash-lite", rpd=500, rpm=15, tpm=250_000, search=False),
 ]
 

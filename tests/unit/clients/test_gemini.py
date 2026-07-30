@@ -29,6 +29,7 @@ _DAY_QUOTA = {
     }
 }
 _UNSCOPED_QUOTA = {"error": {"code": 429, "status": "RESOURCE_EXHAUSTED"}}
+_FREE_GROUNDING_FAMILY = "gemini-2.5-"
 
 
 def _api_error(code: int, payload: dict | None = None) -> genai_errors.APIError:
@@ -460,6 +461,16 @@ def test_call_names_the_mode_in_its_warnings(monkeypatch, caplog, search, failur
 
 
 # ----- grounded search -----
+
+
+@pytest.mark.parametrize("model", config.GEMINI_TEXT_MODELS, ids=lambda m: m.id)
+def test_only_free_tier_grounding_models_carry_search(model):
+    """Search grounding is priced out of the free tier on every 3.x model. The tool is refused
+    before the request reaches a per-model quota, so the failure arrives as a 429 with no
+    violation attached and leaves no usage in the console — nothing that reads as a
+    misconfiguration. Flipping search onto a 3.x row is invisible until a day has passed with
+    no episode."""
+    assert not model.search or model.id.startswith(_FREE_GROUNDING_FAMILY)
 
 
 def test_call_with_search_attaches_the_google_search_tool(monkeypatch):
