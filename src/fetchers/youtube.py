@@ -3,7 +3,7 @@
 import logging
 import re
 
-from youtube_transcript_api import YouTubeTranscriptApi
+from youtube_transcript_api import FetchedTranscriptSnippet, YouTubeTranscriptApi
 
 from src.fetchers import rss
 
@@ -55,18 +55,24 @@ def video_id_from_url(url: str) -> str | None:
 
 
 def _fetch_transcript_text(video_id: str) -> str:
+    """Text of whatever transcript the video offers, auto-generated preferred.
+
+    The listing dance is what makes non-English channels work: `fetch()` alone
+    defaults to English and would silently return nothing for them.
+    """
+    api = YouTubeTranscriptApi()
     try:
-        listing = YouTubeTranscriptApi.list_transcripts(video_id)
+        listing = api.list(video_id)
         langs = [t.language_code for t in listing]
         try:
             tr = listing.find_generated_transcript(langs)
         except Exception:
             tr = listing.find_transcript(langs)
-        segments = tr.fetch()
+        fetched = tr.fetch()
     except Exception:
-        segments = YouTubeTranscriptApi.get_transcript(video_id)
-    return " ".join(_segment_text(s) for s in segments)
+        fetched = api.fetch(video_id)
+    return " ".join(_snippet_text(s) for s in fetched)
 
 
-def _segment_text(seg: dict) -> str:
-    return seg["text"]
+def _snippet_text(snippet: FetchedTranscriptSnippet) -> str:
+    return snippet.text
