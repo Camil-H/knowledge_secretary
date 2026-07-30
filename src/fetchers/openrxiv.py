@@ -17,20 +17,26 @@ def recent(server: str, categories: list[str], since: datetime) -> list[dict]:
     """Recent `server` ("biorxiv"|"medrxiv") preprints in `categories` (case-insensitive).
 
     Each: {doi, title, abstract, published (tz-aware UTC), category}. A failed page returns
-    whatever was collected so far rather than dropping the batch.
+    whatever was collected so far rather than dropping the batch. Only the cursor varies across
+    pages, so the SSRF guard resolves the one host once here instead of on every page.
     """
     today = datetime.now(UTC)
     wanted = {c.lower() for c in categories}
     out: list[dict] = []
     cursor = 0
+
+    try:
+        assert_safe_url(_page_url(server, since, today, cursor))
+    except UnsafeURLError as e:
+        logger.warning("⚠️ %s degraded: %s", server, e)
+        return []
+
     for _ in range(config.OPENRXIV_MAX_PAGES):
-        url = _API.format(
-            server=server, frm=f"{since:%Y-%m-%d}", to=f"{today:%Y-%m-%d}", cursor=cursor
-        )
         try:
-            assert_safe_url(url)
-            payload = httpx.get(url, timeout=config.HTTP_TIMEOUT_S).json()
-        except (UnsafeURLError, httpx.HTTPError, ValueError) as e:  # rejected, unreachable, or bad
+            payload = httpx.get(
+                _page_url(server, since, today, cursor), timeout=config.HTTP_TIMEOUT_S
+            ).json()
+        except (httpx.HTTPError, ValueError) as e:  # unreachable or unparseable
             logger.warning("⚠️ %s degraded: %s", server, e)
             break
         batch = payload.get("collection") or []
@@ -47,6 +53,12 @@ def recent(server: str, categories: list[str], since: datetime) -> list[dict]:
 
 
 # == Helper Functions =========================================================
+
+
+def _page_url(server: str, since: datetime, today: datetime, cursor: int) -> str:
+    return _API.format(
+        server=server, frm=f"{since:%Y-%m-%d}", to=f"{today:%Y-%m-%d}", cursor=cursor
+    )
 
 
 def _matches(entry: dict, wanted: set[str]) -> bool:

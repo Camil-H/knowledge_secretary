@@ -5,6 +5,7 @@ import logging
 import subprocess
 import time
 from datetime import UTC, datetime, timedelta
+from urllib.parse import urlsplit
 
 import httpx
 import pytest
@@ -546,6 +547,33 @@ def test_openrxiv_recent_degrades_on_http_or_json_error(monkeypatch, fake_get):
     monkeypatch.setattr(openrxiv.httpx, "get", fake_get)
     out = openrxiv.recent("biorxiv", ["neuroscience"], datetime(2024, 1, 1, tzinfo=UTC))
     assert out == []
+
+
+def test_openrxiv_recent_asserts_the_host_once_however_many_pages_it_walks(monkeypatch):
+    pages = 4
+    guarded: list[str] = []
+    requested: list[str] = []
+    monkeypatch.setattr(openrxiv, "assert_safe_url", lambda url: guarded.append(url))
+
+    def _get(url, **_kwargs):
+        requested.append(url)
+        entry = {
+            "category": "Neuroscience",
+            "doi": f"10.1/p{len(requested)}",
+            "title": "T",
+            "abstract": "A",
+            "date": "2024-03-01",
+        }
+        return _FakeResp({"collection": [entry], "messages": [{"total": pages}]})
+
+    monkeypatch.setattr(openrxiv.httpx, "get", _get)
+
+    out = openrxiv.recent("biorxiv", ["Neuroscience"], datetime(2024, 1, 1, tzinfo=UTC))
+
+    assert len(out) == pages
+    assert len(requested) == pages
+    assert len(guarded) == 1
+    assert {urlsplit(u).netloc for u in requested} == {urlsplit(guarded[0]).netloc}
 
 
 def test_openrxiv_recent_one_malformed_date_does_not_drop_the_batch(monkeypatch):
