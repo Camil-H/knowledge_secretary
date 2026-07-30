@@ -10,6 +10,7 @@ import src.clients.gemini as gemini
 from src import config
 from src.core import ledger as ledger_mod
 from src.core.errors import AuthError, ExternalError, QuotaExhausted
+from src.core.models import ModelLimit
 
 # ----- test doubles -----
 
@@ -34,9 +35,30 @@ def _api_error(code: int, payload: dict | None = None) -> genai_errors.APIError:
     return genai_errors.ClientError(code, payload or {"error": {"code": code}})
 
 
+class _FakeWeb:
+    def __init__(self, uri: str) -> None:
+        self.uri = uri
+
+
+class _FakeChunk:
+    def __init__(self, uri: str) -> None:
+        self.web = _FakeWeb(uri) if uri else None
+
+
+class _FakeGrounding:
+    def __init__(self, uris: list[str]) -> None:
+        self.grounding_chunks = [_FakeChunk(u) for u in uris]
+
+
+class _FakeCandidate:
+    def __init__(self, uris: list[str] | None) -> None:
+        self.grounding_metadata = _FakeGrounding(uris) if uris is not None else None
+
+
 class _FakeGeminiResponse:
-    def __init__(self, text: str | None) -> None:
+    def __init__(self, text: str | None, uris: list[str] | None = None) -> None:
         self.text = text
+        self.candidates = [_FakeCandidate(uris)]
 
 
 class _FakeGenaiModels:
@@ -83,6 +105,10 @@ def _config(max_output_tokens: int | None = None):
     return gemini.types.GenerateContentConfig(
         system_instruction="be brief", max_output_tokens=max_output_tokens
     )
+
+
+def _search_models() -> list[ModelLimit]:
+    return [m for m in config.GEMINI_TEXT_MODELS if m.search]
 
 
 @pytest.fixture(autouse=True)
@@ -318,63 +344,6 @@ def test_quota_scope(payload, expected):
 
 # ===== Tier =====
 
-# ----- first_completion -----
-
-
-@pytest.mark.parametrize(
-    "failure, expected",
-    [
-        pytest.param(_api_error(500), "unavailable", id="external_error"),
-        pytest.param(_api_error(429, _DAY_QUOTA), "unavailable", id="quota_exhausted"),
-        pytest.param(_FakeGeminiResponse(""), "returned empty", id="empty_text"),
-    ],
-)
-def test_first_completion_names_the_callers_cascade_in_its_warnings(
-    monkeypatch, caplog, failure, expected
-):
-    """Both cascades log from this module, so the label is what tells their lines apart."""
-    model = config.GEMINI_TEXT_MODELS[0]
-    _fake_google(monkeypatch, [failure])
-
-    with caplog.at_level(logging.WARNING, logger=gemini.logger.name):
-        gemini.first_completion([model], "u", _config(), ledger=ledger_mod.load(), label="a-label")
-
-    assert [
-        r.getMessage()
-        for r in caplog.records
-        if f"a-label model={model.id}" in r.getMessage() and expected in r.getMessage()
-    ]
-
-
-def test_first_completion_hands_every_response_to_on_response(monkeypatch):
-    """The hook reads grounding metadata, which the responses skipped as empty carry too."""
-    first, second = config.GEMINI_TEXT_MODELS[:2]
-    empty, answer = _FakeGeminiResponse(""), _FakeGeminiResponse("an answer")
-    _fake_google(monkeypatch, [{first.id: empty, second.id: answer}])
-    seen: list[object] = []
-
-    text = gemini.first_completion(
-        [first, second],
-        "u",
-        _config(),
-        ledger=ledger_mod.load(),
-        label="a-label",
-        on_response=seen.append,
-    )
-
-    assert text == "an answer"
-    assert seen == [empty, answer]
-
-
-def test_first_completion_tries_only_the_models_it_is_given(monkeypatch):
-    models = _fake_google(monkeypatch, [_FakeGeminiResponse("ok")])
-    chosen = config.GEMINI_TEXT_MODELS[-1]
-
-    gemini.first_completion([chosen], "u", _config(), ledger=ledger_mod.load(), label="a-label")
-
-    assert models.models_tried == [chosen.id]
-
-
 # ----- call -----
 
 
@@ -448,3 +417,99 @@ def test_call_returns_empty_when_every_model_is_spent(monkeypatch):
 
     assert gemini.call("s", "u", None, ledger=ledger) == ""
     assert models.calls == []
+
+
+@pytest.mark.parametrize(
+    "search, mode",
+    [pytest.param(False, "plain", id="plain"), pytest.param(True, "grounded", id="grounded")],
+)
+@pytest.mark.parametrize(
+    "failure, expected",
+    [
+        pytest.param(_api_error(500), "unavailable", id="external_error"),
+        pytest.param(_api_error(429, _DAY_QUOTA), "unavailable", id="quota_exhausted"),
+        pytest.param(_FakeGeminiResponse(""), "returned empty", id="empty_text"),
+    ],
+)
+def test_call_names_the_mode_in_its_warnings(monkeypatch, caplog, search, mode, failure, expected):
+    """Both modes warn from this module, so the mode is what tells a grounded line from a plain
+    one."""
+    model = (_search_models() if search else config.GEMINI_TEXT_MODELS)[0]
+    _fake_google(monkeypatch, [failure])
+
+    with caplog.at_level(logging.WARNING, logger=gemini.logger.name):
+        gemini.call("s", "u", ledger=ledger_mod.load(), search=search)
+
+    assert [
+        r.getMessage()
+        for r in caplog.records
+        if f"{mode} model={model.id}" in r.getMessage() and expected in r.getMessage()
+    ]
+
+
+# ----- grounded search -----
+
+
+def test_call_with_search_attaches_the_google_search_tool(monkeypatch):
+    """Without the tool the answer is ungrounded, which is the whole point of research."""
+    models = _fake_google(monkeypatch, [_FakeGeminiResponse("ok")])
+
+    gemini.call("s", "u", ledger=ledger_mod.load(), search=True)
+
+    assert [t for t in models.calls[0]["config"].tools if t.google_search is not None]
+
+
+def test_call_with_search_tries_only_grounding_capable_models(monkeypatch):
+    """The roster carries a high-quota model without grounding; handing it the search tool would
+    fail the request, so a grounded call must never reach it."""
+    plain = ModelLimit("no-search", rpd=500, rpm=15, tpm=250_000, search=False)
+    grounded = ModelLimit("with-search", rpd=20, rpm=5, tpm=250_000, search=True)
+    monkeypatch.setattr(config, "GEMINI_TEXT_MODELS", [plain, grounded])
+    models = _fake_google(monkeypatch, [_FakeGeminiResponse("ok")])
+
+    gemini.call("s", "u", ledger=ledger_mod.load(), search=True)
+
+    assert models.models_tried == [grounded.id]
+
+
+@pytest.mark.parametrize(
+    "uris, expected_in_log",
+    [
+        pytest.param(["https://a.example", "https://b.example"], "https://a.example", id="uris"),
+        pytest.param([], None, id="no_chunks"),
+        pytest.param(None, None, id="no_metadata"),
+    ],
+)
+def test_call_with_search_logs_the_grounded_sources(monkeypatch, caplog, uris, expected_in_log):
+    """The grounded URIs are the only record of what an episode was built from."""
+    _fake_google(monkeypatch, [_FakeGeminiResponse("an overview", uris=uris)])
+
+    with caplog.at_level(logging.INFO, logger=gemini.logger.name):
+        gemini.call("s", "u", ledger=ledger_mod.load(), search=True)
+
+    grounded = [r.getMessage() for r in caplog.records if "grounded in" in r.getMessage()]
+    if expected_in_log:
+        assert any(expected_in_log in message for message in grounded)
+    else:
+        assert grounded == []
+
+
+def test_call_with_search_logs_the_sources_of_a_response_it_skips_as_empty(monkeypatch, caplog):
+    """An empty answer still ran a search; its sources are part of the record either way."""
+    first, second = _search_models()[:2]
+    empty = _FakeGeminiResponse("", uris=["https://skipped.example"])
+    _fake_google(monkeypatch, [{first.id: empty, second.id: _FakeGeminiResponse("an answer")}])
+
+    with caplog.at_level(logging.INFO, logger=gemini.logger.name):
+        assert gemini.call("s", "u", ledger=ledger_mod.load(), search=True) == "an answer"
+
+    assert any("https://skipped.example" in r.getMessage() for r in caplog.records)
+
+
+def test_call_without_search_logs_no_sources(monkeypatch, caplog):
+    _fake_google(monkeypatch, [_FakeGeminiResponse("ok", uris=["https://a.example"])])
+
+    with caplog.at_level(logging.INFO, logger=gemini.logger.name):
+        gemini.call("s", "u", ledger=ledger_mod.load())
+
+    assert not [r for r in caplog.records if "grounded" in r.getMessage()]

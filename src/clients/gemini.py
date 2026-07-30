@@ -9,7 +9,6 @@ the only truth about what is left.
 import logging
 import os
 import time
-from collections.abc import Callable
 
 from google import genai
 from google.genai import errors as genai_errors
@@ -23,7 +22,10 @@ from src.core.models import ModelLimit
 logger = logging.getLogger(__name__)
 
 SOURCE = "google-ai-studio"
-TEXT_LABEL = "llm google"
+
+_MODE_GROUNDED = "grounded"
+_MODE_PLAIN = "plain"
+_MAX_LOGGED_SOURCES = 10
 
 _QUOTA_SCOPE_MINUTE = "PerMinute"
 _QUOTA_SCOPE_DAY = "PerDay"
@@ -118,51 +120,64 @@ def _quota_scope(e: genai_errors.APIError) -> str | None:
 # == Tier =====================================================================
 
 
-def first_completion(
-    models: list[ModelLimit],
-    contents: str,
-    gen_config: types.GenerateContentConfig,
+def call(
+    system: str,
+    user: str,
+    max_tokens: int | None = None,
     *,
     ledger: ledger_mod.Ledger,
-    label: str,
-    on_response: Callable[[types.GenerateContentResponse], None] | None = None,
+    search: bool = False,
 ) -> str:
-    """First non-empty text from `models` in order; "" when every candidate is spent, failing
+    """First non-empty completion from the model table; "" when every candidate is spent, failing
     or empty.
 
-    The sole owner of the tier policy — which candidates the ledger still allows, what a failure
-    costs the run, and when the cascade is dry — so a change to it reaches every caller. Callers
-    differ only in their model subset, their `label` (which names the cascade in the warnings)
-    and `on_response`, a hook for reading the raw response before its text is taken.
+    `search` picks the grounding-capable rows *and* attaches the Google Search tool, so the one
+    combination the API rejects — the tool sent to a model that cannot run it — cannot be asked
+    for. Grounded generation is podcast research's alone; every other caller leaves it off.
 
-    QuotaExhausted arrives as an ExternalError subclass and is tolerated with it. AuthError
-    propagates — the cross-tier decision belongs to the cascade in src/clients/llm.py."""
+    The sole owner of the tier policy — which candidates the ledger still allows, what a failure
+    costs the run, and when the cascade is dry. QuotaExhausted arrives as an ExternalError
+    subclass and is tolerated with it. AuthError propagates — the cross-tier decision belongs to
+    the cascade in src/clients/llm.py."""
+    models = config.GEMINI_TEXT_MODELS
+    if search:
+        models = [m for m in models if m.search]
+    mode = _MODE_GROUNDED if search else _MODE_PLAIN
+    gen_config = types.GenerateContentConfig(
+        system_instruction=system,
+        max_output_tokens=max_tokens,
+        tools=[types.Tool(google_search=types.GoogleSearch())] if search else None,
+    )
     for model in models:
         if not ledger_mod.available(ledger, model.id, model.rpd):
             continue
         try:
-            response = generate(model, contents, gen_config, ledger=ledger)
+            response = generate(model, user, gen_config, ledger=ledger)
         except AuthError:
             raise
         except ExternalError as e:
-            logger.warning("⚠️ %s model=%s unavailable, next candidate: %s", label, model.id, e)
+            logger.warning(
+                "⚠️ llm google %s model=%s unavailable, next candidate: %s", mode, model.id, e
+            )
             continue
-        if on_response is not None:
-            on_response(response)
+        if search:
+            _log_sources(response)
         text = response.text
         if text and text.strip():
             return text
-        logger.warning("⚠️ %s model=%s returned empty, next candidate", label, model.id)
+        logger.warning("⚠️ llm google %s model=%s returned empty, next candidate", mode, model.id)
     return ""
 
 
-def call(system: str, user: str, max_tokens: int | None, *, ledger: ledger_mod.Ledger) -> str:
-    """First non-empty completion from the general text model table.
-
-    Plain generation with no grounding tool — search is podcast research's alone."""
-    gen_config = types.GenerateContentConfig(
-        system_instruction=system, max_output_tokens=max_tokens
-    )
-    return first_completion(
-        config.GEMINI_TEXT_MODELS, user, gen_config, ledger=ledger, label=TEXT_LABEL
-    )
+def _log_sources(response: types.GenerateContentResponse) -> None:
+    """Record which pages a grounded answer was built on, so a bad episode can be traced back."""
+    for candidate in response.candidates or []:
+        metadata = candidate.grounding_metadata
+        chunks = (metadata.grounding_chunks or []) if metadata else []
+        sources = [c.web.uri for c in chunks if c.web and c.web.uri]
+        if sources:
+            logger.info(
+                "llm google grounded in %d source(s): %s",
+                len(sources),
+                ", ".join(sources[:_MAX_LOGGED_SOURCES]),
+            )
