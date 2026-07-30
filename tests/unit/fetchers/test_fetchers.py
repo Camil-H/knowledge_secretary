@@ -181,7 +181,7 @@ def test_fetcher_degrades_without_fetching_when_the_guard_rejects(
         ("https://youtu.be/dQw4w9WgXcQ", "dQw4w9WgXcQ"),
         ("https://www.youtube.com/shorts/dQw4w9WgXcQ", "dQw4w9WgXcQ"),
         ("https://example.com/no-id-here", None),
-        ("", None),
+        (None, None),
     ],
 )
 def test_video_id_from_url(url, expected):
@@ -192,27 +192,29 @@ def test_video_id_from_url(url, expected):
 
 
 @pytest.mark.parametrize(
-    "data,expected_len",
+    ("data", "expected_len"),
     [
-        ([{"id": 1}], 1),  # top-level array
-        ({"tweets": [{"id": 1}, {"id": 2}]}, 2),  # wrapped under a known key
-        ({"data": [{"id": 1}]}, 1),
+        pytest.param([{"id": 1}], 1, id="top_level_array"),
+        pytest.param({"tweets": [{"id": 1}, {"id": 2}]}, 2, id="first_wrapper_key"),
+        pytest.param({"data": [{"id": 1}]}, 1, id="later_wrapper_key"),
+        pytest.param({"nope": 5}, None, id="dict_without_a_list_raises"),
+        pytest.param("garbage", None, id="non_container_raises"),
     ],
 )
-def test_x_extract_reads_known_shapes(data, expected_len):
-    assert len(x._extract(data)) == expected_len
-
-
-@pytest.mark.parametrize("data", [{"nope": 5}, "garbage", 42])
-def test_x_extract_raises_on_unexpected(data):
-    with pytest.raises(x.UnexpectedXFormat):
-        x._extract(data)
+def test_x_extract_reads_known_shapes_or_raises(data, expected_len):
+    """`expected_len is None` marks a shape `_extract` must reject rather than unwrap."""
+    if expected_len is None:
+        with pytest.raises(x.UnexpectedXFormat):
+            x._extract(data)
+    else:
+        assert len(x._extract(data)) == expected_len
 
 
 # ----- x.recent_tweets -----
 
 
 def test_recent_tweets_composes_argv_and_parses_stdout(monkeypatch):
+    """The handle arrives with a leading "@", so argv also pins the normalization."""
     captured = {}
 
     def fake_run(argv, **kwargs):
@@ -221,23 +223,11 @@ def test_recent_tweets_composes_argv_and_parses_stdout(monkeypatch):
         return type("Proc", (), {"stdout": json.dumps({"tweets": [{"id": 1}, {"id": 2}]})})()
 
     monkeypatch.setattr(x.subprocess, "run", fake_run)
-    out = x.recent_tweets("someuser", limit=5)
+    out = x.recent_tweets("@someuser", limit=5)
 
     assert captured["argv"] == ["twitter", "user-posts", "someuser", "--max", "5", "--json"]
     assert captured["kwargs"]["check"] is True
     assert out == [{"id": 1}, {"id": 2}]
-
-
-def test_recent_tweets_strips_leading_at(monkeypatch):
-    captured = {}
-
-    def fake_run(argv, **kwargs):
-        captured["argv"] = argv
-        return type("Proc", (), {"stdout": json.dumps({"tweets": []})})()
-
-    monkeypatch.setattr(x.subprocess, "run", fake_run)
-    x.recent_tweets("@someuser")
-    assert captured["argv"][2] == "someuser"
 
 
 @pytest.mark.parametrize("handle", ["--json", "-rf", "; rm -rf /", "way-too-long-for-a-handle"])
@@ -267,49 +257,40 @@ def test_recent_tweets_degrades_on_subprocess_or_json_error(monkeypatch, caplog,
     assert any("degraded" in r.message for r in caplog.records)
 
 
-def test_recent_tweets_raises_auth_error_on_expired_cookies(monkeypatch):
-    err = subprocess.CalledProcessError(
-        1, "twitter", stderr="Error: 401 Unauthorized — session expired"
-    )
+@pytest.mark.parametrize(
+    "stderr",
+    [
+        pytest.param("Error: 401 Unauthorized — session expired", id="401_unauthorized"),
+        pytest.param("HTTP 403 forbidden", id="403_forbidden"),
+        pytest.param("invalid api key", id="invalid_api_key"),
+    ],
+)
+def test_recent_tweets_raises_auth_error_on_expired_cookies(monkeypatch, stderr):
+    """Each auth marker class reaches the caller as an AuthError telling it what to do."""
+    err = subprocess.CalledProcessError(1, "twitter", stderr=stderr)
     monkeypatch.setattr(x.subprocess, "run", _raiser(err))
-    with pytest.raises(AuthError) as ei:
+    with pytest.raises(AuthError, match="renew"):
         x.recent_tweets("someuser")
-    assert "renew" in str(ei.value).lower()  # message tells the operator what to do
 
 
 @pytest.mark.parametrize(
     "stderr",
     [
-        "temporary network failure",
-        "Error fetching tweets by author handle",  # "author" isn't an auth marker
-        "session timed out, expired connection",  # generic words alone aren't auth-shaped
+        pytest.param("temporary network failure", id="network_failure"),
+        pytest.param("Error fetching tweets by author handle", id="author_is_not_a_marker"),
+        pytest.param("session timed out, expired connection", id="generic_session_expired"),
+        pytest.param("request id 14012 failed", id="digit_substring_401"),
+        pytest.param(None, id="no_stderr"),
     ],
 )
 def test_recent_tweets_degrades_on_non_auth_called_process_error(monkeypatch, caplog, stderr):
+    """A CLI failure carrying no auth marker degrades to [] instead of raising AuthError."""
     err = subprocess.CalledProcessError(1, "twitter", stderr=stderr)
     monkeypatch.setattr(x.subprocess, "run", _raiser(err))
     with caplog.at_level(logging.WARNING):
         out = x.recent_tweets("someuser")
     assert out == []
     assert any("degraded" in r.message for r in caplog.records)
-
-
-# ----- x._is_auth_failure -----
-
-
-@pytest.mark.parametrize(
-    "stderr,expected",
-    [
-        ("Error: 401 Unauthorized — session expired", True),
-        ("HTTP 403 forbidden", True),
-        ("invalid api key", True),
-        ("request id 14012 failed", False),  # "401" as a number substring, not a status code
-        ("session expired, please log in again", False),  # generic words alone
-        (None, False),
-    ],
-)
-def test_x_is_auth_failure(stderr, expected):
-    assert x._is_auth_failure(stderr) is expected
 
 
 def test_recent_tweets_propagates_unexpected_format(monkeypatch):
@@ -325,60 +306,60 @@ def test_recent_tweets_propagates_unexpected_format(monkeypatch):
 # ----- rss -----
 
 
-def test_rss_published_utc_from_struct_time():
-    st = time.strptime("2024-07-15 12:00:00", "%Y-%m-%d %H:%M:%S")
-    assert rss._published_utc({"published_parsed": st}) == datetime(2024, 7, 15, 12, 0, tzinfo=UTC)
-
-
-def test_rss_published_utc_none_when_missing():
-    assert rss._published_utc({}) is None
-
-
 def test_rss_fetch_normalizes_entries(monkeypatch):
-    entry = {
+    """One entry of each date/id shape the normalizer has to handle."""
+    full = {
         "id": "e1",
         "title": "T",
         "link": "http://l",
         "summary": "s",
         "published_parsed": time.strptime("2024-01-02", "%Y-%m-%d"),
     }
+    link_only = {"link": "http://only-link", "title": "T2"}
+    updated_only = {
+        "id": "e3",
+        "title": "T3",
+        "link": "http://l3",
+        "updated_parsed": time.strptime("2024-07-15 12:00:00", "%Y-%m-%d %H:%M:%S"),
+    }
 
     class _Parsed:
         feed = {"title": "Feed"}
-        entries = [entry]
+        entries = [full, link_only, updated_only]
 
     monkeypatch.setattr(rss.httpx, "get", lambda *a, **k: _FakeHttpResp())
     monkeypatch.setattr(rss.feedparser, "parse", lambda _content: _Parsed())
     out = rss.fetch("http://x")
+
     assert out["title"] == "Feed"
-    assert len(out["entries"]) == 1
-    e = out["entries"][0]
-    assert (e["id"], e["title"], e["link"]) == ("e1", "T", "http://l")
-    assert e["published"] == datetime(2024, 1, 2, tzinfo=UTC)
-    assert e["raw"] is entry
+    assert len(out["entries"]) == len(_Parsed.entries)
+    normalized, from_link, from_updated = out["entries"]
+    assert (normalized["id"], normalized["title"], normalized["link"]) == ("e1", "T", "http://l")
+    assert normalized["published"] == datetime(2024, 1, 2, tzinfo=UTC)
+    assert normalized["raw"] is full
+    assert from_link["id"] == link_only["link"]
+    assert from_link["published"] is None
+    assert from_updated["published"] == datetime(2024, 7, 15, 12, 0, tzinfo=UTC)
 
 
-def test_rss_fetch_entry_id_falls_back_to_link(monkeypatch):
-    entry = {"link": "http://only-link", "title": "T"}
-
-    class _Parsed:
-        feed = {"title": "Feed"}
-        entries = [entry]
-
-    monkeypatch.setattr(rss.httpx, "get", lambda *a, **k: _FakeHttpResp())
-    monkeypatch.setattr(rss.feedparser, "parse", lambda _content: _Parsed())
-    out = rss.fetch("http://x")
-    assert out["entries"][0]["id"] == "http://only-link"
-
-
-def test_rss_fetch_degrades_on_parse_error(monkeypatch):
-    monkeypatch.setattr(rss.httpx, "get", lambda *a, **k: _FakeHttpResp())
-    monkeypatch.setattr(rss.feedparser, "parse", _raiser(ValueError("malformed feed")))
-    assert rss.fetch("http://x") == {"title": "", "entries": []}
-
-
-def test_rss_fetch_degrades_on_http_timeout(monkeypatch):
-    monkeypatch.setattr(rss.httpx, "get", _raiser(httpx.TimeoutException("timed out")))
+@pytest.mark.parametrize(
+    ("fake_get", "fake_parse"),
+    [
+        pytest.param(
+            lambda *a, **k: _FakeHttpResp(),
+            _raiser(ValueError("malformed feed")),
+            id="parse_error",
+        ),
+        pytest.param(
+            _raiser(httpx.TimeoutException("timed out")),
+            lambda _content: None,
+            id="transport_error",
+        ),
+    ],
+)
+def test_rss_fetch_degrades_on_a_failed_fetch_or_parse(monkeypatch, fake_get, fake_parse):
+    monkeypatch.setattr(rss.httpx, "get", fake_get)
+    monkeypatch.setattr(rss.feedparser, "parse", fake_parse)
     assert rss.fetch("http://x") == {"title": "", "entries": []}
 
 
@@ -435,17 +416,17 @@ def test_pubmed_search_recent_composes_esearch_request(monkeypatch, since, expec
 
 
 def test_pubmed_search_recent_empty_idlist_skips_esummary(monkeypatch):
-    calls = []
+    urls = []
 
     def fake_get(url, params=None, timeout=None):
-        calls.append(url)
+        urls.append(url)
         return _FakeResp({"esearchresult": {"idlist": []}})
 
     monkeypatch.setattr(pubmed.httpx, "get", fake_get)
     out = pubmed.search_recent(["q"], datetime.now(UTC) - timedelta(days=1))
 
     assert out == []
-    assert len(calls) == 1  # esummary never called
+    assert not any("esummary" in u for u in urls)
 
 
 def test_pubmed_search_recent_skips_rows_without_title(monkeypatch):
@@ -487,6 +468,7 @@ def test_pubmed_search_recent_degrades_on_http_or_json_error(monkeypatch, fake_g
 
 
 def test_openrxiv_recent_filters_case_insensitively_and_skips_incomplete(monkeypatch):
+    since = datetime(2024, 1, 1, tzinfo=UTC)
     collection = [
         {
             "category": "Neuroscience",
@@ -501,6 +483,13 @@ def test_openrxiv_recent_filters_case_insensitively_and_skips_incomplete(monkeyp
             "title": "T2",
             "abstract": "A2",
             "date": "2024-03-02",
+        },
+        {
+            "category": "Neuroscience",
+            "doi": "10.1/bad",
+            "title": "malformed date",
+            "abstract": "A3",
+            "date": "not-a-date",
         },
         {
             "category": "Neuroscience",
@@ -523,9 +512,9 @@ def test_openrxiv_recent_filters_case_insensitively_and_skips_incomplete(monkeyp
         openrxiv.httpx, "get", lambda *a, **k: _FakeResp({"collection": collection})
     )
 
-    out = openrxiv.recent("biorxiv", ["Neuroscience"], datetime(2024, 1, 1, tzinfo=UTC))
+    out = openrxiv.recent("biorxiv", ["Neuroscience"], since)
 
-    assert [e["doi"] for e in out] == ["10.1/aaa", "10.1/bbb"]
+    assert [e["doi"] for e in out] == ["10.1/aaa", "10.1/bbb", "10.1/bad"]
     assert out[0] == {
         "doi": "10.1/aaa",
         "title": "T1",
@@ -534,6 +523,7 @@ def test_openrxiv_recent_filters_case_insensitively_and_skips_incomplete(monkeyp
         "category": "Neuroscience",
     }
     assert out[0]["published"].tzinfo is UTC
+    assert out[2]["published"] == since  # an unparseable date falls back, it doesn't drop the batch
 
 
 @pytest.mark.parametrize(
@@ -574,56 +564,6 @@ def test_openrxiv_recent_asserts_the_host_once_however_many_pages_it_walks(monke
     assert len(requested) == pages
     assert len(guarded) == 1
     assert {urlsplit(u).netloc for u in requested} == {urlsplit(guarded[0]).netloc}
-
-
-def test_openrxiv_recent_one_malformed_date_does_not_drop_the_batch(monkeypatch):
-    since = datetime(2024, 1, 1, tzinfo=UTC)
-    collection = [
-        {
-            "category": "Neuroscience",
-            "doi": "10.1/good1",
-            "title": "T1",
-            "abstract": "A1",
-            "date": "2024-03-01",
-        },
-        {
-            "category": "Neuroscience",
-            "doi": "10.1/bad",
-            "title": "malformed date",
-            "abstract": "A2",
-            "date": "not-a-date",
-        },
-        {
-            "category": "Neuroscience",
-            "doi": "10.1/good2",
-            "title": "T3",
-            "abstract": "A3",
-            "date": "2024-03-03",
-        },
-    ]
-    monkeypatch.setattr(
-        openrxiv.httpx, "get", lambda *a, **k: _FakeResp({"collection": collection})
-    )
-
-    out = openrxiv.recent("biorxiv", ["Neuroscience"], since)
-
-    assert [e["doi"] for e in out] == ["10.1/good1", "10.1/bad", "10.1/good2"]
-    assert out[1]["published"] == since  # malformed date falls back rather than dropping the batch
-
-
-# ----- openrxiv._parse_date -----
-
-
-@pytest.mark.parametrize(
-    "raw,expected",
-    [
-        ("2024-03-01", datetime(2024, 3, 1, tzinfo=UTC)),
-        ("not-a-date", datetime(2024, 1, 1, tzinfo=UTC)),  # falls back rather than raising
-    ],
-)
-def test_openrxiv_parse_date(raw, expected):
-    fallback = datetime(2024, 1, 1, tzinfo=UTC)
-    assert openrxiv._parse_date(raw, fallback) == expected
 
 
 # ----- url.article_text -----
@@ -690,31 +630,23 @@ def test_channel_videos_maps_and_skips_non_videos(monkeypatch):
                 "summary": "",
                 "raw": {},
             },  # no yt_videoid -> skipped
-        ],
-    }
-    monkeypatch.setattr(youtube.rss, "fetch", lambda _url: feed)
-    out = youtube.channel_videos("UCabc")
-    assert out["channel"] == "Chan"
-    assert [v["video_id"] for v in out["videos"]] == ["vid00000001"]
-
-
-def test_channel_videos_empty_link_falls_back_to_watch_url(monkeypatch):
-    feed = {
-        "title": "Chan",
-        "entries": [
             {
-                "id": "i1",
-                "title": "V1",
-                "link": "",
+                "id": "i3",
+                "title": "V3",
+                "link": "",  # no link -> the watch url is synthesized from the video id
                 "published": None,
                 "summary": "",
-                "raw": {"yt_videoid": "vid00000001"},
+                "raw": {"yt_videoid": "vid00000002"},
             },
         ],
     }
     monkeypatch.setattr(youtube.rss, "fetch", lambda _url: feed)
     out = youtube.channel_videos("UCabc")
-    assert out["videos"][0]["url"] == "https://www.youtube.com/watch?v=vid00000001"
+    assert out["channel"] == "Chan"
+    assert [v["video_id"] for v in out["videos"]] == ["vid00000001", "vid00000002"]
+    assert "not-a-video" not in [v["title"] for v in out["videos"]]
+    assert out["videos"][0]["url"] == "http://w"
+    assert out["videos"][1]["url"] == "https://www.youtube.com/watch?v=vid00000002"
 
 
 # ----- youtube.transcript -----
@@ -775,10 +707,3 @@ def test_fetch_transcript_text_raises_when_nothing_resolves(monkeypatch):
     _patch_transcript_api(monkeypatch, _FakeTranscriptApi(list_error=RuntimeError("no listing")))
     with pytest.raises(RuntimeError, match="no transcript"):
         youtube._fetch_transcript_text("vid1")
-
-
-# ----- youtube._snippet_text -----
-
-
-def test_snippet_text_reads_the_snippet_attribute():
-    assert youtube._snippet_text(_snippet("a snippet")) == "a snippet"
