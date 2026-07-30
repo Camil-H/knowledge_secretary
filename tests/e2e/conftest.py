@@ -154,7 +154,9 @@ def _install_podcast_fakes(monkeypatch, tmp_path, *, topic: str = "My Topic"):
     """Fakes the podcast boundary; returns the list `gh` invocations are recorded into."""
     monkeypatch.setattr(podcast_task, "TOPICS", [topic])
     monkeypatch.setattr(
-        podcast_task.content_generator, "research", lambda topic: _PODCAST_RESEARCH_TEXT
+        podcast_task.gemini,
+        "call",
+        lambda *_a, **_k: _PODCAST_RESEARCH_TEXT,
     )
     monkeypatch.setattr(
         podcast_task.transcript,
@@ -185,7 +187,7 @@ def _install_podcast_fakes(monkeypatch, tmp_path, *, topic: str = "My Topic"):
 def _install_all_llm(monkeypatch, *, newsletter_markdown: str, youtube_bullet: str):
     """One llm.call fake keyed on `system` so newsletter + youtube can be exercised in the
     same run without clobbering each other's stub. The podcast no longer routes through
-    llm.call — its research goes straight to content_generator."""
+    llm.call — its research goes straight to the Gemini client."""
 
     def _call(system, user, max_tokens=None):
         if system == newsletter_task.EDITOR_PROMPT:

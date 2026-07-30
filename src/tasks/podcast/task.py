@@ -5,15 +5,17 @@ import os
 import tempfile
 from pathlib import Path
 
+from src.clients import gemini
 from src.core import ledger as ledger_mod
 from src.core import sources_loader
 from src.core import state as state_mod
 from src.core.models import Context, Result
 from src.core.registry import tasks
-from src.tasks.podcast import audio, content_generator, transcript
+from src.tasks.podcast import audio, transcript
 
 DONE_KEY = "podcast_done"
 TOPICS: list[str] = sources_loader.load(Path(__file__).parent, []) or []
+RESEARCH_PROMPT = (Path(__file__).parent / "research_prompt.md").read_text()
 EPISODE_FILENAME = "episode.mp3"
 NO_EPISODE_NOTICE = (
     "No episode today — grounded research or generation failed. The topic stays queued and is "
@@ -49,19 +51,6 @@ def run(ctx: Context) -> Result:
     state_mod.set_kv(ctx.state, DONE_KEY, sorted(done | {topic}))
     return Result(subject=subject, markdown="", artifacts=[audio_path], meta={"topic": topic})
 
-
-# == Research =================================================================
-
-
-def _research(ctx: Context, topic: str) -> str:
-    """Search-grounded source material for the topic; "" when research is unavailable."""
-    try:
-        return content_generator.research(topic)
-    except Exception as exc:
-        ctx.logger.warning("⚠️ podcast: research failed for %r: %s", topic, exc)
-        return ""
-
-
 # == Episode generation =======================================================
 
 
@@ -79,6 +68,26 @@ def _generate_episode(ctx: Context, topic: str) -> str | None:
         return None
     ctx.logger.info("podcast: %d-char transcript for %r", len(text), topic)
     return _synthesize(ctx, text, topic)
+
+
+# == Content research =========================================================
+
+
+def _research(ctx: Context, topic: str) -> str:
+    """Search-grounded source material for the topic; "" when research is unavailable.
+
+    Grounded search replaces asking a model to recall source URLs: the search runs inside the
+    model, so the overview rests on pages that exist rather than on plausible-looking identifiers
+    that resolve to unrelated articles. `search=True` both restricts the cascade to models that
+    can run the tool and attaches it."""
+    try:
+        return gemini.call(RESEARCH_PROMPT, topic, ledger=ledger_mod.load(), search=True)
+    except Exception as exc:
+        ctx.logger.warning("⚠️ podcast: research failed for %r: %s", topic, exc)
+        return ""
+
+
+# == Audio synthesis ==========================================================
 
 
 def _synthesize(ctx: Context, text: str, topic: str) -> str | None:

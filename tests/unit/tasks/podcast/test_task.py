@@ -1,5 +1,5 @@
 """Podcast queue pop/removal + grounded research + episode generation. _generate_episode is
-stubbed wholesale for the queue cases; under test, its collaborators (content_generator.research,
+stubbed wholesale for the queue cases; under test, its collaborators (gemini.call,
 transcript.generate, audio.synthesize) are stubbed individually."""
 
 import logging
@@ -91,13 +91,18 @@ def test_run_generation_failure_records_a_notice(monkeypatch):
 # ----- research -----
 
 
-def _stub_research(monkeypatch, result=None, raises=None):
-    def _research_impl(topic):
+def _stub_research(monkeypatch, result=None, raises=None) -> list[dict]:
+    """Replace the shared Gemini entry point; returns the list its calls are recorded into."""
+    calls: list[dict] = []
+
+    def _call(system, user, max_tokens=None, *, ledger, search=False):
+        calls.append({"system": system, "user": user, "max_tokens": max_tokens, "search": search})
         if raises is not None:
             raise raises
         return result
 
-    monkeypatch.setattr(podcast_task.content_generator, "research", _research_impl)
+    monkeypatch.setattr(podcast_task.gemini, "call", _call)
+    return calls
 
 
 def test_research_returns_the_grounded_overview(monkeypatch):
@@ -105,16 +110,20 @@ def test_research_returns_the_grounded_overview(monkeypatch):
     assert _research(_ctx(_state()), "PROTACs") == _OVERVIEW
 
 
-def test_research_passes_the_topic(monkeypatch):
-    seen = {}
+def test_research_asks_for_a_grounded_completion_of_the_topic(monkeypatch):
+    """`search=True` is the request: grounding-capable models and the search tool, together."""
+    calls = _stub_research(monkeypatch, result=_OVERVIEW)
 
-    def _research_impl(topic):
-        seen["topic"] = topic
-        return _OVERVIEW
-
-    monkeypatch.setattr(podcast_task.content_generator, "research", _research_impl)
     _research(_ctx(_state()), "PROTACs")
-    assert seen == {"topic": "PROTACs"}
+
+    assert calls == [
+        {
+            "system": podcast_task.RESEARCH_PROMPT,
+            "user": "PROTACs",
+            "max_tokens": None,
+            "search": True,
+        }
+    ]
 
 
 @pytest.mark.parametrize(
@@ -139,7 +148,7 @@ _LEDGER: dict = {}
 def _stub_episode_collaborators(
     monkeypatch, *, synthesize, overview=_OVERVIEW, raises=None, transcript_raises=None
 ):
-    """Stub content_generator.research, transcript.generate and audio.synthesize."""
+    """Stub gemini.call, transcript.generate and audio.synthesize."""
     _stub_research(monkeypatch, result=overview, raises=raises)
 
     def _generate(topic, research, *, call):
