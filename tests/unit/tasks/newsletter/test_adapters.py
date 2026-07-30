@@ -140,9 +140,8 @@ def test_twitter_fetches_handles_concurrently_keeping_handle_order(monkeypatch):
 
     out = twitter(_spec(handles=["h1", "h2"]), _SINCE)
 
-    assert sorted(calls) == ["h1", "h2"]  # exactly one subprocess per configured handle
+    assert sorted(calls) == ["h1", "h2"]
     assert [i.id for i in out] == ["x:h11", "x:h21"]
-    # each Item is attributed to the handle it was fetched for, permalinks included
     assert [i.meta["handle"] for i in out] == ["h1", "h2"]
     assert [i.url for i in out] == ["https://x.com/h1/status/h11", "https://x.com/h2/status/h21"]
 
@@ -247,7 +246,7 @@ def test_tweet_item_builds_the_item_from_a_well_formed_tweet(date_key, raw_date)
     # isoformat, not equality: aware datetimes compare by instant, so == would not see a
     # published still carrying the +02:00 offset instead of the normalized UTC one
     assert item.published.isoformat() == "2024-06-01T10:00:00+00:00"
-    assert item.url == "https://x.com/handle1/status/42"  # no tweet url -> permalink fallback
+    assert item.url == "https://x.com/handle1/status/42"
     assert item.title == text[:80]
     assert len(item.title) == 80
     assert (item.source, item.section, item.text) == ("src1", "News", text)
