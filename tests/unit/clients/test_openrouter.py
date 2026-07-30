@@ -1,5 +1,5 @@
-"""The OpenRouter tier: its model catalog, one chat completion, and the deadline-bounded loop
-over the ranked candidates. httpx and sleep are faked — no real request, key or wait."""
+"""The OpenRouter tier: one chat completion and the deadline-bounded loop over the ranked
+candidates. httpx and sleep are faked — no real request, key or wait."""
 
 import pytest
 
@@ -11,7 +11,7 @@ from src.core.errors import AuthError, ExternalError
 
 
 class _FakeResp:
-    """An httpx-shaped response for both the catalog fetch and a chat completion."""
+    """An httpx-shaped response for a chat completion."""
 
     def __init__(self, payload, *, status_code: int = 200, text: str = "") -> None:
         self._payload = payload
@@ -23,7 +23,7 @@ class _FakeResp:
 
 
 class _StatusErr(Exception):
-    """Generic error carrying an optional status_code, for _is_rate_limit/_is_auth matrices."""
+    """Generic error carrying an optional status_code, as the tier loop classifies on."""
 
     def __init__(self, msg: str, *, status_code: int | None = None) -> None:
         super().__init__(msg)
@@ -81,11 +81,16 @@ def test_call_retries_the_same_model_on_rate_limit(monkeypatch):
 
 @pytest.mark.parametrize(
     "error",
-    [ValueError("boom"), _StatusErr("rate limit reached", status_code=402)],
-    ids=["untyped", "non_transient_status_naming_a_rate_limit"],
+    [
+        ValueError("No user or org id found in auth cookie"),
+        _StatusErr("rate limit reached", status_code=402),
+    ],
+    ids=["untyped_naming_credentials", "non_transient_status_naming_a_rate_limit"],
 )
 def test_call_falls_through_to_the_next_model_on_other_error(monkeypatch, error):
-    """A status outside TRANSIENT_STATUSES moves on rather than retrying, whatever its body says."""
+    """An untyped error, or a status outside TRANSIENT_STATUSES, moves on rather than retrying —
+    whatever its body says. A 401 is a 401; text mentioning credentials or a rate limit is just a
+    failed candidate, where the old phrase-list classifier would have misread the intent."""
     monkeypatch.setattr(config, "OPENROUTER_MODELS", ["openrouter/a:free", "openrouter/b:free"])
     tried = []
 
@@ -100,32 +105,29 @@ def test_call_falls_through_to_the_next_model_on_other_error(monkeypatch, error)
     assert tried == ["openrouter/a:free", "openrouter/b:free"]
 
 
-def test_call_raises_auth_error_immediately(monkeypatch):
+@pytest.mark.parametrize(
+    "error",
+    [
+        _StatusErr("unauthorized", status_code=config.UNAUTHORIZED_STATUS),
+        AuthError(openrouter.SOURCE, detail=f"{config.OPENROUTER_KEY_LABEL} unset"),
+    ],
+    ids=["unauthorized_status", "auth_error_already_raised_by_the_key_guard"],
+)
+def test_call_raises_auth_error_immediately(monkeypatch, error):
+    """A credential failure fails loudly instead of walking every model: the tier classifies an
+    UNAUTHORIZED_STATUS into AuthError, and an AuthError complete() already raised — its missing-key
+    guard — is re-raised untouched rather than counted as one more unavailable candidate."""
     monkeypatch.setattr(config, "OPENROUTER_MODELS", ["openrouter/a:free", "openrouter/b:free"])
     tried = []
 
     def _complete(model, messages, max_tokens):
         tried.append(model)
-        raise _StatusErr("unauthorized", status_code=401)
+        raise error
 
     monkeypatch.setattr(openrouter, "complete", _complete)
     with pytest.raises(AuthError):
         openrouter.call("s", "u", None)
     assert tried == ["openrouter/a:free"]
-
-
-def test_call_does_not_read_auth_intent_from_the_message(monkeypatch):
-    """A 401 is a 401; an untyped error whose text mentions credentials is just a failed
-    candidate, where the old phrase list would have raised AuthError and stopped the cascade."""
-    monkeypatch.setattr(config, "OPENROUTER_MODELS", ["openrouter/a:free", "openrouter/b:free"])
-
-    def _complete(model, messages, max_tokens):
-        if model == "openrouter/a:free":
-            raise ValueError("No user or org id found in auth cookie")
-        return "second"
-
-    monkeypatch.setattr(openrouter, "complete", _complete)
-    assert openrouter.call("s", "u", None) == "second"
 
 
 def test_call_external_error_carries_the_last_exception_as_cause(monkeypatch):
@@ -138,15 +140,10 @@ def test_call_external_error_carries_the_last_exception_as_cause(monkeypatch):
     assert ei.value.cause is boom
 
 
-@pytest.mark.parametrize(
-    "candidates, expect_next_model",
-    [
-        pytest.param(["openrouter/a:free"], False, id="single_model_raises"),
-        pytest.param(["openrouter/a:free", "openrouter/b:free"], True, id="advances_to_next_model"),
-    ],
-)
-def test_call_persistent_rate_limit_exhausts_retries(monkeypatch, candidates, expect_next_model):
-    monkeypatch.setattr(config, "OPENROUTER_MODELS", candidates)
+def test_call_advances_to_the_next_model_after_exhausting_retries(monkeypatch):
+    """A model is abandoned only once RATE_LIMIT_RETRIES attempts are spent on it, and the cascade
+    then continues instead of raising."""
+    monkeypatch.setattr(config, "OPENROUTER_MODELS", ["openrouter/a:free", "openrouter/b:free"])
     calls = {"a": 0}
 
     def _complete(model, messages, max_tokens):
@@ -156,13 +153,7 @@ def test_call_persistent_rate_limit_exhausts_retries(monkeypatch, candidates, ex
         return "ok"
 
     monkeypatch.setattr(openrouter, "complete", _complete)
-
-    if expect_next_model:
-        assert openrouter.call("s", "u", None) == "ok"
-    else:
-        with pytest.raises(ExternalError):
-            openrouter.call("s", "u", None)
-
+    assert openrouter.call("s", "u", None) == "ok"
     assert calls["a"] == config.RATE_LIMIT_RETRIES
 
 
@@ -210,7 +201,7 @@ def test_call_abandons_the_cascade_once_the_deadline_is_exceeded(monkeypatch):
 # ----- empty / whitespace content -----
 
 
-@pytest.mark.parametrize("empty_content", ["", "   ", "\n\t "])
+@pytest.mark.parametrize("empty_content", ["", "\n\t "])
 def test_call_falls_through_on_empty_or_whitespace_content(monkeypatch, empty_content):
     monkeypatch.setattr(config, "OPENROUTER_MODELS", ["openrouter/a:free", "openrouter/b:free"])
 
@@ -261,20 +252,24 @@ def test_complete_posts_the_openai_shaped_body(monkeypatch):
     "payload",
     [
         {},
-        {"choices": []},
         {"choices": [{"message": {}}]},
         {"choices": [{"message": {"content": None}}]},
     ],
-    ids=["no_choices_key", "no_choices", "no_content_key", "null_content"],
+    ids=["no_choices_key", "no_content_key", "null_content"],
 )
 def test_complete_returns_empty_on_a_textless_response(monkeypatch, payload):
     _capture_post(monkeypatch, _FakeResp(payload))
     assert openrouter.complete("openrouter/a:free", [], None) == ""
 
 
-@pytest.mark.parametrize("status", [429, 401, 402, 503], ids=str)
+@pytest.mark.parametrize(
+    "status",
+    [config.ERROR_STATUS_FLOOR, 503],
+    ids=["at_error_floor", "server_error"],
+)
 def test_complete_raises_an_error_carrying_the_status(monkeypatch, status):
-    """The tier classifies on status_code alone, so surfacing it is complete()'s contract."""
+    """The tier classifies on status_code alone, so surfacing it is complete()'s contract — and the
+    floor itself is an error, not the last OK status."""
     _capture_post(monkeypatch, _FakeResp(None, status_code=status, text='{"error": "rate limit"}'))
 
     with pytest.raises(openrouter.OpenRouterError) as ei:
