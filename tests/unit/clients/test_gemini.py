@@ -434,10 +434,7 @@ def test_call_returns_empty_when_every_model_is_spent(monkeypatch):
     assert models.calls == []
 
 
-@pytest.mark.parametrize(
-    "search, mode",
-    [pytest.param(False, "plain", id="plain"), pytest.param(True, "grounded", id="grounded")],
-)
+@pytest.mark.parametrize("search", [False, True], ids=["plain", "grounded"])
 @pytest.mark.parametrize(
     "failure, expected",
     [
@@ -446,8 +443,8 @@ def test_call_returns_empty_when_every_model_is_spent(monkeypatch):
         pytest.param(_FakeGeminiResponse(""), "returned empty", id="empty_text"),
     ],
 )
-def test_call_names_the_mode_in_its_warnings(monkeypatch, caplog, search, mode, failure, expected):
-    """Both modes warn from this module, so the mode is what tells a grounded line from a plain
+def test_call_names_the_mode_in_its_warnings(monkeypatch, caplog, search, failure, expected):
+    """Both modes warn from this module, so the flag is what tells a grounded line from a plain
     one."""
     model = (_search_models() if search else config.GEMINI_TEXT_MODELS)[0]
     _fake_google(monkeypatch, [failure])
@@ -458,7 +455,7 @@ def test_call_names_the_mode_in_its_warnings(monkeypatch, caplog, search, mode, 
     assert [
         r.getMessage()
         for r in caplog.records
-        if f"{mode} model={model.id}" in r.getMessage() and expected in r.getMessage()
+        if f"model={model.id} search={search}" in r.getMessage() and expected in r.getMessage()
     ]
 
 

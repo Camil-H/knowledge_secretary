@@ -23,8 +23,6 @@ logger = logging.getLogger(__name__)
 
 SOURCE = "google-ai-studio"
 
-_MODE_GROUNDED = "grounded"
-_MODE_PLAIN = "plain"
 _MAX_LOGGED_SOURCES = 10
 
 _QUOTA_SCOPE_MINUTE = "PerMinute"
@@ -142,7 +140,6 @@ def call(
     models = config.GEMINI_TEXT_MODELS
     if search:
         models = [m for m in models if m.search]
-    mode = _MODE_GROUNDED if search else _MODE_PLAIN
     gen_config = types.GenerateContentConfig(
         system_instruction=system,
         max_output_tokens=max_tokens,
@@ -157,7 +154,10 @@ def call(
             raise
         except ExternalError as e:
             logger.warning(
-                "⚠️ llm google %s model=%s unavailable, next candidate: %s", mode, model.id, e
+                "⚠️ llm google model=%s search=%s unavailable, next candidate: %s",
+                model.id,
+                search,
+                e,
             )
             continue
         if search:
@@ -165,7 +165,9 @@ def call(
         text = response.text
         if text and text.strip():
             return text
-        logger.warning("⚠️ llm google %s model=%s returned empty, next candidate", mode, model.id)
+        logger.warning(
+            "⚠️ llm google model=%s search=%s returned empty, next candidate", model.id, search
+        )
     return ""
 
 
