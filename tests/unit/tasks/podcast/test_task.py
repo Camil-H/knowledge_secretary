@@ -43,21 +43,23 @@ def _stub_generate(monkeypatch, result):
 # ----- run: queue behavior -----
 
 
-def test_run_airs_first_pending_topic_and_marks_it_done(monkeypatch):
+@pytest.mark.parametrize(
+    "done, topic, expected_done",
+    [
+        ([], "PROTACs", ["PROTACs"]),
+        (["PROTACs", "ADCs"], "mRNA", ["ADCs", "PROTACs", "mRNA"]),
+    ],
+    ids=["none_aired", "some_aired"],
+)
+def test_run_airs_the_first_unaired_topic_and_records_it(monkeypatch, done, topic, expected_done):
+    """Marking is additive and sorted: an unsorted merge would make the aired list order depend
+    on set iteration, and a non-additive one would re-air topics."""
     _stub_generate(monkeypatch, "/tmp/ep.mp3")
-    state = _state()
+    state = _state(done)
     result = run(_ctx(state))
-    assert result.meta["topic"] == "PROTACs"
+    assert result.meta["topic"] == topic
     assert result.artifacts == ["/tmp/ep.mp3"]
-    assert state["kv"][DONE_KEY] == ["PROTACs"]
-
-
-def test_run_skips_already_aired_topics(monkeypatch):
-    _stub_generate(monkeypatch, "/tmp/ep.mp3")
-    state = _state(["PROTACs", "ADCs"])
-    result = run(_ctx(state))
-    assert result.meta["topic"] == "mRNA"
-    assert set(state["kv"][DONE_KEY]) == {"PROTACs", "ADCs", "mRNA"}
+    assert state["kv"][DONE_KEY] == expected_done
 
 
 def test_run_all_topics_aired_is_noop(monkeypatch):
@@ -90,28 +92,54 @@ def test_run_generation_failure_records_a_notice(monkeypatch):
 
 # ----- research -----
 
+_LEDGER: dict = {"gemini-2.5-flash": {"period": "2026-07-28", "requests": 3}}
+
 
 def _stub_research(monkeypatch, result=None, raises=None) -> list[dict]:
-    """Replace the shared Gemini entry point; returns the list its calls are recorded into."""
+    """Replace the shared Gemini entry point and the ledger it is handed; returns the list its
+    calls are recorded into."""
     calls: list[dict] = []
 
     def _call(system, user, max_tokens=None, *, ledger, search=False):
-        calls.append({"system": system, "user": user, "max_tokens": max_tokens, "search": search})
+        calls.append(
+            {
+                "system": system,
+                "user": user,
+                "max_tokens": max_tokens,
+                "ledger": ledger,
+                "search": search,
+            }
+        )
         if raises is not None:
             raise raises
         return result
 
     monkeypatch.setattr(podcast_task.gemini, "call", _call)
+    monkeypatch.setattr(podcast_task.ledger_mod, "load", lambda: _LEDGER)
     return calls
 
 
-def test_research_returns_the_grounded_overview(monkeypatch):
-    _stub_research(monkeypatch, result=_OVERVIEW)
-    assert _research(_ctx(_state()), "PROTACs") == _OVERVIEW
+@pytest.mark.parametrize(
+    "result, raises, expected",
+    [
+        (_OVERVIEW, None, _OVERVIEW),
+        ("", None, ""),
+        (None, RuntimeError("403 blocked"), ""),
+        (None, AuthError("google-ai-studio"), ""),
+    ],
+    ids=["overview", "empty_text", "external_failure", "auth_failure"],
+)
+def test_research_returns_the_overview_or_degrades_to_empty(monkeypatch, result, raises, expected):
+    """Every failure path yields "", which the caller turns into a skipped episode rather than
+    an episode built on nothing — including an auth failure, which the transport already
+    degraded across tiers before giving up."""
+    _stub_research(monkeypatch, result=result, raises=raises)
+    assert _research(_ctx(_state()), "PROTACs") == expected
 
 
 def test_research_asks_for_a_grounded_completion_of_the_topic(monkeypatch):
-    """`search=True` is the request: grounding-capable models and the search tool, together."""
+    """`search=True` is the request: grounding-capable models and the search tool, together. The
+    day's ledger rides along or the grounded call escapes the request budget."""
     calls = _stub_research(monkeypatch, result=_OVERVIEW)
 
     _research(_ctx(_state()), "PROTACs")
@@ -121,44 +149,33 @@ def test_research_asks_for_a_grounded_completion_of_the_topic(monkeypatch):
             "system": podcast_task.RESEARCH_PROMPT,
             "user": "PROTACs",
             "max_tokens": None,
+            "ledger": _LEDGER,
             "search": True,
         }
     ]
 
 
-@pytest.mark.parametrize(
-    "raises",
-    [None, RuntimeError("403 blocked"), AuthError("google-ai-studio")],
-    ids=["empty_text", "external_failure", "auth_failure"],
-)
-def test_research_degrades_to_empty_string(monkeypatch, raises):
-    """Every failure path yields "", which the caller turns into a skipped episode rather than
-    an episode built on nothing — including an auth failure, which the transport already
-    degraded across tiers before giving up."""
-    _stub_research(monkeypatch, result="", raises=raises)
-    assert _research(_ctx(_state()), "PROTACs") == ""
-
-
 # ----- _generate_episode -----
 
 _TRANSCRIPT = "<Person1>Hello there.</Person1>\n<Person2>Glad to be here.</Person2>"
-_LEDGER: dict = {}
 
 
 def _stub_episode_collaborators(
     monkeypatch, *, synthesize, overview=_OVERVIEW, raises=None, transcript_raises=None
-):
-    """Stub gemini.call, transcript.generate and audio.synthesize."""
+) -> dict:
+    """Stub gemini.call, transcript.generate and audio.synthesize; returns what generate saw."""
     _stub_research(monkeypatch, result=overview, raises=raises)
+    seen: dict = {}
 
     def _generate(topic, research, *, call):
+        seen.update(topic=topic, research=research, call=call)
         if transcript_raises is not None:
             raise transcript_raises
         return _TRANSCRIPT
 
     monkeypatch.setattr(podcast_task.transcript, "generate", _generate)
     monkeypatch.setattr(podcast_task.audio, "synthesize", synthesize)
-    monkeypatch.setattr(podcast_task.ledger_mod, "load", lambda: _LEDGER)
+    return seen
 
 
 def _capturing_synthesize(captured):
@@ -177,33 +194,20 @@ def test_generate_episode_returns_the_synthesized_audio_path(monkeypatch):
     assert _generate_episode(_ctx(_state()), "PROTACs") == captured["out_path"]
 
 
-def test_generate_episode_hands_the_audio_layer_the_transcript_and_a_fresh_path(monkeypatch):
-    """The transcript flows in memory now, and each episode gets its own writable mp3 path."""
+def test_generate_episode_hands_each_layer_its_inputs(monkeypatch):
+    """The transcript rides ctx.call — its model cascade lives in one place, src.clients.llm — and
+    flows in memory to the audio layer, which gets its own writable mp3 path per episode."""
     captured = {}
-    _stub_episode_collaborators(monkeypatch, synthesize=_capturing_synthesize(captured))
-    _generate_episode(_ctx(_state()), "PROTACs")
+    seen = _stub_episode_collaborators(monkeypatch, synthesize=_capturing_synthesize(captured))
+    ctx = _ctx(_state())
 
+    _generate_episode(ctx, "PROTACs")
+
+    assert seen == {"topic": "PROTACs", "research": _OVERVIEW, "call": ctx.call}
     assert captured["transcript"] == _TRANSCRIPT
     assert os.path.basename(captured["out_path"]) == podcast_task.EPISODE_FILENAME
     assert os.path.isdir(os.path.dirname(captured["out_path"]))
     assert captured["ledger"] is _LEDGER
-
-
-def test_generate_episode_passes_the_context_call_to_the_transcript_layer(monkeypatch):
-    """The transcript rides ctx.call, so its model cascade lives in one place — src.clients.llm."""
-    seen = {}
-
-    def _generate(topic, research, *, call):
-        seen.update(topic=topic, research=research, call=call)
-        return _TRANSCRIPT
-
-    _stub_research(monkeypatch, result=_OVERVIEW)
-    monkeypatch.setattr(podcast_task.transcript, "generate", _generate)
-    monkeypatch.setattr(podcast_task.audio, "synthesize", _capturing_synthesize({}))
-    monkeypatch.setattr(podcast_task.ledger_mod, "load", lambda: _LEDGER)
-    call = _ctx(_state()).call
-    _generate_episode(_ctx(_state(), call=call), "PROTACs")
-    assert seen == {"topic": "PROTACs", "research": _OVERVIEW, "call": call}
 
 
 @pytest.mark.parametrize(
@@ -214,16 +218,11 @@ def test_generate_episode_passes_the_context_call_to_the_transcript_layer(monkey
 def test_generate_episode_skips_transcript_when_research_yields_nothing(
     monkeypatch, overview, raises
 ):
-    calls = []
-
-    def _generate(topic, research, *, call):
-        calls.append(topic)
-        return _TRANSCRIPT
-
-    _stub_research(monkeypatch, result=overview, raises=raises)
-    monkeypatch.setattr(podcast_task.transcript, "generate", _generate)
+    seen = _stub_episode_collaborators(
+        monkeypatch, synthesize=_capturing_synthesize({}), overview=overview, raises=raises
+    )
     assert _generate_episode(_ctx(_state()), "PROTACs") is None
-    assert calls == []
+    assert seen == {}
 
 
 @pytest.mark.parametrize(
