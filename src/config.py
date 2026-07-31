@@ -104,6 +104,16 @@ OPENROUTER_MODELS = [  # tried in order
     "openrouter/openai/gpt-oss-20b:free",
 ]
 
+# ----- Search grounding -----
+
+TAVILY_KEY_LABEL = "TAVILY_API_KEY"
+# "advanced" costs 2 of the 1,000 free monthly credits instead of 1, and extracts page text
+# properly rather than returning an answer-shaped snippet. One search a day spends ~60.
+TAVILY_SEARCH_DEPTH = "advanced"
+TAVILY_MAX_RESULTS = 8
+TAVILY_MAX_PAGE_CHARS = 4000
+TAVILY_MAX_SOURCES_CHARS = 24000
+
 # ----- Fetching -----
 
 LOOKBACK_HOURS = 48  # feed-scan window; dedup filters already-seen items on top
