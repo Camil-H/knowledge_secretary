@@ -77,16 +77,12 @@ GEMINI_KEY_LABEL = "GOOGLE_AI_STUDIO_KEY"
 GEMINI_AUTH_STATUSES = (UNAUTHORIZED_STATUS, FORBIDDEN_STATUS)
 GEMINI_EST_OUTPUT_TOKENS = 2048
 
-# Quality-descending, so the 500-rpd model is the safety net rather than the default. Only the
-# 2.5 rows may carry search: grounding is priced out of the free tier on every 3.x model, and
-# sending the tool to one is refused before the request reaches any per-model quota.
+# quality-descending, so the 500-rpd model is the safety net rather than the default
 GEMINI_TEXT_MODELS: list[ModelLimit] = [
-    ModelLimit("gemini-3.6-flash", rpd=20, rpm=5, tpm=250_000, search=False),
-    ModelLimit("gemini-3.5-flash", rpd=20, rpm=5, tpm=250_000, search=False),
-    ModelLimit("gemini-3.5-flash-lite", rpd=20, rpm=5, tpm=250_000, search=False),
-    ModelLimit("gemini-2.5-flash", rpd=20, rpm=5, tpm=250_000, search=True),
-    ModelLimit("gemini-2.5-flash-lite", rpd=20, rpm=10, tpm=250_000, search=True),
-    ModelLimit("gemini-3.1-flash-lite", rpd=500, rpm=15, tpm=250_000, search=False),
+    ModelLimit("gemini-3.6-flash", rpd=20, rpm=5, tpm=250_000),
+    ModelLimit("gemini-3.5-flash", rpd=20, rpm=5, tpm=250_000),
+    ModelLimit("gemini-3.5-flash-lite", rpd=20, rpm=5, tpm=250_000),
+    ModelLimit("gemini-3.1-flash-lite", rpd=500, rpm=15, tpm=250_000),
 ]
 
 # ----- LLM: OpenRouter -----
@@ -104,13 +100,12 @@ OPENROUTER_MODELS = [  # tried in order
     "openrouter/openai/gpt-oss-20b:free",
 ]
 
-# ----- Search grounding -----
+# ----- Search -----
 
 TAVILY_KEY_LABEL = "TAVILY_API_KEY"
-# "advanced" costs 2 of the 1,000 free monthly credits instead of 1, and extracts page text
-# properly rather than returning an answer-shaped snippet. One search a day spends ~60.
 TAVILY_SEARCH_DEPTH = "advanced"
-TAVILY_MAX_RESULTS = 8
+TAVILY_MAX_RESULTS = 10
+TAVILY_MIN_RESULTS = 5  # fewer usable pages than this is too thin to build an episode on
 TAVILY_MAX_PAGE_CHARS = 4000
 TAVILY_MAX_SOURCES_CHARS = 24000
 

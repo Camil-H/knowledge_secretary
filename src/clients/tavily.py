@@ -1,9 +1,8 @@
 # src/clients/tavily.py
 """Tavily search transport: the pages answering one query, with their extracted text.
 
-Grounding lives in a search API rather than inside a model because no free-tier Gemini model can
-run the google_search tool. What matters is preserved either way: the material rests on pages
-that exist, instead of on source identifiers a model recalled and largely invented.
+One request per query. Results come back best-scoring first and are flattened to the three
+fields a prompt needs, with each page's text capped so one long source cannot crowd out the rest.
 """
 
 import logging
@@ -31,7 +30,7 @@ def search(query: str) -> list[dict[str, str]]:
 
     A missing key or a 401 raises AuthError, any other failure ExternalError; the raise is the
     terminal signal, so no failure is logged here. Results whose text came back empty are
-    dropped — a title and a URL alone are nothing to build an episode on."""
+    dropped — a title and a URL alone are nothing to build on."""
     key = os.environ.get(config.TAVILY_KEY_LABEL)
     if not key:
         raise AuthError(SOURCE, detail=f"{config.TAVILY_KEY_LABEL} unset")
@@ -76,7 +75,7 @@ def _page(result: dict) -> dict[str, str]:
     """One result flattened to {title, url, text}, its text capped for the prompt.
 
     raw_content is the full extracted page and is preferred over the answer-shaped `content`
-    snippet; whichever is used, one long page must not crowd out every other source."""
+    snippet."""
     text = result.get("raw_content") or result.get("content") or ""
     return {
         "title": str(result.get("title") or ""),

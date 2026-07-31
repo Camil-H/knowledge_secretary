@@ -1,5 +1,5 @@
-"""Podcast task: generate a two-host episode for the next unaired topic — searched research,
-the longform transcript and the Cloud TTS orchestration all in-repo."""
+"""Podcast task: generate a two-host episode for the next unaired topic — research, the
+longform transcript and the Cloud TTS orchestration all in-repo."""
 
 import os
 import tempfile
@@ -19,8 +19,8 @@ TOPICS: list[str] = sources_loader.load(Path(__file__).parent, []) or []
 RESEARCH_PROMPT = (Path(__file__).parent / "research_prompt.md").read_text()
 EPISODE_FILENAME = "episode.mp3"
 NO_EPISODE_NOTICE = (
-    "No episode today — grounded research or generation failed. The topic stays queued and is "
-    "retried on the next run."
+    "No episode today — research or generation failed. The topic stays queued and is retried "
+    "on the next run."
 )
 
 
@@ -57,7 +57,7 @@ def run(ctx: Context) -> Result:
 
 
 def _generate_episode(ctx: Context, topic: str) -> str | None:
-    """Episode audio from researched sources on the topic; None if any stage fails."""
+    """Episode audio for the topic; None if any stage fails."""
     overview = _research(ctx, topic)
     if not overview:
         return None
@@ -78,17 +78,20 @@ def _generate_episode(ctx: Context, topic: str) -> str | None:
 def _research(ctx: Context, topic: str) -> str:
     """Source material for the topic, written up from searched pages; "" when unavailable.
 
-    Two steps rather than one grounded completion: no free-tier Gemini model can run the search
-    tool, so the pages are fetched by src.clients.tavily and handed to an ordinary call. Their
-    URLs are logged here because this is where an episode's provenance is decided — a bad
-    episode has to be traceable to what it was built from."""
+    The source URLs are logged here because this is where an episode's provenance is decided: a
+    bad episode has to be traceable to what it was built from."""
     try:
         pages = tavily.search(topic)
     except Exception as exc:
         ctx.logger.warning("⚠️ podcast: search failed for %r: %s", topic, exc)
         return ""
-    if not pages:
-        ctx.logger.warning("⚠️ podcast: search found no usable source for %r", topic)
+    if len(pages) < config.TAVILY_MIN_RESULTS:
+        ctx.logger.warning(
+            "⚠️ podcast: only %d usable source(s) for %r, need %d",
+            len(pages),
+            topic,
+            config.TAVILY_MIN_RESULTS,
+        )
         return ""
     ctx.logger.info(
         "podcast: %d source(s) for %r: %s", len(pages), topic, ", ".join(p["url"] for p in pages)
@@ -103,8 +106,8 @@ def _research(ctx: Context, topic: str) -> str:
 def _research_input(topic: str, pages: list[dict[str, str]]) -> str:
     """The topic and its searched pages as one prompt input.
 
-    Only the sources are truncated, and the topic leads: the prompt's instruction to stay on
-    topic is worthless if the budget can cut the topic itself off the end."""
+    The topic leads and only the sources are truncated: the prompt's instruction to stay on topic
+    is worthless if the budget can cut the topic itself off the end."""
     blocks = [f"## {p['title']}\n{p['url']}\n\n{p['text']}" for p in pages]
     sources = "\n\n".join(blocks)[: config.TAVILY_MAX_SOURCES_CHARS]
     return f"# Topic\n{topic}\n\n# Sources\n{sources}"

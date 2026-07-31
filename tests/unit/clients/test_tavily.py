@@ -52,7 +52,7 @@ def _key(monkeypatch):
 
 def test_search_composes_the_request(monkeypatch):
     """The request is the function's own responsibility: the depth, the result cap and
-    include_raw_content are what decide credit cost and whether page text comes back at all."""
+    include_raw_content decide credit cost and whether page text comes back at all."""
     calls = _fake_post(monkeypatch, _Resp(payload={"results": [_result()]}))
 
     tavily.search(_QUERY)
@@ -111,8 +111,8 @@ def test_search_flattens_a_result_to_title_url_and_text(monkeypatch):
 
 
 def test_search_caps_one_page_so_it_cannot_crowd_out_the_others(monkeypatch):
-    """Whole extracted pages come back; without the cap the first long one fills the research
-    prompt and every later source is truncated away downstream."""
+    """Whole extracted pages come back; without the cap the first long one fills the prompt and
+    every later source is truncated away downstream."""
     body = "x" * (config.TAVILY_MAX_PAGE_CHARS * 3)
     _fake_post(monkeypatch, _Resp(payload={"results": [_result(raw_content=body)]}))
 
@@ -130,8 +130,8 @@ def test_search_caps_one_page_so_it_cannot_crowd_out_the_others(monkeypatch):
     ],
 )
 def test_search_types_its_failures(monkeypatch, response, expected):
-    """A spent credit balance arrives as a 429 and must stay tolerable — the caller degrades the
-    episode. Only a rejected credential is an AuthError."""
+    """A spent credit balance arrives as a 429 and must stay tolerable, so the caller can degrade.
+    Only a rejected credential is an AuthError."""
     _fake_post(monkeypatch, response)
 
     with pytest.raises(expected):

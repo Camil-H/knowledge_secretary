@@ -7,6 +7,7 @@ import os
 
 import pytest
 
+from src import config
 from src.core.errors import AudioError, AuthError, ExternalError
 from src.core.models import Context
 from src.tasks.podcast import task as podcast_task
@@ -96,8 +97,8 @@ _LEDGER: dict = {"gemini-2.5-flash": {"period": "2026-07-28", "requests": 3}}
 
 
 _PAGES = [
-    {"title": "First page", "url": "https://a.example", "text": "body of a"},
-    {"title": "Second page", "url": "https://b.example", "text": "body of b"},
+    {"title": f"Page {i}", "url": f"https://p{i}.example", "text": f"body of {i}"}
+    for i in range(config.TAVILY_MIN_RESULTS)
 ]
 
 
@@ -135,6 +136,9 @@ def _stub_research(
         pytest.param({"search_raises": ExternalError("tavily", detail="429")}, "", id="no_credits"),
         pytest.param({"search_raises": AuthError("tavily")}, "", id="search_auth_failed"),
         pytest.param({"pages": []}, "", id="no_usable_source"),
+        pytest.param(
+            {"pages": _PAGES[: config.TAVILY_MIN_RESULTS - 1]}, "", id="too_few_usable_sources"
+        ),
     ],
 )
 def test_research_returns_the_overview_or_degrades_to_empty(monkeypatch, kwargs, expected):
@@ -177,14 +181,14 @@ def test_research_searches_for_the_topic_itself(monkeypatch):
 def test_research_truncates_the_sources_but_never_the_topic(monkeypatch):
     """The budget cuts the tail. With the topic last, a long first page would push it out and the
     prompt's instruction to stay on topic would have no topic to stay on."""
-    pages = [{"title": "T", "url": "https://a.example", "text": "x" * 50_000}]
+    pages = [dict(p, text="x" * 50_000) for p in _PAGES]
     calls = _stub_research(monkeypatch, result=_OVERVIEW, pages=pages)
 
     _research(_ctx(_state()), "PROTACs")
 
     user = calls[0]["user"]
     assert user.startswith("# Topic\nPROTACs")
-    assert len(user) < len(pages[0]["text"])
+    assert len(user) < sum(len(p["text"]) for p in pages)
 
 
 # ----- _generate_episode -----

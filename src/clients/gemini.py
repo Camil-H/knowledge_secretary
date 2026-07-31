@@ -23,8 +23,6 @@ logger = logging.getLogger(__name__)
 
 SOURCE = "google-ai-studio"
 
-_MAX_LOGGED_SOURCES = 10
-
 _QUOTA_SCOPE_MINUTE = "PerMinute"
 _QUOTA_SCOPE_DAY = "PerDay"
 
@@ -52,7 +50,7 @@ def generate(
     of the day. A 401/403 raises AuthError, anything else ExternalError; the raise is the
     terminal signal, so no failure is logged here.
 
-    Returns the raw response, not its text, so callers can read grounding metadata."""
+    Returns the raw response rather than its text, so a caller can read response metadata."""
     client = _client()
     backoff = config.BACKOFF_START_S
     for attempt in range(max(config.RATE_LIMIT_RETRIES, 1)):
@@ -122,36 +120,21 @@ def _quota_scope(e: genai_errors.APIError) -> str | None:
 
 
 def call(
-    system: str,
-    user: str,
-    max_tokens: int | None = None,
-    *,
-    ledger: ledger_mod.Ledger,
-    search: bool = False,
+    system: str, user: str, max_tokens: int | None = None, *, ledger: ledger_mod.Ledger
 ) -> str:
     """First non-empty completion from the model table; "" when every candidate is spent, failing
     or empty.
-
-    `search` picks the grounding-capable rows *and* attaches the Google Search tool, so the one
-    combination the API rejects — the tool sent to a model that cannot run it — cannot be asked
-    for. Grounded generation is podcast research's alone; every other caller leaves it off.
 
     The sole owner of the tier policy — which candidates the ledger still allows, what a failure
     costs the run, and when the cascade is dry. QuotaExhausted arrives as an ExternalError
     subclass and is tolerated with it. AuthError propagates — the cross-tier decision belongs to
     the cascade in src/clients/llm.py."""
-    candidates = [
-        m
-        for m in config.GEMINI_TEXT_MODELS
-        if (m.search or not search) and ledger_mod.available(ledger, m.id, m.rpd)
-    ]
+    candidates = [m for m in config.GEMINI_TEXT_MODELS if ledger_mod.available(ledger, m.id, m.rpd)]
     if not candidates:
-        logger.warning("⚠️ llm google search=%s: no candidate left in today's ledger", search)
+        logger.warning("⚠️ llm google: no candidate left in today's ledger")
         return ""
     gen_config = types.GenerateContentConfig(
-        system_instruction=system,
-        max_output_tokens=max_tokens,
-        tools=[types.Tool(google_search=types.GoogleSearch())] if search else None,
+        system_instruction=system, max_output_tokens=max_tokens
     )
     for model in candidates:
         try:
@@ -159,33 +142,10 @@ def call(
         except AuthError:
             raise
         except ExternalError as e:
-            logger.warning(
-                "⚠️ llm google model=%s search=%s unavailable, next candidate: %s",
-                model.id,
-                search,
-                e,
-            )
+            logger.warning("⚠️ llm google model=%s unavailable, next candidate: %s", model.id, e)
             continue
-        if search:
-            _log_sources(response)
         text = response.text
         if text and text.strip():
             return text
-        logger.warning(
-            "⚠️ llm google model=%s search=%s returned empty, next candidate", model.id, search
-        )
+        logger.warning("⚠️ llm google model=%s returned empty, next candidate", model.id)
     return ""
-
-
-def _log_sources(response: types.GenerateContentResponse) -> None:
-    """Record which pages a grounded answer was built on, so a bad episode can be traced back."""
-    for candidate in response.candidates or []:
-        metadata = candidate.grounding_metadata
-        chunks = (metadata.grounding_chunks or []) if metadata else []
-        sources = [c.web.uri for c in chunks if c.web and c.web.uri]
-        if sources:
-            logger.info(
-                "llm google grounded in %d source(s): %s",
-                len(sources),
-                ", ".join(sources[:_MAX_LOGGED_SOURCES]),
-            )

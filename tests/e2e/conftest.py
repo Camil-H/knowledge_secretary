@@ -187,8 +187,8 @@ def _install_podcast_fakes(monkeypatch, tmp_path, *, topic: str = "My Topic"):
 
 def _install_all_llm(monkeypatch, *, newsletter_markdown: str, youtube_bullet: str):
     """One llm.call fake keyed on `system` so newsletter + youtube can be exercised in the
-    same run without clobbering each other's stub. The podcast no longer routes through
-    llm.call — its research goes straight to the Gemini client."""
+    same run without clobbering each other's stub. The podcast does not route through llm.call:
+    its research goes straight to the Gemini client."""
 
     def _call(system, user, max_tokens=None):
         if system == newsletter_task.EDITOR_PROMPT:
@@ -198,6 +198,9 @@ def _install_all_llm(monkeypatch, *, newsletter_markdown: str, youtube_bullet: s
     monkeypatch.setattr(llm, "call", _call)
 
 
-_PODCAST_PAGES = [{"title": "A source", "url": "https://src.example", "text": "page body"}]
-_PODCAST_RESEARCH_TEXT = "overview of the topic, written up from the searched pages"
+_PODCAST_PAGES = [
+    {"title": f"Source {i}", "url": f"https://src{i}.example", "text": "page body"}
+    for i in range(config.TAVILY_MIN_RESULTS)
+]
+_PODCAST_RESEARCH_TEXT = "overview of the topic written up from its sources"
 _PODCAST_TRANSCRIPT = "<Person1>Hello there.</Person1>\n<Person2>Glad to be here.</Person2>"
