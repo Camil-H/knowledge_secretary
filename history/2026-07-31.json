@@ -10,7 +10,7 @@
       "kind": "markdown",
       "markdown": "",
       "notices": [
-        "No episode today \u2014 grounded research or generation failed. The topic stays queued and is retried on the next run."
+        "No episode today \u2014 research or generation failed. The topic stays queued and is retried on the next run."
       ],
       "subject": "Podcast \u2014 Fields Medal 2026: Jacob Tsimerman: For his contribution in the recasting of o-minimality as a fundamental method of arithmetic and complex algebraic geometry, and his role in the proof of many central conjectures including Griffiths' conjecture on the algebraicity of images of the period maps, and the Andre-Oort conjecture for Siegel modular varieties."
     },
