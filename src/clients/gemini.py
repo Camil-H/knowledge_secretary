@@ -23,6 +23,8 @@ logger = logging.getLogger(__name__)
 
 SOURCE = "google-ai-studio"
 
+_MINIMAL_THINKING = types.ThinkingLevel.MINIMAL
+
 _QUOTA_SCOPE_MINUTE = "PerMinute"
 _QUOTA_SCOPE_DAY = "PerDay"
 
@@ -134,7 +136,13 @@ def call(
         logger.warning("⚠️ llm google: no candidate left in today's ledger")
         return ""
     gen_config = types.GenerateContentConfig(
-        system_instruction=system, max_output_tokens=max_tokens
+        system_instruction=system,
+        max_output_tokens=max_tokens,
+        # thinking draws down max_output_tokens, so a caller that caps output would spend its
+        # budget on thoughts and get back a fragment
+        thinking_config=types.ThinkingConfig(thinking_level=_MINIMAL_THINKING)
+        if max_tokens
+        else None,
     )
     for model in candidates:
         try:

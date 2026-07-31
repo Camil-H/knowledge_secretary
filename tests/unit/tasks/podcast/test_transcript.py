@@ -173,8 +173,12 @@ def test_repair_truncates_an_over_cap_turn_at_a_sentence_boundary(caplog):
     ids=["empty", "refusal_prose", "single_unpaired_turn"],
 )
 def test_repair_raises_when_no_turn_survives(raw):
-    with pytest.raises(TranscriptError, match="part 5"):
+    """The raw head rides in the message: the only signal distinguishing a refusal, a
+    thinking-truncated fragment and unexpected markup is what actually came back."""
+    with pytest.raises(TranscriptError, match="part 5") as ei:
         _repair(raw, 5)
+
+    assert repr(raw[: config.TRANSCRIPT_RAW_LOG_CHARS]) in str(ei.value)
 
 
 # ----- _stitch -----

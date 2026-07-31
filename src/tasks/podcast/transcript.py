@@ -140,7 +140,10 @@ def _repair(part_text: str, part_idx: int) -> str:
     if turns and turns[-1][0] == PERSON1:
         turns.pop()
     if not turns:
-        raise TranscriptError(f"no usable turns in part {part_idx}")
+        raise TranscriptError(
+            f"no usable turns in part {part_idx}; raw head: "
+            f"{part_text[: config.TRANSCRIPT_RAW_LOG_CHARS]!r}"
+        )
     return "\n".join(
         f"<{speaker}>{_cap_turn(text, part_idx)}</{speaker}>" for speaker, text in turns
     )

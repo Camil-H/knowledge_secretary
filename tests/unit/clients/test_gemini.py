@@ -317,6 +317,25 @@ def test_call_hands_the_system_prompt_and_max_tokens_to_the_model(monkeypatch):
     assert call["config"].max_output_tokens == 1234
 
 
+@pytest.mark.parametrize(
+    "max_tokens, expected_level",
+    [
+        pytest.param(500, gemini.types.ThinkingLevel.MINIMAL, id="capped_output"),
+        pytest.param(None, None, id="uncapped_output"),
+    ],
+)
+def test_call_keeps_thinking_out_of_a_capped_output_budget(monkeypatch, max_tokens, expected_level):
+    """Thinking is drawn from max_output_tokens, so on a capped call the budget goes to thoughts
+    and the text comes back a fragment. Left uncapped there is nothing to protect, and the
+    thinking default is the better answer."""
+    models = _fake_google(monkeypatch, [_FakeGeminiResponse("ok")])
+
+    gemini.call("s", "u", max_tokens, ledger=ledger_mod.load())
+
+    thinking = models.calls[0]["config"].thinking_config
+    assert (thinking.thinking_level if thinking else None) == expected_level
+
+
 def test_call_skips_models_the_ledger_has_retired(monkeypatch):
     models = _fake_google(monkeypatch, [_FakeGeminiResponse("ok")])
     first, second = config.GEMINI_TEXT_MODELS[0], config.GEMINI_TEXT_MODELS[1]

@@ -140,13 +140,15 @@ TRANSCRIPT_MAX_SOURCE_CHARS = 12000
 TRANSCRIPT_MAX_TURN_CHARS = 1200
 TRANSCRIPT_CONTEXT_TAIL_CHARS = 2500
 TRANSCRIPT_INTRO_SOURCE_CHARS = 1200
+TRANSCRIPT_RAW_LOG_CHARS = 400  # of an unusable part, so the next run says what came back
 
 # Word targets sum to 5,550 — set by the Cloud TTS monthly character budget at 30 episodes a
-# month, not by taste. Raising them costs money.
+# month, not by taste. Raising them costs money. max_tokens is only a ceiling: it bounds a
+# runaway part without shortening one that respects its word target.
 TRANSCRIPT_PART_BUDGETS: dict[str, PartBudget] = {
-    "intro": PartBudget(words=250, max_tokens=600),
-    "body": PartBudget(words=800, max_tokens=1600),
-    "outro": PartBudget(words=500, max_tokens=1100),
+    "intro": PartBudget(words=250, max_tokens=1200),
+    "body": PartBudget(words=800, max_tokens=2600),
+    "outro": PartBudget(words=500, max_tokens=1800),
 }
 
 # ----- Podcast: audio -----
