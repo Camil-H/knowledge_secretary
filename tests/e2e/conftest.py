@@ -153,6 +153,7 @@ def _install_youtube_fakes(monkeypatch, *, bullet: str = "- key point"):
 def _install_podcast_fakes(monkeypatch, tmp_path, *, topic: str = "My Topic"):
     """Fakes the podcast boundary; returns the list `gh` invocations are recorded into."""
     monkeypatch.setattr(podcast_task, "TOPICS", [topic])
+    monkeypatch.setattr(podcast_task.tavily, "search", lambda query: _PODCAST_PAGES)
     monkeypatch.setattr(
         podcast_task.gemini,
         "call",
@@ -197,5 +198,6 @@ def _install_all_llm(monkeypatch, *, newsletter_markdown: str, youtube_bullet: s
     monkeypatch.setattr(llm, "call", _call)
 
 
-_PODCAST_RESEARCH_TEXT = "search-grounded overview of the topic"
+_PODCAST_PAGES = [{"title": "A source", "url": "https://src.example", "text": "page body"}]
+_PODCAST_RESEARCH_TEXT = "overview of the topic, written up from the searched pages"
 _PODCAST_TRANSCRIPT = "<Person1>Hello there.</Person1>\n<Person2>Glad to be here.</Person2>"

@@ -1,11 +1,12 @@
-"""Podcast task: generate a two-host episode for the next unaired topic — grounded research,
+"""Podcast task: generate a two-host episode for the next unaired topic — searched research,
 the longform transcript and the Cloud TTS orchestration all in-repo."""
 
 import os
 import tempfile
 from pathlib import Path
 
-from src.clients import gemini
+from src import config
+from src.clients import gemini, tavily
 from src.core import ledger as ledger_mod
 from src.core import sources_loader
 from src.core import state as state_mod
@@ -56,11 +57,11 @@ def run(ctx: Context) -> Result:
 
 
 def _generate_episode(ctx: Context, topic: str) -> str | None:
-    """Episode audio from grounded research on the topic; None if any stage fails."""
+    """Episode audio from researched sources on the topic; None if any stage fails."""
     overview = _research(ctx, topic)
     if not overview:
         return None
-    ctx.logger.info("podcast: %d chars of grounded material for %r", len(overview), topic)
+    ctx.logger.info("podcast: %d chars of research for %r", len(overview), topic)
 
     try:
         text = transcript.generate(topic, overview, call=ctx.call)
@@ -75,17 +76,38 @@ def _generate_episode(ctx: Context, topic: str) -> str | None:
 
 
 def _research(ctx: Context, topic: str) -> str:
-    """Search-grounded source material for the topic; "" when research is unavailable.
+    """Source material for the topic, written up from searched pages; "" when unavailable.
 
-    Grounded search replaces asking a model to recall source URLs: the search runs inside the
-    model, so the overview rests on pages that exist rather than on plausible-looking identifiers
-    that resolve to unrelated articles. `search=True` both restricts the cascade to models that
-    can run the tool and attaches it."""
+    Two steps rather than one grounded completion: no free-tier Gemini model can run the search
+    tool, so the pages are fetched by src.clients.tavily and handed to an ordinary call. Their
+    URLs are logged here because this is where an episode's provenance is decided — a bad
+    episode has to be traceable to what it was built from."""
     try:
-        return gemini.call(RESEARCH_PROMPT, topic, ledger=ledger_mod.load(), search=True)
+        pages = tavily.search(topic)
+    except Exception as exc:
+        ctx.logger.warning("⚠️ podcast: search failed for %r: %s", topic, exc)
+        return ""
+    if not pages:
+        ctx.logger.warning("⚠️ podcast: search found no usable source for %r", topic)
+        return ""
+    ctx.logger.info(
+        "podcast: %d source(s) for %r: %s", len(pages), topic, ", ".join(p["url"] for p in pages)
+    )
+    try:
+        return gemini.call(RESEARCH_PROMPT, _research_input(topic, pages), ledger=ledger_mod.load())
     except Exception as exc:
         ctx.logger.warning("⚠️ podcast: research failed for %r: %s", topic, exc)
         return ""
+
+
+def _research_input(topic: str, pages: list[dict[str, str]]) -> str:
+    """The topic and its searched pages as one prompt input.
+
+    Only the sources are truncated, and the topic leads: the prompt's instruction to stay on
+    topic is worthless if the budget can cut the topic itself off the end."""
+    blocks = [f"## {p['title']}\n{p['url']}\n\n{p['text']}" for p in pages]
+    sources = "\n\n".join(blocks)[: config.TAVILY_MAX_SOURCES_CHARS]
+    return f"# Topic\n{topic}\n\n# Sources\n{sources}"
 
 
 # == Audio synthesis ==========================================================

@@ -4,7 +4,7 @@ A $0, fully-automated daily digest, run by GitHub Actions and published to GitHu
 
 1. **Newsletter** — new items from your blogs, papers/preprints (PubMed, bioRxiv) and X accounts, written up and grouped into sections you define.
 2. **YouTube** — new uploads from your channels, summarized from their transcripts.
-3. **Podcast** — a long two-host episode on the next topic from a queue, researched with a search-grounded model, published with an audio player.
+3. **Podcast** — a long two-host episode on the next topic from a queue, researched from searched sources, published with an audio player.
 
 Free tiers throughout: text prefers Google AI Studio's Gemini models and falls back to OpenRouter's `:free` ones, and audio uses Google Cloud TTS, whose 1M characters a month covers a daily episode of ~35 minutes.
 
@@ -32,7 +32,8 @@ uv run python -m src.delivery.site   # render history/ -> public/index.html
 
 | Secret | Purpose |
 | --- | --- |
-| `GOOGLE_AI_STUDIO_KEY` | Preferred text tier, and the podcast's grounded research. **Required for the podcast** — no key, no source material, no episode. |
+| `GOOGLE_AI_STUDIO_KEY` | Preferred text tier, including the podcast's research write-up. **Required for the podcast.** |
+| `TAVILY_API_KEY` | The podcast's source search — 1,000 free credits a month, no card. **Required for the podcast** — no key, no sources, no episode. Gemini's own search grounding is not on the free tier. |
 | `GOOGLE_CLOUD_TTS_KEY` | Podcast audio. A **GCP key with the Cloud Text-to-Speech API enabled**. **Required for the podcast.** |
 | `OPENROUTER_API_KEY` | Fallback text tier on `:free` models. An independent credential, so a broken Google key degrades here instead of downing all three products. Required. |
 | `PAGES_DEPLOY_TOKEN` | PAT with write access to the Pages repo, for cross-repo publishing. Required. |
