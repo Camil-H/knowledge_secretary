@@ -1,0 +1,11 @@
+{
+  "date": "2026-08-01",
+  "tasks": {
+    "podcast": {
+      "audio_url": "https://github.com/Camil-H/knowledge_secretary/releases/download/podcast-2026-08-01/episode.mp3",
+      "kind": "podcast",
+      "subject": "Podcast \u2014 Fields Medal 2026: John Pardon: For his achievements in symplectic geometry including new approaches to virtual fundamental cycles, Fukaya categories of certain manifolds and counting holomorphic curves, and for his contributions to other areas of geometry and topology, including group actions on 3-manifolds and knot theory.",
+      "topic": "Fields Medal 2026: John Pardon: For his achievements in symplectic geometry including new approaches to virtual fundamental cycles, Fukaya categories of certain manifolds and counting holomorphic curves, and for his contributions to other areas of geometry and topology, including group actions on 3-manifolds and knot theory."
+    }
+  }
+}
