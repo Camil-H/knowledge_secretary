@@ -1,0 +1,13 @@
+{
+  "date": "2026-08-02",
+  "tasks": {
+    "podcast": {
+      "kind": "markdown",
+      "markdown": "",
+      "notices": [
+        "No episode today \u2014 research or generation failed. The topic stays queued and is retried on the next run."
+      ],
+      "subject": "Podcast \u2014 Fields Medal 2026: Yu Deng: For his work in partial differential equations, including the rigorous derivation of the Boltzmann equation from hard-sphere dynamics for rarefied gases, the derivation of wave kinetic equations from nonlinear dispersive systems, and probabilistic approaches to nonlinear Schrodinger dynamics."
+    }
+  }
+}
