@@ -5,12 +5,12 @@
   },
   "gemini-3.5-flash": {
     "exhausted": false,
-    "period": "2026-08-01",
+    "period": "2026-08-02",
     "requests": 1
   },
   "gemini-3.6-flash": {
     "exhausted": false,
-    "period": "2026-08-01",
-    "requests": 13
+    "period": "2026-08-02",
+    "requests": 2
   }
 }
