@@ -47,10 +47,10 @@ def generate(
 
     The budget is spent at dispatch and never refunded — the provider may have counted an
     attempt that failed for us. Only a 429 that names a spent per-day quota retires the model
-    and raises QuotaExhausted; any other 429 is retried with capped exponential backoff and
-    then raises ExternalError, so a billing block or a burst costs one run rather than the rest
-    of the day. A 401/403 raises AuthError, anything else ExternalError; the raise is the
-    terminal signal, so no failure is logged here.
+    and raises QuotaExhausted; any other transient status is retried with capped exponential
+    backoff and then raises ExternalError, so a billing block, a burst or a server-side demand
+    spike costs one run rather than the rest of the day. A 401/403 raises AuthError, anything
+    else ExternalError; the raise is the terminal signal, so no failure is logged here.
 
     Returns the raw response rather than its text, so a caller can read response metadata."""
     client = _client()
@@ -67,15 +67,17 @@ def generate(
             if e.code == config.NOT_FOUND_STATUS:
                 ledger_mod.mark_exhausted(ledger, model.id)
                 raise ExternalError(SOURCE, cause=e) from e
-            if e.code != config.RATE_LIMIT_STATUS:
-                if e.code in config.GEMINI_AUTH_STATUSES:
-                    raise AuthError(SOURCE, cause=e) from e
+            if e.code in config.GEMINI_AUTH_STATUSES:
+                raise AuthError(SOURCE, cause=e) from e
+            if e.code not in config.TRANSIENT_STATUSES:
                 raise ExternalError(SOURCE, cause=e) from e
-            if _quota_scope(e) == _QUOTA_SCOPE_DAY:
+            if e.code == config.RATE_LIMIT_STATUS and _quota_scope(e) == _QUOTA_SCOPE_DAY:
                 ledger_mod.mark_exhausted(ledger, model.id)
                 raise QuotaExhausted(model.id, cause=e) from e
             if attempt < config.RATE_LIMIT_RETRIES - 1:
-                logger.warning("⚠️ llm google model=%s rate-limited; backoff %ss", model.id, backoff)
+                logger.warning(
+                    "⚠️ llm google model=%s refused (%s); backoff %ss", model.id, e.code, backoff
+                )
                 time.sleep(backoff)
                 backoff = min(backoff * 2, config.BACKOFF_CAP_S)
                 continue

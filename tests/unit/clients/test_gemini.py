@@ -138,7 +138,7 @@ def test_generate_raises_auth_error_without_a_key(monkeypatch):
     [
         pytest.param(_api_error(401), AuthError, id="unauthorized"),
         pytest.param(_api_error(403), AuthError, id="forbidden"),
-        pytest.param(_api_error(500), ExternalError, id="server_error"),
+        pytest.param(_api_error(400), ExternalError, id="unretriable_status"),
         pytest.param(RuntimeError("socket died"), ExternalError, id="non_api_error"),
     ],
 )
@@ -159,7 +159,8 @@ def test_generate_types_sdk_failures(monkeypatch, error, expected):
     [
         pytest.param([_FakeGeminiResponse("ok")], 1, id="success"),
         pytest.param([_api_error(429, _DAY_QUOTA)], 1, id="day_quota_429"),
-        pytest.param([_api_error(500)], 1, id="server_error"),
+        pytest.param([_api_error(400)], 1, id="unretriable_status"),
+        pytest.param([_api_error(503)], config.RATE_LIMIT_RETRIES, id="service_unavailable"),
     ],
 )
 def test_generate_consumes_budget_at_dispatch(monkeypatch, script, expected_dispatches):
@@ -177,7 +178,7 @@ def test_generate_consumes_budget_at_dispatch(monkeypatch, script, expected_disp
     assert len(models.calls) == expected_dispatches
 
 
-# ----- 429 handling -----
+# ----- 429 and transient handling -----
 
 
 def test_generate_day_quota_retires_the_model_immediately(monkeypatch):
@@ -212,30 +213,48 @@ def test_generate_retires_a_model_the_api_does_not_know(monkeypatch):
     assert not ledger_mod.available(ledger, model.id, model.rpd)
 
 
-@pytest.mark.parametrize("payload", [_MINUTE_QUOTA, _UNSCOPED_QUOTA], ids=["minute", "unscoped"])
-def test_generate_retries_a_429_that_names_no_daily_quota_without_retiring(monkeypatch, payload):
-    """A 429 the API does not attribute to a spent daily quota — a burst, or an account-level
-    block like depleted prepay credits — must cost one run, not the rest of the day. Retiring on
-    it writes a verdict into the committed ledger that outlives the credential that caused it,
-    so a key fixed at noon still cannot be used until UTC midnight."""
-    models = _fake_google(monkeypatch, [_api_error(429, payload)])
+@pytest.mark.parametrize(
+    "error",
+    [
+        pytest.param(_api_error(429, _MINUTE_QUOTA), id="minute_quota"),
+        pytest.param(_api_error(429, _UNSCOPED_QUOTA), id="unscoped_quota"),
+        pytest.param(_api_error(503), id="service_unavailable"),
+        pytest.param(_api_error(503, _DAY_QUOTA), id="service_unavailable_naming_a_day_quota"),
+    ],
+)
+def test_generate_retries_a_transient_failure_without_retiring(monkeypatch, caplog, error):
+    """A failure the API does not attribute to a spent daily quota — a burst, an account-level
+    block like depleted prepay credits, or a demand spike on Google's side — must cost one run,
+    not the rest of the day. Retiring on it writes a verdict into the committed ledger that
+    outlives the cause, so a key fixed at noon still cannot be used until UTC midnight, and a
+    spike that passed in seconds still pushes the rest of the day onto a weaker model."""
+    models = _fake_google(monkeypatch, [error])
     model = config.GEMINI_TEXT_MODELS[0]
     ledger = ledger_mod.load()
 
-    with pytest.raises(ExternalError) as ei:
-        gemini.generate(model, "hi", _config(), ledger=ledger)
+    with caplog.at_level(logging.WARNING, logger=gemini.logger.name):
+        with pytest.raises(ExternalError) as ei:
+            gemini.generate(model, "hi", _config(), ledger=ledger)
 
     assert not isinstance(ei.value, QuotaExhausted)
     assert len(models.calls) == config.RATE_LIMIT_RETRIES
     assert ledger[model.id]["requests"] == config.RATE_LIMIT_RETRIES
     assert ledger_mod.available(ledger, model.id, model.rpd)
+    assert any(str(error.code) in r.getMessage() for r in caplog.records)
 
 
-def test_generate_succeeds_after_a_minute_quota_retry(monkeypatch):
+@pytest.mark.parametrize(
+    "error",
+    [
+        pytest.param(_api_error(429, _MINUTE_QUOTA), id="minute_quota"),
+        pytest.param(_api_error(503), id="service_unavailable"),
+    ],
+)
+def test_generate_succeeds_after_a_transient_retry(monkeypatch, error):
     """The retry returns the raw response object, not its text, so callers can still read
     grounding metadata off a completion that needed a second attempt."""
     second = _FakeGeminiResponse("second try")
-    models = _fake_google(monkeypatch, [_api_error(429, _MINUTE_QUOTA), second])
+    models = _fake_google(monkeypatch, [error, second])
     model = config.GEMINI_TEXT_MODELS[0]
 
     assert gemini.generate(model, "hi", _config(), ledger=ledger_mod.load()) is second
