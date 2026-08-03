@@ -42,8 +42,6 @@ TTS_VOICES: dict[str, str] = {
 # on a large free model runs 20-90s, while a feed fetch that hangs is bounded by its own task.
 HTTP_TIMEOUT_S = 120
 
-# Sent on the guarded fetch: publishers that served trafilatura's own request happily will 403
-# a bare client, and the guard now issues the request itself.
 HTTP_USER_AGENT = "Mozilla/5.0 (compatible; KnowledgeSecretary/1.0)"
 
 ERROR_STATUS_FLOOR = 400
@@ -105,7 +103,7 @@ OPENROUTER_MODELS = [  # tried in order
 TAVILY_KEY_LABEL = "TAVILY_API_KEY"
 TAVILY_SEARCH_DEPTH = "advanced"
 TAVILY_MAX_RESULTS = 10
-TAVILY_MIN_RESULTS = 5  # fewer usable pages than this is too thin to build an episode on
+TAVILY_MIN_RESULTS = 5
 TAVILY_MAX_PAGE_CHARS = 4000
 TAVILY_MAX_SOURCES_CHARS = 24000
 TAVILY_RETRIES = 3
@@ -115,14 +113,14 @@ TAVILY_CONNECT_TIMEOUT_S = 5.0
 
 # ----- Fetching -----
 
-LOOKBACK_HOURS = 48  # feed-scan window; dedup filters already-seen items on top
+LOOKBACK_HOURS = 48 
 MAX_FETCH_WORKERS = 8
 
 # ----- Newsletter -----
 
 PUBMED_RETMAX = 30
 OPENRXIV_MAX_PAGES = 20  # ~600 preprints; caps a busy window so one source can't stall the run
-X_TWEET_LIMIT = 10  # ~2x the in-window mean per handle, so a busy handle still isn't truncated
+X_TWEET_LIMIT = 10
 
 NEWSLETTER_ITEM_CHAR_LIMIT = 20000
 # Sized for the smallest model call() might fall back to (~32k tokens), not the selected one —
