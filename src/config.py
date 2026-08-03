@@ -124,7 +124,7 @@ MAX_FETCH_WORKERS = 8
 
 PUBMED_RETMAX = 30
 OPENRXIV_MAX_PAGES = 20  # ~600 preprints; caps a busy window so one source can't stall the run
-X_TWEET_LIMIT = 20
+X_TWEET_LIMIT = 10  # ~2x the in-window mean per handle, so a busy handle still isn't truncated
 
 NEWSLETTER_ITEM_CHAR_LIMIT = 20000
 # Sized for the smallest model call() might fall back to (~32k tokens), not the selected one —

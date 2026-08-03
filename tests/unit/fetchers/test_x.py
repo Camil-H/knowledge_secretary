@@ -7,6 +7,7 @@ import subprocess
 
 import pytest
 
+from src import config
 from src.core.errors import AuthError
 from src.fetchers import x
 from tests.unit.fetchers.conftest import _raiser
@@ -14,7 +15,11 @@ from tests.unit.fetchers.conftest import _raiser
 # == x.recent_tweets ==========================================================
 
 
-def test_recent_tweets_composes_argv_and_parses_stdout(monkeypatch):
+@pytest.mark.parametrize(
+    ("kwargs", "expected_max"),
+    [({"limit": 5}, "5"), ({}, str(config.X_TWEET_LIMIT))],
+)
+def test_recent_tweets_composes_argv_and_parses_stdout(monkeypatch, kwargs, expected_max):
     """The handle arrives with a leading "@", so argv also pins the normalization."""
     captured = {}
 
@@ -24,9 +29,16 @@ def test_recent_tweets_composes_argv_and_parses_stdout(monkeypatch):
         return type("Proc", (), {"stdout": json.dumps({"tweets": [{"id": 1}, {"id": 2}]})})()
 
     monkeypatch.setattr(x.subprocess, "run", fake_run)
-    out = x.recent_tweets("@someuser", limit=5)
+    out = x.recent_tweets("@someuser", **kwargs)
 
-    assert captured["argv"] == ["twitter", "user-posts", "someuser", "--max", "5", "--json"]
+    assert captured["argv"] == [
+        "twitter",
+        "user-posts",
+        "someuser",
+        "--max",
+        expected_max,
+        "--json",
+    ]
     assert captured["kwargs"]["check"] is True
     assert out == [{"id": 1}, {"id": 2}]
 
