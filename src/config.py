@@ -108,6 +108,12 @@ TAVILY_MAX_RESULTS = 10
 TAVILY_MIN_RESULTS = 5  # fewer usable pages than this is too thin to build an episode on
 TAVILY_MAX_PAGE_CHARS = 4000
 TAVILY_MAX_SOURCES_CHARS = 24000
+TAVILY_RETRIES = 3
+# Read budget for one attempt. httpx spends a bare float on each of connect/read/write/pool and
+# retries connect per resolved address, so connect is pinned short: TAVILY_RETRIES attempts then
+# cost about 105s of the podcast's wall clock instead of a multiple of HTTP_TIMEOUT_S.
+TAVILY_TIMEOUT_S = 30.0
+TAVILY_CONNECT_TIMEOUT_S = 5.0
 
 # ----- Fetching -----
 
