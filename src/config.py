@@ -113,7 +113,7 @@ TAVILY_CONNECT_TIMEOUT_S = 5.0
 
 # ----- Fetching -----
 
-LOOKBACK_HOURS = 48 
+LOOKBACK_HOURS = 48
 MAX_FETCH_WORKERS = 8
 
 # ----- Newsletter -----
