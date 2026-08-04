@@ -52,10 +52,13 @@ items (most papers, public-health).
 
 # Format (output Markdown)
 - One entry per item under its section, e.g.
-  `**[Big Pharma]** **[Sanofi shelves amlitelimab](https://…)** — *BioPharma Dive*`
+  `**[Big Pharma]** **Sanofi shelves amlitelimab** [BioPharma Dive](https://…)`
   followed by 1–3 tight bullets of substance.
+- The title is plain bold text and is never a link. The source name carries the link.
 - End with a short **Worth watching** line only if genuinely warranted.
 
 # Hard rules
+- Square brackets appear only as the link text of a Markdown link, or as the company tag. Nothing
+  else in an entry is bracketed.
 - Output only the newsletter Markdown. No preamble, no "Here is your newsletter".
 - Add no external context beyond the provided item bodies.
