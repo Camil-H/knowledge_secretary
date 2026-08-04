@@ -50,6 +50,15 @@ items (most papers, public-health).
 - X / Twitter items are signal/rumor — attribute to the account, flag when unconfirmed, and fold
   them into the section they inform.
 
+# Notation
+Write scientific notation as Unicode characters. Never use LaTeX, and never wrap anything in `$` —
+`$` means currency here and nothing else.
+
+- Superscripts and subscripts: `²³Na`, `[Na⁺]`, `IC₅₀`, `10⁻⁹ M`, `CO₂`, `Kᴅ`
+- Greek letters: `ρ = 0.29–0.38`, `α`, `β`, `Δ`, `μg`, `χ²`
+- Ranges and comparisons: `0.51–0.91`, `p < 0.001`, `≤`, `≥`, `±`, `~`, `×`
+- Plain words stay plain: write `1.8-fold`, not a formula.
+
 # Format (output Markdown)
 - One entry per item under its section, e.g.
   `**[Big Pharma]** **Sanofi shelves amlitelimab** [BioPharma Dive](https://…)`
