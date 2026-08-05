@@ -1,0 +1,11 @@
+{
+  "date": "2026-08-05",
+  "tasks": {
+    "podcast": {
+      "audio_url": "https://github.com/Camil-H/knowledge_secretary/releases/download/podcast-2026-08-05/episode.mp3",
+      "kind": "podcast",
+      "subject": "Podcast \u2014 Feeding the soil: soil chemistry, the N-P-K balance, phosphorus geology, and the nutrient-runoff planetary boundary",
+      "topic": "Feeding the soil: soil chemistry, the N-P-K balance, phosphorus geology, and the nutrient-runoff planetary boundary"
+    }
+  }
+}
