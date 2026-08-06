@@ -1,4 +1,5 @@
 - { key: yt_physionic,    kind: yt_channel, section: "Biology & Health",   channel_id: UCj3p_1jOCJXB_L_we-DjLbA, enrich: [transcript] }  # @Physionic
+- { key: yt_attia,        kind: yt_channel, section: "Biology & Health",   channel_id: UC8kGsMa0LygSX9nkBcBH1Sg, enrich: [transcript] }  # @PeterAttiaMD
 - { key: yt_dhio,         kind: yt_channel, section: "Biology & Health",   channel_id: UCwsu0LcxzxDgn1C1zxc3hAw, enrich: [transcript] }  # @DigitalHealthInsideOut
 - { key: yt_bekey,        kind: yt_channel, section: "Biology & Health",   channel_id: UC73ReuNCWVq1zqBurvjeOpw, enrich: [transcript] }  # @BeKey-Hub
 - { key: yt_passescience, kind: yt_channel, section: "Pure Science",       channel_id: UCsz9DiwPtgDvxJ-njWnieZw, enrich: [transcript] }  # @PasseScience
