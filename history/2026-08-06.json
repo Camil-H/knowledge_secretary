@@ -1,0 +1,11 @@
+{
+  "date": "2026-08-06",
+  "tasks": {
+    "podcast": {
+      "audio_url": "https://github.com/Camil-H/knowledge_secretary/releases/download/podcast-2026-08-06/episode.mp3",
+      "kind": "podcast",
+      "subject": "Podcast \u2014 Agricultural water: irrigation engineering, evapotranspiration, salinization, and the efficiency of farming's 70% of freshwater use",
+      "topic": "Agricultural water: irrigation engineering, evapotranspiration, salinization, and the efficiency of farming's 70% of freshwater use"
+    }
+  }
+}
