@@ -42,7 +42,10 @@ def test_yt_channel_maps_videos_to_items(monkeypatch):
     items = yt_channel(_SPEC, _SINCE)
 
     assert [i.id for i in items] == ["yt:A", "yt:B"]
-    assert [i.meta for i in items] == [{"channel": "ChanX"}, {"channel": "ChanX"}]
+    assert [i.meta for i in items] == [
+        {"channel": "ChanX", "watch": False},
+        {"channel": "ChanX", "watch": False},
+    ]
     assert items[0].source == "yt_x"
     assert items[0].section == "Pure Science"
     assert items[1].title == "Second"
@@ -58,6 +61,24 @@ def test_yt_channel_skips_videos_with_no_published_date(monkeypatch):
     items = yt_channel(_SPEC, _SINCE)
 
     assert [i.id for i in items] == ["yt:B"]
+
+
+@pytest.mark.parametrize(
+    ("mode", "expected"),
+    [(None, False), (adapters.WATCH_MODE, True), ("summarize", False)],
+    ids=["absent", "watch", "unknown-mode"],
+)
+def test_yt_channel_flags_watch_only_channels(monkeypatch, mode, expected):
+    monkeypatch.setattr(
+        adapters.yt,
+        "channel_videos",
+        lambda channel_id: {"channel": "ChanX", "videos": [_video("A")]},
+    )
+    spec = _SPEC | ({"mode": mode} if mode else {})
+
+    items = yt_channel(spec, _SINCE)
+
+    assert items[0].meta["watch"] is expected
 
 
 def test_yt_channel_passes_channel_id_from_spec(monkeypatch):

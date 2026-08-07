@@ -3,7 +3,7 @@
 A $0, fully-automated daily digest, run by GitHub Actions and published to GitHub Pages:
 
 1. **Newsletter** — new items from your blogs, papers/preprints (PubMed, bioRxiv) and X accounts, written up and grouped into sections you define.
-2. **YouTube** — new uploads from your channels, summarized from their transcripts.
+2. **YouTube** — new uploads from your channels, summarized from their transcripts, plus a **To watch** list of new uploads from the channels you'd rather watch than read.
 3. **Podcast** — a long two-host episode on the next topic from a queue, researched from searched sources, published with an audio player.
 
 Free tiers throughout: text prefers Google AI Studio's Gemini models and falls back to OpenRouter's `:free` ones, and audio uses Google Cloud TTS, whose 1M characters a month covers a daily episode of ~35 minutes.
@@ -44,7 +44,7 @@ uv run python -m src.delivery.site   # render history/ -> public/index.html
 
 The committed sources and topics are the owner's, kept only so the repo runs out of the box.
 
-1. **Sources.** Edit each `src/tasks/<task>/sources.yaml`: feeds, journals, and X handles for the newsletter; channel IDs for YouTube; the topic queue for the podcast. Renaming a section means updating the vocabulary in `newsletter/prompt.md` too.
+1. **Sources.** Edit each `src/tasks/<task>/sources.yaml`: feeds, journals, and X handles for the newsletter; channel IDs for YouTube; the topic queue for the podcast. Renaming a section means updating the vocabulary in `newsletter/prompt.md` too. A YouTube channel marked `mode: watch` (and given no `enrich`) is listed under a trailing **To watch** heading, newest first — new uploads as links only, no transcript fetched and no summary written.
 2. **Secrets and publishing.** Set the secrets above, plus the repository variables `PAGES_REPOSITORY` and `PAGES_DESTINATION_DIR` — both fall back to the owner's. Drop `keep_files: true` from `.github/actions/publish/action.yml` if your Pages repo is dedicated to this project.
 3. **Voice.** Branding in config's "Yours to set"; editorial framing in the prompt markdown under `src/tasks/`. Update the `LICENSE` copyright line.
 4. **Schedule.** Cron times live in `daily.yml`, and each job's `if:` guard matches the **exact** cron string — change a time and you must change its guard.

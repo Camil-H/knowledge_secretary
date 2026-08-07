@@ -10,6 +10,7 @@ from src.tasks.youtube import task as youtube_task
 from src.tasks.youtube.task import (
     PROMPT,
     _batch_input,
+    _newest_first,
     _parse_blocks,
     _render,
     _section_order,
@@ -31,16 +32,16 @@ def _patch_sources(monkeypatch):
     monkeypatch.setattr(youtube_task, "SOURCES", [_TEST_SPEC])
 
 
-def _video(vid, *, text="transcript body"):
+def _video(vid, *, text="transcript body", watch=False, age_hours=1):
     return Item(
         id=vid,
         source="yt_x",
         section="Pure Science",
         title=f"Vid {vid}",
         url=f"http://y/{vid}",
-        published=datetime.now(UTC) - timedelta(hours=1),
+        published=datetime.now(UTC) - timedelta(hours=age_hours),
         text=text,
-        meta={"channel": "ChanX"},
+        meta={"channel": "ChanX", "watch": watch},
     )
 
 
@@ -90,6 +91,42 @@ def test_run_video_without_transcript_gets_note_without_a_call():
     assert "(no transcript available)" in result.markdown
     assert result.consumed == ["yt:C"]
     assert call.calls == []
+
+
+# ----- Watch-only videos -----
+
+
+def test_run_lists_watch_videos_unsummarized_under_their_own_heading():
+    call = _Call()
+    videos = [_video("yt:A"), _video("yt:W", watch=True)]
+
+    result = run(_ctx(videos, call))
+
+    assert _ids_in(call.calls[0]["user"]) == ["yt:A"]  # the watch video never reaches the model
+    assert "- To watch" in result.markdown
+    watch_block = result.markdown.split("- To watch")[1]
+    assert watch_block.strip() == "- [Vid yt:W](http://y/yt:W) -- ChanX"
+    assert result.markdown.index("- Pure Science") < result.markdown.index("- To watch")
+    assert set(result.consumed) == {"yt:A", "yt:W"}
+
+
+def test_run_watch_only_videos_skip_the_model_entirely():
+    call = _Call()
+
+    result = run(_ctx([_video("yt:W", watch=True), _video("yt:V", watch=True)], call))
+
+    assert call.calls == []
+    assert "- Pure Science" not in result.markdown
+    assert "(no transcript available)" not in result.markdown
+    assert result.markdown.startswith("- To watch")
+
+
+def test_run_orders_watch_videos_newest_first():
+    videos = [_video("yt:old", watch=True, age_hours=40), _video("yt:new", watch=True)]
+
+    markdown = run(_ctx(videos, _Call())).markdown
+
+    assert markdown.index("Vid yt:new") < markdown.index("Vid yt:old")
 
 
 # ----- Batching -----
@@ -197,8 +234,18 @@ def test_render_orders_sections_by_config_and_omits_empty_section():
         "Alpha": [(a1, ["- a1 bullet"]), (a2, ["- a2 bullet"])],
     }
 
-    out = _render(["Alpha", "Empty", "Beta"], grouped)
+    out = _render(["Alpha", "Empty", "Beta"], grouped, [])
 
     assert out.index("- Alpha") < out.index("- Beta")  # config order, not dict/insertion order
     assert "Vid yt:A1" in out and "Vid yt:A2" in out and "Vid yt:B1" in out
     assert "Empty" not in out  # section with no entries omitted entirely, header included
+    assert "To watch" not in out  # no watch entries, no heading
+
+
+# ----- _newest_first -----
+
+
+def test_newest_first_sorts_by_published_descending():
+    old, mid, new = (_video(f"yt:{n}", age_hours=h) for n, h in (("o", 50), ("m", 10), ("n", 1)))
+
+    assert _newest_first([mid, old, new]) == [new, mid, old]

@@ -7,13 +7,20 @@ from src.core.models import Item, SourceSpec
 from src.core.registry import enrichers, sources
 from src.fetchers import youtube as yt
 
+WATCH_MODE = "watch"
+
 # == Source adapter ===========================================================
 
 
 @sources.register("yt_channel")
 def yt_channel(spec: SourceSpec, since: datetime) -> list[Item]:
-    """A YouTube channel's uploads feed, keyed by the exact spec['channel_id']."""
+    """A YouTube channel's uploads feed, keyed by the exact spec['channel_id'].
+
+    `mode: watch` marks a channel watch-only: its videos carry meta['watch'] and the task
+    lists them unsummarized. Such a spec also omits `enrich`, so no transcript is fetched
+    for a video nobody is going to summarize."""
     data = yt.channel_videos(spec["channel_id"])
+    watch = spec.get("mode") == WATCH_MODE
     items = []
     for v in data["videos"]:
         if v["published"] is None:
@@ -27,7 +34,7 @@ def yt_channel(spec: SourceSpec, since: datetime) -> list[Item]:
                 url=v["url"],
                 published=v["published"],
                 text=v["summary"],
-                meta={"channel": data["channel"]},
+                meta={"channel": data["channel"], "watch": watch},
             )
         )
     return items

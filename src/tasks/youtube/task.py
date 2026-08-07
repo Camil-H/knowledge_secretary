@@ -15,6 +15,7 @@ from src.tasks.runner import run_source_task
 PROMPT = (Path(__file__).parent / "prompt.md").read_text()
 _NO_TRANSCRIPT = ["- (no transcript available)"]
 _NO_SUMMARY = ["- (summary unavailable)"]
+_WATCH_HEADING = "To watch"
 _BLOCK_TAG = "VIDEO"
 # tolerates decoration the model may add around the header (`**[VIDEO yt:x]**`, `## VIDEO yt:x`)
 _BLOCK_HEADER = re.compile(rf"^\W*{_BLOCK_TAG}\s+([^\]\s]+)")
@@ -34,25 +35,30 @@ def run(ctx: Context) -> Result:
 
 
 def _produce(ctx: Context, items: list[Item]) -> str:
-    """Summarize the new videos, grouped by section (config order).
+    """Summarize the new videos, grouped by section (config order), then list the
+    watch-only ones unsummarized under their own trailing heading.
 
     A video the batch summary omits or garbles degrades to a note on its own; the rest of
     its batch is unaffected."""
-    bullets = _batched_summaries(ctx, [item for item in items if item.text])
+    watch = [item for item in items if item.meta.get("watch")]
+    summarized = [item for item in items if not item.meta.get("watch")]
+    bullets = _batched_summaries(ctx, [item for item in summarized if item.text])
     grouped: dict[str, list[tuple[Item, list[str]]]] = {}
-    for item in items:
+    for item in summarized:
         lines = (bullets.get(item.id) or _NO_SUMMARY) if item.text else _NO_TRANSCRIPT
         grouped.setdefault(item.section, []).append((item, lines))
 
-    missing = sum(1 for it in items if not it.text)
+    if watch:
+        ctx.logger.info(f"youtube: {len(watch)}/{len(items)} videos listed to watch, unsummarized")
+    missing = sum(1 for it in summarized if not it.text)
     if missing:
-        ctx.logger.info(f"youtube: {missing}/{len(items)} videos had no transcript")
-    unsummarized = sum(1 for it in items if it.text and not bullets.get(it.id))
+        ctx.logger.info(f"youtube: {missing}/{len(summarized)} videos had no transcript")
+    unsummarized = sum(1 for it in summarized if it.text and not bullets.get(it.id))
     if unsummarized:
         ctx.logger.warning(
-            f"⚠️ youtube: {unsummarized}/{len(items)} videos absent from the batch summaries"
+            f"⚠️ youtube: {unsummarized}/{len(summarized)} videos absent from the batch summaries"
         )
-    return _render(_section_order(SOURCES), grouped)
+    return _render(_section_order(SOURCES), grouped, _newest_first(watch))
 
 
 # == Summaries ================================================================
@@ -109,8 +115,18 @@ def _section_order(specs: list[SourceSpec]) -> list[str]:
     return order
 
 
-def _render(section_order: list[str], grouped: dict[str, list[tuple[Item, list[str]]]]) -> str:
-    """Render the digest markdown, grouped by section in config order."""
+def _newest_first(items: list[Item]) -> list[Item]:
+    """Watch entries read as a release radar, so recency wins over the spec order the
+    summarized sections keep."""
+    return sorted(items, key=lambda item: item.published, reverse=True)
+
+
+def _render(
+    section_order: list[str],
+    grouped: dict[str, list[tuple[Item, list[str]]]],
+    watch: list[Item],
+) -> str:
+    """Render the digest markdown: sections in config order, then the flat watch list."""
     lines: list[str] = []
     for section in section_order:
         entries = grouped.get(section) or []
@@ -118,6 +134,13 @@ def _render(section_order: list[str], grouped: dict[str, list[tuple[Item, list[s
             continue
         lines.append(f"- {section}")
         for item, bullets in entries:
-            lines.append(f"    - [{item.title}]({item.url}) -- {item.meta.get('channel', '')}")
+            lines.append(_entry_line(item))
             lines.extend(f"        {bullet}" for bullet in bullets)
+    if watch:
+        lines.append(f"- {_WATCH_HEADING}")
+        lines.extend(_entry_line(item) for item in watch)
     return "\n".join(lines)
+
+
+def _entry_line(item: Item) -> str:
+    return f"    - [{item.title}]({item.url}) -- {item.meta.get('channel', '')}"
