@@ -1,0 +1,11 @@
+{
+  "date": "2026-08-09",
+  "tasks": {
+    "podcast": {
+      "audio_url": "https://github.com/Camil-H/knowledge_secretary/releases/download/podcast-2026-08-09/episode.mp3",
+      "kind": "podcast",
+      "subject": "Podcast \u2014 The heat-engine backbone: Rankine cycles, steam turbines, combined-cycle gas plants, and nuclear fission as a very expensive boiler",
+      "topic": "The heat-engine backbone: Rankine cycles, steam turbines, combined-cycle gas plants, and nuclear fission as a very expensive boiler"
+    }
+  }
+}
