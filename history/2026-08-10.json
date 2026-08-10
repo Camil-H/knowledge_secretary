@@ -1,0 +1,11 @@
+{
+  "date": "2026-08-10",
+  "tasks": {
+    "podcast": {
+      "audio_url": "https://github.com/Camil-H/knowledge_secretary/releases/download/podcast-2026-08-10/episode.mp3",
+      "kind": "podcast",
+      "subject": "Podcast \u2014 Getting hydrocarbons out of the earth: petroleum geology, fracking, deepwater rigs, the LNG chain, and energy return on investment",
+      "topic": "Getting hydrocarbons out of the earth: petroleum geology, fracking, deepwater rigs, the LNG chain, and energy return on investment"
+    }
+  }
+}
