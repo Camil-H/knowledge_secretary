@@ -1,0 +1,11 @@
+{
+  "date": "2026-08-11",
+  "tasks": {
+    "podcast": {
+      "audio_url": "https://github.com/Camil-H/knowledge_secretary/releases/download/podcast-2026-08-11/episode.mp3",
+      "kind": "podcast",
+      "subject": "Podcast \u2014 The largest machine ever built: grid frequency, inertia, reactive power, transmission limits, and the anatomy of a blackout",
+      "topic": "The largest machine ever built: grid frequency, inertia, reactive power, transmission limits, and the anatomy of a blackout"
+    }
+  }
+}
