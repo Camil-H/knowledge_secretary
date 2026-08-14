@@ -12,6 +12,7 @@
 - { key: yt_underscore,   kind: yt_channel, section: "Tech & Engineering", channel_id: UCWedHS9qKebauVIK2J7383g, enrich: [transcript] }  # @Underscore_
 - { key: yt_wendover,     kind: yt_channel, section: "Tech & Engineering", channel_id: UC9RM-iSvTu1uPJb8X5yp3EQ, enrich: [transcript] }  # @Wendoverproductions
 - { key: yt_heureka,      kind: yt_channel, section: "Economics",          channel_id: UC7sXGI8p8PvKosLWagkK9wQ, enrich: [transcript] }  # @Heu7reka
+- { key: yt_pboyle,       kind: yt_channel, section: "Economics",          channel_id: UCASM0cgfkJxQ1ICmRilfHLw, enrich: [transcript] }  # @PBoyle
 - { key: yt_crashcourse,  kind: yt_channel, section: "Other",              channel_id: UCX6b17PVsYBQ0ip5gyeme-Q, enrich: [transcript] }  # @crashcourse
 
 # ----- Watch-only: listed as links under "To watch", no transcript fetched, no summary -----
