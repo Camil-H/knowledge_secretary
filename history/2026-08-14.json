@@ -1,0 +1,11 @@
+{
+  "date": "2026-08-14",
+  "tasks": {
+    "podcast": {
+      "audio_url": "https://github.com/Camil-H/knowledge_secretary/releases/download/podcast-2026-08-14/episode.mp3",
+      "kind": "podcast",
+      "subject": "Podcast \u2014 The multi-barrier gauntlet: coagulation, filtration, and the disinfection chemistry that makes water drinkable",
+      "topic": "The multi-barrier gauntlet: coagulation, filtration, and the disinfection chemistry that makes water drinkable"
+    }
+  }
+}
