@@ -1,0 +1,11 @@
+{
+  "date": "2026-08-18",
+  "tasks": {
+    "podcast": {
+      "audio_url": "https://github.com/Camil-H/knowledge_secretary/releases/download/podcast-2026-08-18/episode.mp3",
+      "kind": "podcast",
+      "subject": "Podcast \u2014 Running dry: hydrology, groundwater mining, aquifer depletion, virtual water, and the law of water allocation",
+      "topic": "Running dry: hydrology, groundwater mining, aquifer depletion, virtual water, and the law of water allocation"
+    }
+  }
+}
