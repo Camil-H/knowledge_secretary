@@ -3,19 +3,9 @@
     "chars": 473951,
     "period": "2026-08"
   },
-  "gemini-3.5-flash": {
-    "exhausted": false,
-    "period": "2026-08-18",
-    "requests": 16
-  },
-  "gemini-3.5-flash-lite": {
-    "exhausted": false,
-    "period": "2026-08-18",
-    "requests": 3
-  },
   "gemini-3.6-flash": {
-    "exhausted": true,
-    "period": "2026-08-18",
-    "requests": 9
+    "exhausted": false,
+    "period": "2026-08-19",
+    "requests": 4
   }
 }
