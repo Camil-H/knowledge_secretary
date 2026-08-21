@@ -1,0 +1,11 @@
+{
+  "date": "2026-08-21",
+  "tasks": {
+    "podcast": {
+      "audio_url": "https://github.com/Camil-H/knowledge_secretary/releases/download/podcast-2026-08-21/episode.mp3",
+      "kind": "podcast",
+      "subject": "Podcast \u2014 The furnace economy: blast furnace chemistry, cement kilns, and why steel and concrete are the hardest 15% of global CO2",
+      "topic": "The furnace economy: blast furnace chemistry, cement kilns, and why steel and concrete are the hardest 15% of global CO2"
+    }
+  }
+}
