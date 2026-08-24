@@ -1,0 +1,11 @@
+{
+  "date": "2026-08-24",
+  "tasks": {
+    "podcast": {
+      "audio_url": "https://github.com/Camil-H/knowledge_secretary/releases/download/podcast-2026-08-24/episode.mp3",
+      "kind": "podcast",
+      "subject": "Podcast \u2014 What mining leaves behind: tailings dam engineering, acid mine drainage geochemistry, and managing the largest waste stream on Earth",
+      "topic": "What mining leaves behind: tailings dam engineering, acid mine drainage geochemistry, and managing the largest waste stream on Earth"
+    }
+  }
+}
