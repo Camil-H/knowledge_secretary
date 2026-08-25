@@ -1,0 +1,13 @@
+{
+  "date": "2026-08-25",
+  "tasks": {
+    "podcast": {
+      "kind": "markdown",
+      "markdown": "",
+      "notices": [
+        "No episode today \u2014 research or generation failed. The topic stays queued and is retried on the next run."
+      ],
+      "subject": "Podcast \u2014 Cracking the barrel: steam crackers, the seven building-block molecules, and how polymer chemistry turns oil and gas into everything you touch"
+    }
+  }
+}
