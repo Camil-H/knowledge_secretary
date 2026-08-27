@@ -1,0 +1,11 @@
+{
+  "date": "2026-08-27",
+  "tasks": {
+    "podcast": {
+      "audio_url": "https://github.com/Camil-H/knowledge_secretary/releases/download/podcast-2026-08-27/episode.mp3",
+      "kind": "podcast",
+      "subject": "Podcast \u2014 The nitrogen economy: Haber-Bosch thermodynamics, ammonia plant engineering, the fertilizer chain, and feeding half of humanity from natural gas",
+      "topic": "The nitrogen economy: Haber-Bosch thermodynamics, ammonia plant engineering, the fertilizer chain, and feeding half of humanity from natural gas"
+    }
+  }
+}
