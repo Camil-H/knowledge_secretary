@@ -1,0 +1,11 @@
+{
+  "date": "2026-08-28",
+  "tasks": {
+    "podcast": {
+      "audio_url": "https://github.com/Camil-H/knowledge_secretary/releases/download/podcast-2026-08-28/episode.mp3",
+      "kind": "podcast",
+      "subject": "Podcast \u2014 Why chemical plants explode: runaway reactions, relief-system design, and the process-safety engineering written in blood at Bhopal, Texas City, and Beirut",
+      "topic": "Why chemical plants explode: runaway reactions, relief-system design, and the process-safety engineering written in blood at Bhopal, Texas City, and Beirut"
+    }
+  }
+}
