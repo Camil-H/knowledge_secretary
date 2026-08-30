@@ -6,6 +6,6 @@
   "gemini-3.6-flash": {
     "exhausted": false,
     "period": "2026-08-30",
-    "requests": 9
+    "requests": 11
   }
 }
