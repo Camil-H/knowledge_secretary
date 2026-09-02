@@ -1,0 +1,11 @@
+{
+  "date": "2026-09-02",
+  "tasks": {
+    "podcast": {
+      "audio_url": "https://github.com/Camil-H/knowledge_secretary/releases/download/podcast-2026-09-02/episode.mp3",
+      "kind": "podcast",
+      "subject": "Podcast \u2014 The mathematics of defects: statistical process control, Six Sigma, FMEA, and how factories make a million parts without making a million mistakes",
+      "topic": "The mathematics of defects: statistical process control, Six Sigma, FMEA, and how factories make a million parts without making a million mistakes"
+    }
+  }
+}
