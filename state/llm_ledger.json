@@ -1,11 +1,16 @@
 {
   "cloud-tts": {
-    "chars": 52145,
+    "chars": 79724,
     "period": "2026-09"
+  },
+  "gemini-3.5-flash": {
+    "exhausted": false,
+    "period": "2026-09-03",
+    "requests": 2
   },
   "gemini-3.6-flash": {
     "exhausted": false,
-    "period": "2026-09-02",
-    "requests": 12
+    "period": "2026-09-03",
+    "requests": 11
   }
 }
