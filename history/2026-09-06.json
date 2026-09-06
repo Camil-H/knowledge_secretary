@@ -1,0 +1,11 @@
+{
+  "date": "2026-09-06",
+  "tasks": {
+    "podcast": {
+      "audio_url": "https://github.com/Camil-H/knowledge_secretary/releases/download/podcast-2026-09-06/episode.mp3",
+      "kind": "podcast",
+      "subject": "Podcast \u2014 Why buildings stand up \u2014 and fall down: load paths, buckling, progressive collapse, and the forensics of structural failure",
+      "topic": "Why buildings stand up \u2014 and fall down: load paths, buckling, progressive collapse, and the forensics of structural failure"
+    }
+  }
+}
