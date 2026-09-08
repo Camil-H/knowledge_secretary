@@ -1,0 +1,11 @@
+{
+  "date": "2026-09-08",
+  "tasks": {
+    "podcast": {
+      "audio_url": "https://github.com/Camil-H/knowledge_secretary/releases/download/podcast-2026-09-08/episode.mp3",
+      "kind": "podcast",
+      "subject": "Podcast \u2014 The infrastructure cost disease: why a mile of subway costs $250 million in Madrid and $2.5 billion in New York",
+      "topic": "The infrastructure cost disease: why a mile of subway costs $250 million in Madrid and $2.5 billion in New York"
+    }
+  }
+}
