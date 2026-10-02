@@ -1,7 +1,12 @@
 {
+  "gemini-3.5-flash": {
+    "exhausted": false,
+    "period": "2026-10-02",
+    "requests": 3
+  },
   "gemini-3.6-flash": {
     "exhausted": false,
-    "period": "2026-10-01",
-    "requests": 5
+    "period": "2026-10-02",
+    "requests": 11
   }
 }
